@@ -164,7 +164,8 @@ func RunController(_ *cobra.Command, _ []string) { // coverage-ignore
 	}
 
 	if operatorCfg.Webhooks.Enabled {
-		if err := v1alpha1.SetupAccountWebhookWithManager(mgr); err != nil {
+		log.Info().Strs("deniedNames", operatorCfg.Webhooks.DenyList).Msg("webhooks are enabled")
+		if err := v1alpha1.SetupAccountWebhookWithManager(mgr, operatorCfg.Webhooks.DenyList); err != nil {
 			log.Fatal().Err(err).Str("webhook", "Account").Msg("unable to create webhook")
 		}
 	}
