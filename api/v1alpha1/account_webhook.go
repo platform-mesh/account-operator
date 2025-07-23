@@ -53,6 +53,21 @@ func (v *AccountValidator) ValidateCreate(ctx context.Context, obj runtime.Objec
 }
 
 func (v *AccountValidator) ValidateUpdate(ctx context.Context, oldObj, newObj runtime.Object) (admission.Warnings, error) {
+	newAccount := newObj.(*Account)
+	oldAccount := oldObj.(*Account)
+
+	if newAccount.Spec.Type == AccountTypeOrg {
+		if slices.Contains(v.DenyList, newAccount.Name) {
+			return nil, fmt.Errorf("organization name %q is not allowed", newAccount.Name)
+		}
+	}
+
+	if oldAccount.Spec.Type != AccountTypeOrg && newAccount.Spec.Type == AccountTypeOrg {
+		if slices.Contains(v.DenyList, newAccount.Name) {
+			return nil, fmt.Errorf("organization name %q is not allowed", newAccount.Name)
+		}
+	}
+
 	return nil, nil
 }
 
