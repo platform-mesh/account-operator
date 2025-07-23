@@ -3,6 +3,7 @@ package v1alpha1
 import (
 	"context"
 	"fmt"
+	"slices"
 
 	"k8s.io/apimachinery/pkg/runtime"
 	ctrl "sigs.k8s.io/controller-runtime"
@@ -43,11 +44,9 @@ type AccountValidator struct {
 
 func (v *AccountValidator) ValidateCreate(ctx context.Context, obj runtime.Object) (admission.Warnings, error) {
 	account := obj.(*Account)
-	if account.Spec.Type == "organization" {
-		for _, deniedName := range v.DenyList {
-			if account.Name == deniedName {
-				return nil, fmt.Errorf("organization name %q is not allowed", account.Name)
-			}
+	if account.Spec.Type == AccountTypeOrg {
+		if slices.Contains(v.DenyList, account.Name) {
+			return nil, fmt.Errorf("organization name %q is not allowed", account.Name)
 		}
 	}
 	return nil, nil
