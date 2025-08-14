@@ -9,6 +9,9 @@ type OperatorConfig struct {
 		DenyList string `mapstructure:"webhooks-deny-list"`
 	} `mapstructure:",squash"`
 	Subroutines struct {
+		WorkspaceType struct {
+			Enabled bool `mapstructure:"subroutines-workspacetype-enabled" default:"true"`
+		} `mapstructure:",squash"`
 		Workspace struct {
 			Enabled bool `mapstructure:"subroutines-workspace-enabled" default:"true"`
 		} `mapstructure:",squash"`

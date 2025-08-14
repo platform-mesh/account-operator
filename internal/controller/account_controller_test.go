@@ -63,6 +63,7 @@ func (suite *AccountTestSuite) SetupSuite() {
 
 	cfg := config.OperatorConfig{}
 	cfg.Subroutines.FGA.Enabled = false
+	cfg.Subroutines.WorkspaceType.Enabled = true
 	cfg.Subroutines.Workspace.Enabled = true
 	cfg.Subroutines.AccountInfo.Enabled = true
 	cfg.Kcp.ProviderWorkspace = "root"
