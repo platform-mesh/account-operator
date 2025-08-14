@@ -46,8 +46,9 @@ func (r *WorkspaceTypeSubroutine) Process(ctx context.Context, ro runtimeobject.
 	log := logger.LoadLoggerFromContext(ctx)
 	cn := MustGetClusteredName(ctx, ro)
 
-	base := &kcptenancyv1alpha.WorkspaceType{}
-	if err := r.client.Get(ctx, client.ObjectKey{Name: "org"}, base); err != nil {
+	// Retrieve base workspace types
+	baseOrg := &kcptenancyv1alpha.WorkspaceType{}
+	if err := r.client.Get(ctx, client.ObjectKey{Name: "org"}, baseOrg); err != nil {
 		if kerrors.IsNotFound(err) {
 			delay := r.limiter.When(cn)
 			log.Info().Str("account", acct.Name).Msg("base org WorkspaceType not found yet; requeue")
@@ -55,17 +56,40 @@ func (r *WorkspaceTypeSubroutine) Process(ctx context.Context, ro runtimeobject.
 		}
 		return ctrl.Result{}, errors.NewOperatorError(err, true, true)
 	}
+	baseAcc := &kcptenancyv1alpha.WorkspaceType{}
+	if err := r.client.Get(ctx, client.ObjectKey{Name: "account"}, baseAcc); err != nil {
+		if kerrors.IsNotFound(err) {
+			delay := r.limiter.When(cn)
+			log.Info().Str("account", acct.Name).Msg("base account WorkspaceType not found yet; requeue")
+			return ctrl.Result{RequeueAfter: delay}, nil
+		}
+		return ctrl.Result{}, errors.NewOperatorError(err, true, true)
+	}
 
-	customName := fmt.Sprintf("%s-org", acct.Name)
-	custom := &kcptenancyv1alpha.WorkspaceType{ObjectMeta: metav1.ObjectMeta{Name: customName}}
-	_, err := controllerutil.CreateOrUpdate(ctx, r.client, custom, func() error {
-		custom.Spec = base.Spec
-		return controllerutil.SetOwnerReference(acct, custom, r.client.Scheme())
+	// Ensure custom account workspace type
+	customAccName := fmt.Sprintf("%s-acc", acct.Name)
+	customAcc := &kcptenancyv1alpha.WorkspaceType{ObjectMeta: metav1.ObjectMeta{Name: customAccName}}
+	_, err := controllerutil.CreateOrUpdate(ctx, r.client, customAcc, func() error {
+		customAcc.Spec = baseAcc.Spec
+		return controllerutil.SetOwnerReference(acct, customAcc, r.client.Scheme())
 	})
 	if err != nil {
 		return ctrl.Result{}, errors.NewOperatorError(err, true, true)
 	}
+
+	// Ensure custom org workspace type referencing custom account type as default child
+	customOrgName := fmt.Sprintf("%s-org", acct.Name)
+	customOrg := &kcptenancyv1alpha.WorkspaceType{ObjectMeta: metav1.ObjectMeta{Name: customOrgName}}
+	_, err = controllerutil.CreateOrUpdate(ctx, r.client, customOrg, func() error {
+		customOrg.Spec = baseOrg.Spec
+		customOrg.Spec.DefaultChildWorkspaceType = &kcptenancyv1alpha.WorkspaceTypeReference{Name: kcptenancyv1alpha.WorkspaceTypeName(customAccName), Path: "root"}
+		return controllerutil.SetOwnerReference(acct, customOrg, r.client.Scheme())
+	})
+	if err != nil {
+		return ctrl.Result{}, errors.NewOperatorError(err, true, true)
+	}
+
 	r.limiter.Forget(cn)
-	log.Debug().Str("customWorkspaceType", customName).Msg("custom org workspace type ensured")
+	log.Debug().Str("customOrgWorkspaceType", customOrgName).Str("customAccountWorkspaceType", customAccName).Msg("custom workspace types ensured")
 	return ctrl.Result{}, nil
 }
