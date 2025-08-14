@@ -234,6 +234,47 @@ func (suite *AccountTestSuite) TestAccountInfoCreationForOrganization() {
 	suite.Nil(accountInfo.Spec.ParentAccount)
 }
 
+func (suite *AccountTestSuite) TestCustomWorkspaceTypesForOrganization() {
+	testContext := context.Background()
+	orgAccountName := "custom-wt-org"
+
+	// Create new org account
+	acct := &v1alpha1.Account{ObjectMeta: metav1.ObjectMeta{Name: orgAccountName}, Spec: v1alpha1.AccountSpec{Type: v1alpha1.AccountTypeOrg}}
+	err := suite.kubernetesClient.Create(testContext, acct)
+	suite.Require().NoError(err)
+
+	// Wait for custom org workspace type
+	customOrgWT := &kcptenancyv1alpha.WorkspaceType{}
+	suite.Assert().Eventually(func() bool {
+		if e := suite.kubernetesClient.Get(testContext, types.NamespacedName{Name: orgAccountName + "-org"}, customOrgWT); e != nil {
+			return false
+		}
+		return true
+	}, defaultTestTimeout, defaultTickInterval)
+
+	// Wait for custom account workspace type
+	customAccWT := &kcptenancyv1alpha.WorkspaceType{}
+	suite.Assert().Eventually(func() bool {
+		if e := suite.kubernetesClient.Get(testContext, types.NamespacedName{Name: orgAccountName + "-acc"}, customAccWT); e != nil {
+			return false
+		}
+		return true
+	}, defaultTestTimeout, defaultTickInterval)
+
+	// Validate linkage defaultChildWorkspaceType
+	suite.Require().NotNil(customOrgWT.Spec.DefaultChildWorkspaceType)
+	suite.Equal(orgAccountName+"-acc", string(customOrgWT.Spec.DefaultChildWorkspaceType.Name))
+
+	// Wait for workspace creation and ensure it uses custom org type
+	ws := &kcptenancyv1alpha.Workspace{}
+	suite.Assert().Eventually(func() bool {
+		if e := suite.kubernetesClient.Get(testContext, types.NamespacedName{Name: orgAccountName}, ws); e != nil {
+			return false
+		}
+		return string(ws.Spec.Type.Name) == orgAccountName+"-org"
+	}, defaultTestTimeout, defaultTickInterval)
+}
+
 func (suite *AccountTestSuite) TestAccountInfoCreationForAccount() {
 	var err error
 	testContext := context.Background()
