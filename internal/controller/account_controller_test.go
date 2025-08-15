@@ -261,6 +261,28 @@ func (suite *AccountTestSuite) TestCustomWorkspaceTypesForOrganization() {
 		return true
 	}, defaultTestTimeout, defaultTickInterval)
 
+	// Fetch base workspace types to compare inheritance / fallback
+	baseOrgWT := &kcptenancyv1alpha.WorkspaceType{}
+	baseAccWT := &kcptenancyv1alpha.WorkspaceType{}
+	suite.Require().NoError(suite.kubernetesClient.Get(testContext, types.NamespacedName{Name: "org"}, baseOrgWT))
+	suite.Require().NoError(suite.kubernetesClient.Get(testContext, types.NamespacedName{Name: "account"}, baseAccWT))
+
+	// Verify defaultAPIBindings were inherited (extend.with) or fallback-copied; ensure non-empty if base non-empty
+	if len(baseAccWT.Spec.DefaultAPIBindings) > 0 {
+		suite.Assert().Eventually(func() bool {
+			_ = suite.kubernetesClient.Get(testContext, types.NamespacedName{Name: orgAccountName + "-acc"}, customAccWT)
+			return len(customAccWT.Spec.DefaultAPIBindings) == len(baseAccWT.Spec.DefaultAPIBindings)
+		}, defaultTestTimeout, defaultTickInterval, "custom account workspace type should have defaultAPIBindings copied or inherited")
+	}
+	if len(baseOrgWT.Spec.DefaultAPIBindings) > 0 {
+		suite.Assert().Eventually(func() bool {
+			_ = suite.kubernetesClient.Get(testContext, types.NamespacedName{Name: orgAccountName + "-org"}, customOrgWT)
+			return len(customOrgWT.Spec.DefaultAPIBindings) == len(baseOrgWT.Spec.DefaultAPIBindings)
+		}, defaultTestTimeout, defaultTickInterval, "custom org workspace type should have defaultAPIBindings copied or inherited")
+	}
+
+	// (Initializers inheritance check omitted: field not present in current WorkspaceTypeSpec)
+
 	// Validate linkage defaultChildWorkspaceType
 	suite.Require().NotNil(customOrgWT.Spec.DefaultChildWorkspaceType)
 	suite.Equal(orgAccountName+"-acc", string(customOrgWT.Spec.DefaultChildWorkspaceType.Name))
