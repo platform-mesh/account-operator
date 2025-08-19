@@ -24,7 +24,9 @@ import (
 	"github.com/platform-mesh/golang-commons/controller/lifecycle/controllerruntime"
 	"github.com/platform-mesh/golang-commons/controller/lifecycle/subroutine"
 	"github.com/platform-mesh/golang-commons/logger"
+	"k8s.io/client-go/rest"
 	ctrl "sigs.k8s.io/controller-runtime"
+	"sigs.k8s.io/controller-runtime/pkg/client"
 	"sigs.k8s.io/controller-runtime/pkg/kcp"
 	"sigs.k8s.io/controller-runtime/pkg/predicate"
 
@@ -46,7 +48,23 @@ type AccountReconciler struct {
 func NewAccountReconciler(log *logger.Logger, mgr ctrl.Manager, cfg config.OperatorConfig, fgaClient openfgav1.OpenFGAServiceClient) *AccountReconciler {
 	var subs []subroutine.Subroutine
 	if cfg.Subroutines.WorkspaceType.Enabled {
-		subs = append(subs, subroutines.NewWorkspaceTypeSubroutine(mgr.GetClient()))
+		// Optionally build a root-scoped client for cluster-scoped operations
+		var rootClient client.Client
+		if cfg.Kcp.RootHost != "" {
+			rootCfg := rest.CopyConfig(mgr.GetConfig())
+			rootCfg.Host = cfg.Kcp.RootHost
+			c, err := client.New(rootCfg, client.Options{Scheme: mgr.GetScheme()})
+			if err == nil {
+				rootClient = c
+			} else {
+				log.Warn().Err(err).Msg("failed to create root-scoped client; falling back to shared client")
+			}
+		}
+		if rootClient != nil {
+			subs = append(subs, subroutines.NewWorkspaceTypeSubroutineWithRootClient(mgr.GetClient(), rootClient))
+		} else {
+			subs = append(subs, subroutines.NewWorkspaceTypeSubroutine(mgr.GetClient()))
+		}
 	}
 	if cfg.Subroutines.Workspace.Enabled {
 		subs = append(subs, subroutines.NewWorkspaceSubroutine(mgr.GetClient()))

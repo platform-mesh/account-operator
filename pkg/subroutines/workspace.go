@@ -2,7 +2,6 @@ package subroutines
 
 import (
 	"context"
-	"fmt"
 	"time"
 
 	kcptenancyv1alpha "github.com/kcp-dev/kcp/sdk/apis/tenancy/v1alpha1"
@@ -78,13 +77,23 @@ func (r *WorkspaceSubroutine) Process(ctx context.Context, runtimeObj runtimeobj
 	// Test if namespace was already created based on status
 	createdWorkspace := &kcptenancyv1alpha.Workspace{ObjectMeta: metav1.ObjectMeta{Name: instance.Name}}
 	_, err := controllerutil.CreateOrUpdate(ctx, r.client, createdWorkspace, func() error {
-		wtName := string(instance.Spec.Type)
-		if instance.Spec.Type == corev1alpha1.AccountTypeOrg {
-			wtName = fmt.Sprintf("%s-org", instance.Name)
-		}
-		createdWorkspace.Spec.Type = kcptenancyv1alpha.WorkspaceTypeReference{
-			Name: kcptenancyv1alpha.WorkspaceTypeName(wtName),
-			Path: cfg.Kcp.ProviderWorkspace,
+		// Only set the type on create; Workspace.spec.type.name is immutable.
+		if createdWorkspace.CreationTimestamp.IsZero() {
+			wtName := string(instance.Spec.Type)
+			wtPath := cfg.Kcp.ProviderWorkspace
+			switch instance.Spec.Type {
+			case corev1alpha1.AccountTypeOrg:
+				wtName = GetOrgWorkspaceTypeName(instance.Name)
+				// Local custom type: omit path to resolve in current logical cluster
+				wtPath = ""
+			case corev1alpha1.AccountTypeAccount:
+				// Use the provider (root) 'account' WorkspaceType. It is not installed in the current cluster.
+				wtPath = cfg.Kcp.ProviderWorkspace
+			}
+			createdWorkspace.Spec.Type = kcptenancyv1alpha.WorkspaceTypeReference{
+				Name: kcptenancyv1alpha.WorkspaceTypeName(wtName),
+				Path: wtPath,
+			}
 		}
 		return controllerutil.SetOwnerReference(instance, createdWorkspace, r.client.Scheme())
 	})

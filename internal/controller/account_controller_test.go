@@ -67,6 +67,8 @@ func (suite *AccountTestSuite) SetupSuite() {
 	cfg.Subroutines.Workspace.Enabled = true
 	cfg.Subroutines.AccountInfo.Enabled = true
 	cfg.Kcp.ProviderWorkspace = "root"
+	// Provide RootHost so the controller can create a root-scoped client for root operations
+	cfg.Kcp.RootHost = "https://localhost:6443/clusters/root"
 	suite.Require().NoError(err)
 
 	testContext, cancel, _ := platformmeshcontext.StartContext(log, cfg, 1*time.Minute)
@@ -96,6 +98,7 @@ func (suite *AccountTestSuite) SetupSuite() {
 	utilruntime.Must(kcptenancyv1alpha.AddToScheme(suite.scheme))
 
 	managerCfg := rest.CopyConfig(suite.rootConfig)
+	// Use the virtual workspace for the controller manager to watch logical clusters
 	managerCfg.Host = vsUrl
 
 	testDataConfig := rest.CopyConfig(suite.rootConfig)
@@ -261,11 +264,13 @@ func (suite *AccountTestSuite) TestCustomWorkspaceTypesForOrganization() {
 		return true
 	}, defaultTestTimeout, defaultTickInterval)
 
-	// Fetch base workspace types to compare inheritance / fallback
+	// Fetch base workspace types to compare inheritance / fallback from the root cluster
+	rootClient, err := client.New(suite.rootConfig, client.Options{Scheme: suite.scheme})
+	suite.Require().NoError(err)
 	baseOrgWT := &kcptenancyv1alpha.WorkspaceType{}
 	baseAccWT := &kcptenancyv1alpha.WorkspaceType{}
-	suite.Require().NoError(suite.kubernetesClient.Get(testContext, types.NamespacedName{Name: "org"}, baseOrgWT))
-	suite.Require().NoError(suite.kubernetesClient.Get(testContext, types.NamespacedName{Name: "account"}, baseAccWT))
+	suite.Require().NoError(rootClient.Get(testContext, types.NamespacedName{Name: "org"}, baseOrgWT))
+	suite.Require().NoError(rootClient.Get(testContext, types.NamespacedName{Name: "account"}, baseAccWT))
 
 	// Verify defaultAPIBindings were inherited (extend.with) or fallback-copied; ensure non-empty if base non-empty
 	if len(baseAccWT.Spec.DefaultAPIBindings) > 0 {
