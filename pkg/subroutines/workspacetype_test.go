@@ -100,3 +100,41 @@ func TestWorkspaceTypeSubroutine_Process_FallbackClient(t *testing.T) {
 	err = fakeClient.Get(ctx, types.NamespacedName{Name: "test-org-acc"}, customAccWT)
 	require.NoError(t, err, "custom account workspacetype should be created")
 }
+
+func TestWorkspaceTypeSubroutine_Process_BaseTypesNotFound(t *testing.T) {
+	// Arrange: no base org/account WorkspaceTypes present in the fake root client
+	scheme := runtime.NewScheme()
+	utilruntime.Must(corev1alpha1.AddToScheme(scheme))
+	utilruntime.Must(kcptenancyv1alpha.AddToScheme(scheme))
+
+	acct := &corev1alpha1.Account{
+		ObjectMeta: metav1.ObjectMeta{Name: "no-base", UID: "1234"},
+		Spec:       corev1alpha1.AccountSpec{Type: corev1alpha1.AccountTypeOrg},
+	}
+
+	fakeClient := fake.NewClientBuilder().WithScheme(scheme).Build()
+
+	sub := subroutines.NewWorkspaceTypeSubroutine(fakeClient)
+
+	cfg := operatorconfig.OperatorConfig{}
+	cfg.Kcp.ProviderWorkspace = "root"
+
+	log, err := logger.New(logger.DefaultConfig())
+	require.NoError(t, err)
+	ctx, _, _ := platformmeshcontext.StartContext(log, cfg, 1*time.Minute)
+	ctx = kontext.WithCluster(ctx, logicalcluster.Name("orgs:root-org"))
+
+	// Act
+	_, opErr := sub.Process(ctx, acct)
+
+	// Assert
+	require.Nil(t, opErr)
+
+	// Custom types should be created even if base types are not found
+	customOrgWT := &kcptenancyv1alpha.WorkspaceType{}
+	err = fakeClient.Get(ctx, types.NamespacedName{Name: "no-base-org"}, customOrgWT)
+	require.NoError(t, err)
+	customAccWT := &kcptenancyv1alpha.WorkspaceType{}
+	err = fakeClient.Get(ctx, types.NamespacedName{Name: "no-base-acc"}, customAccWT)
+	require.NoError(t, err)
+}
