@@ -3,7 +3,6 @@ package subroutines
 import (
 	"context"
 	"fmt"
-	"time"
 
 	kcptenancyv1alpha "github.com/kcp-dev/kcp/sdk/apis/tenancy/v1alpha1"
 	"github.com/kcp-dev/logicalcluster/v3"
@@ -14,7 +13,6 @@ import (
 	"github.com/platform-mesh/golang-commons/logger"
 	kerrors "k8s.io/apimachinery/pkg/api/errors"
 	metav1 "k8s.io/apimachinery/pkg/apis/meta/v1"
-	"k8s.io/client-go/util/workqueue"
 	ctrl "sigs.k8s.io/controller-runtime"
 	"sigs.k8s.io/controller-runtime/pkg/client"
 	"sigs.k8s.io/controller-runtime/pkg/controller/controllerutil"
@@ -28,17 +26,14 @@ const WorkspaceTypeSubroutineName = "WorkspaceTypeSubroutine"
 type WorkspaceTypeSubroutine struct {
 	client     client.Client
 	rootClient client.Client
-	limiter    workqueue.TypedRateLimiter[ClusteredName]
 }
 
 func NewWorkspaceTypeSubroutine(c client.Client) *WorkspaceTypeSubroutine {
-	exp := workqueue.NewTypedItemExponentialFailureRateLimiter[ClusteredName](1*time.Second, 30*time.Second)
-	return &WorkspaceTypeSubroutine{client: c, rootClient: c, limiter: exp}
+	return &WorkspaceTypeSubroutine{client: c, rootClient: c}
 }
 
 func NewWorkspaceTypeSubroutineWithRootClient(c client.Client, root client.Client) *WorkspaceTypeSubroutine {
-	exp := workqueue.NewTypedItemExponentialFailureRateLimiter[ClusteredName](1*time.Second, 30*time.Second)
-	return &WorkspaceTypeSubroutine{client: c, rootClient: root, limiter: exp}
+	return &WorkspaceTypeSubroutine{client: c, rootClient: root}
 }
 
 func (r *WorkspaceTypeSubroutine) GetName() string { return WorkspaceTypeSubroutineName }
@@ -55,7 +50,7 @@ func (r *WorkspaceTypeSubroutine) Process(ctx context.Context, ro runtimeobject.
 		return ctrl.Result{}, nil
 	}
 	log := logger.LoadLoggerFromContext(ctx)
-	cn := MustGetClusteredName(ctx, ro)
+	_ = MustGetClusteredName(ctx, ro)
 
 	// Base WorkspaceTypes live in the provider (root) workspace. Prefer a root-scoped client if available
 	// to READ them for inheritance/fallback. We'll CREATE custom WorkspaceTypes in the current logical
@@ -145,7 +140,6 @@ func (r *WorkspaceTypeSubroutine) Process(ctx context.Context, ro runtimeobject.
 		}
 	}
 
-	r.limiter.Forget(cn)
 	log.Debug().Str("customOrgWorkspaceType", customOrgName).Str("customAccountWorkspaceType", customAccName).Msg("custom workspace types ensured (with extend)")
 	return ctrl.Result{}, nil
 }
