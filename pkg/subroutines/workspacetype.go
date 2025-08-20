@@ -68,7 +68,10 @@ func (r *WorkspaceTypeSubroutine) Process(ctx context.Context, ro runtimeobject.
 
 	// Retrieve base workspace types (non-blocking)
 	// Also capture current logical cluster path for local references
-	currentCluster, _ := kontext.ClusterFrom(ctx)
+	currentCluster, ok := kontext.ClusterFrom(ctx)
+	if !ok {
+		return ctrl.Result{}, errors.NewOperatorError(fmt.Errorf("cluster missing in context"), true, false)
+	}
 	currentPath := currentCluster.String()
 	var baseOrg *kcptenancyv1alpha.WorkspaceType
 	var baseAcc *kcptenancyv1alpha.WorkspaceType
