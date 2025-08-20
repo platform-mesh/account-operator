@@ -99,6 +99,63 @@ func TestWorkspaceTypeSubroutine_Process_FallbackClient(t *testing.T) {
 	customAccWT := &kcptenancyv1alpha.WorkspaceType{}
 	err = fakeClient.Get(ctx, types.NamespacedName{Name: "test-org-acc"}, customAccWT)
 	require.NoError(t, err, "custom account workspacetype should be created")
+
+	// Validate LimitAllowedParents set on custom account type (org + acc in current cluster)
+	require.NotNil(t, customAccWT.Spec.LimitAllowedParents)
+	names := map[string]bool{}
+	paths := map[string]bool{}
+	for _, r := range customAccWT.Spec.LimitAllowedParents.Types {
+		names[string(r.Name)] = true
+		paths[r.Path] = true
+	}
+	require.True(t, names["test-org-org"])  // custom org
+	require.True(t, names["test-org-acc"])  // self
+	require.True(t, paths["orgs:root-org"]) // current path used
+
+	// Validate LimitAllowedParents on custom org type (org@root)
+	require.NotNil(t, customOrgWT.Spec.LimitAllowedParents)
+	require.Len(t, customOrgWT.Spec.LimitAllowedParents.Types, 1)
+	require.Equal(t, "org", string(customOrgWT.Spec.LimitAllowedParents.Types[0].Name))
+	require.Equal(t, "root", customOrgWT.Spec.LimitAllowedParents.Types[0].Path)
+}
+
+func TestWorkspaceTypeSubroutine_MetadataHelpers(t *testing.T) {
+	scheme := runtime.NewScheme()
+	utilruntime.Must(corev1alpha1.AddToScheme(scheme))
+	utilruntime.Must(kcptenancyv1alpha.AddToScheme(scheme))
+
+	fakeClient := fake.NewClientBuilder().WithScheme(scheme).Build()
+	sub := subroutines.NewWorkspaceTypeSubroutine(fakeClient)
+
+	// GetName
+	require.Equal(t, subroutines.WorkspaceTypeSubroutineName, sub.GetName())
+
+	// Finalize should no-op without error
+	acct := &corev1alpha1.Account{ObjectMeta: metav1.ObjectMeta{Name: "x"}}
+	log, err := logger.New(logger.DefaultConfig())
+	require.NoError(t, err)
+	ctx, _, _ := platformmeshcontext.StartContext(log, operatorconfig.OperatorConfig{}, 1*time.Minute)
+	ctx = kontext.WithCluster(ctx, logicalcluster.Name("orgs:root-org"))
+	_, opErr := sub.Finalize(ctx, acct)
+	require.Nil(t, opErr)
+}
+
+func TestWorkspaceTypeSubroutine_Process_MissingClusterInContext(t *testing.T) {
+	scheme := runtime.NewScheme()
+	utilruntime.Must(corev1alpha1.AddToScheme(scheme))
+	utilruntime.Must(kcptenancyv1alpha.AddToScheme(scheme))
+
+	fakeClient := fake.NewClientBuilder().WithScheme(scheme).Build()
+	sub := subroutines.NewWorkspaceTypeSubroutine(fakeClient)
+
+	acct := &corev1alpha1.Account{ObjectMeta: metav1.ObjectMeta{Name: "x"}, Spec: corev1alpha1.AccountSpec{Type: corev1alpha1.AccountTypeOrg}}
+	log, err := logger.New(logger.DefaultConfig())
+	require.NoError(t, err)
+	ctx, _, _ := platformmeshcontext.StartContext(log, operatorconfig.OperatorConfig{}, 1*time.Minute)
+	// Intentionally NOT setting kontext.WithCluster
+	require.Panics(t, func() {
+		_, _ = sub.Process(ctx, acct)
+	})
 }
 
 func TestWorkspaceTypeSubroutine_Process_BaseTypesNotFound(t *testing.T) {
