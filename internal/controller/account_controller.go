@@ -19,6 +19,8 @@ package controller
 import (
 	"context"
 
+	"strings"
+
 	openfgav1 "github.com/openfga/api/proto/openfga/v1"
 	platformmeshconfig "github.com/platform-mesh/golang-commons/config"
 	"github.com/platform-mesh/golang-commons/controller/lifecycle/controllerruntime"
@@ -48,16 +50,28 @@ type AccountReconciler struct {
 func NewAccountReconciler(log *logger.Logger, mgr ctrl.Manager, cfg config.OperatorConfig, fgaClient openfgav1.OpenFGAServiceClient) *AccountReconciler {
 	var subs []subroutine.Subroutine
 	if cfg.Subroutines.WorkspaceType.Enabled {
-		// Optionally build a root-scoped client for cluster-scoped operations
 		var rootClient client.Client
-		if cfg.Kcp.RootHost != "" {
+		rootHost := cfg.Kcp.RootHost
+		if rootHost == "" {
+			h := mgr.GetConfig().Host
+			base := h
+			// If we're pointing at a virtual workspace, strip it to get the server base
+			if idx := strings.Index(base, "/services/"); idx != -1 {
+				base = base[:idx]
+			}
+			// If we're pointing at a specific cluster, strip it to get the server base
+			if idx := strings.Index(base, "/clusters/"); idx != -1 {
+				base = base[:idx]
+			}
+			rootHost = strings.TrimRight(base, "/") + "/clusters/root"
+		}
+		if rootHost != "" {
 			rootCfg := rest.CopyConfig(mgr.GetConfig())
-			rootCfg.Host = cfg.Kcp.RootHost
-			c, err := client.New(rootCfg, client.Options{Scheme: mgr.GetScheme()})
-			if err == nil {
+			rootCfg.Host = rootHost
+			if c, err := client.New(rootCfg, client.Options{Scheme: mgr.GetScheme()}); err == nil {
 				rootClient = c
 			} else {
-				log.Warn().Err(err).Msg("failed to create root-scoped client; falling back to shared client")
+				log.Warn().Err(err).Str("host", rootHost).Msg("failed to create derived root-scoped client; falling back to shared client")
 			}
 		}
 		if rootClient != nil {
