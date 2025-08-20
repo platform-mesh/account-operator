@@ -75,27 +75,21 @@ func (r *WorkspaceTypeSubroutine) Process(ctx context.Context, ro runtimeobject.
 	currentPath := currentCluster.String()
 	var baseOrg *kcptenancyv1alpha.WorkspaceType
 	var baseAcc *kcptenancyv1alpha.WorkspaceType
-	{
-		wt := &kcptenancyv1alpha.WorkspaceType{}
-		if err := rc.Get(rootCtx, client.ObjectKey{Name: "org"}, wt); err != nil {
-			if !kerrors.IsNotFound(err) {
-				return ctrl.Result{}, errors.NewOperatorError(err, true, true)
-			}
-			log.Debug().Str("account", acct.Name).Msg("base org WorkspaceType not found yet; continuing without fallback copy")
-		} else {
-			baseOrg = wt
+	baseOrg = &kcptenancyv1alpha.WorkspaceType{}
+	if err := rc.Get(rootCtx, client.ObjectKey{Name: "org"}, baseOrg); err != nil {
+		if !kerrors.IsNotFound(err) {
+			return ctrl.Result{}, errors.NewOperatorError(err, true, true)
 		}
+		log.Debug().Str("account", acct.Name).Msg("base org WorkspaceType not found yet; continuing without fallback copy")
+		baseOrg = nil
 	}
-	{
-		wt := &kcptenancyv1alpha.WorkspaceType{}
-		if err := rc.Get(rootCtx, client.ObjectKey{Name: "account"}, wt); err != nil {
-			if !kerrors.IsNotFound(err) {
-				return ctrl.Result{}, errors.NewOperatorError(err, true, true)
-			}
-			log.Debug().Str("account", acct.Name).Msg("base account WorkspaceType not found yet; continuing without fallback copy")
-		} else {
-			baseAcc = wt
+	baseAcc = &kcptenancyv1alpha.WorkspaceType{}
+	if err := rc.Get(rootCtx, client.ObjectKey{Name: "account"}, baseAcc); err != nil {
+		if !kerrors.IsNotFound(err) {
+			return ctrl.Result{}, errors.NewOperatorError(err, true, true)
 		}
+		log.Debug().Str("account", acct.Name).Msg("base account WorkspaceType not found yet; continuing without fallback copy")
+		baseAcc = nil
 	}
 
 	// Ensure custom account workspace type using extend.with for inheritance.
