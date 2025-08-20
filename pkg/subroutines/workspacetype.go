@@ -33,7 +33,7 @@ type WorkspaceTypeSubroutine struct {
 
 func NewWorkspaceTypeSubroutine(c client.Client) *WorkspaceTypeSubroutine {
 	exp := workqueue.NewTypedItemExponentialFailureRateLimiter[ClusteredName](1*time.Second, 30*time.Second)
-	return &WorkspaceTypeSubroutine{client: c, limiter: exp}
+	return &WorkspaceTypeSubroutine{client: c, rootClient: c, limiter: exp}
 }
 
 func NewWorkspaceTypeSubroutineWithRootClient(c client.Client, root client.Client) *WorkspaceTypeSubroutine {
@@ -63,9 +63,6 @@ func (r *WorkspaceTypeSubroutine) Process(ctx context.Context, ro runtimeobject.
 	cfg := commonconfig.LoadConfigFromContext(ctx).(operatorconfig.OperatorConfig)
 	rootCtx := kontext.WithCluster(ctx, logicalcluster.Name(cfg.Kcp.ProviderWorkspace))
 	rc := r.rootClient
-	if rc == nil {
-		rc = r.client
-	}
 	// We'll create custom WorkspaceTypes in the current cluster (e.g., orgs:root-org)
 	// but read base types from the provider (root) workspace for fallback copying.
 
