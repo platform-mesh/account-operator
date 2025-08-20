@@ -50,7 +50,6 @@ func (r *WorkspaceTypeSubroutine) Process(ctx context.Context, ro runtimeobject.
 		return ctrl.Result{}, nil
 	}
 	log := logger.LoadLoggerFromContext(ctx)
-	_ = MustGetClusteredName(ctx, ro)
 
 	// Base WorkspaceTypes live in the provider (root) workspace. Prefer a root-scoped client if available
 	// to READ them for inheritance/fallback. We'll CREATE custom WorkspaceTypes in the current logical

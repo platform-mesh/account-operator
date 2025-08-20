@@ -2,6 +2,7 @@ package subroutines_test
 
 import (
 	"context"
+	"fmt"
 	"testing"
 	"time"
 
@@ -21,6 +22,35 @@ import (
 	"sigs.k8s.io/controller-runtime/pkg/client/fake"
 	"sigs.k8s.io/controller-runtime/pkg/kontext"
 )
+
+// errorClient wraps a controller-runtime client and injects errors for specified operations.
+type errorClient struct {
+	client.Client
+	failGet    map[string]bool
+	failCreate map[string]bool
+	failPatch  map[string]bool
+}
+
+func (e *errorClient) Get(ctx context.Context, key client.ObjectKey, obj client.Object, opts ...client.GetOption) error {
+	if e.failGet != nil && e.failGet[key.Name] {
+		return fmt.Errorf("injected get error for %s", key.Name)
+	}
+	return e.Client.Get(ctx, key, obj, opts...)
+}
+
+func (e *errorClient) Create(ctx context.Context, obj client.Object, opts ...client.CreateOption) error {
+	if e.failCreate != nil && e.failCreate[obj.GetName()] {
+		return fmt.Errorf("injected create error for %s", obj.GetName())
+	}
+	return e.Client.Create(ctx, obj, opts...)
+}
+
+func (e *errorClient) Patch(ctx context.Context, obj client.Object, patch client.Patch, opts ...client.PatchOption) error {
+	if e.failPatch != nil && e.failPatch[obj.GetName()] {
+		return fmt.Errorf("injected patch error for %s", obj.GetName())
+	}
+	return e.Client.Patch(ctx, obj, patch, opts...)
+}
 
 func TestWorkspaceTypeSpecCopy(t *testing.T) {
 	scheme := runtime.NewScheme()
@@ -152,10 +182,9 @@ func TestWorkspaceTypeSubroutine_Process_MissingClusterInContext(t *testing.T) {
 	log, err := logger.New(logger.DefaultConfig())
 	require.NoError(t, err)
 	ctx, _, _ := platformmeshcontext.StartContext(log, operatorconfig.OperatorConfig{}, 1*time.Minute)
-	// Intentionally NOT setting kontext.WithCluster
-	require.Panics(t, func() {
-		_, _ = sub.Process(ctx, acct)
-	})
+	// Intentionally NOT setting kontext.WithCluster; expect an operator error, not panic
+	_, opErr := sub.Process(ctx, acct)
+	require.NotNil(t, opErr)
 }
 
 func TestWorkspaceTypeSubroutine_Process_BaseTypesNotFound(t *testing.T) {
@@ -194,4 +223,106 @@ func TestWorkspaceTypeSubroutine_Process_BaseTypesNotFound(t *testing.T) {
 	customAccWT := &kcptenancyv1alpha.WorkspaceType{}
 	err = fakeClient.Get(ctx, types.NamespacedName{Name: "no-base-acc"}, customAccWT)
 	require.NoError(t, err)
+}
+
+func TestWorkspaceTypeSubroutine_Process_BaseOrgGetError(t *testing.T) {
+	scheme := runtime.NewScheme()
+	utilruntime.Must(corev1alpha1.AddToScheme(scheme))
+	utilruntime.Must(kcptenancyv1alpha.AddToScheme(scheme))
+
+	acct := &corev1alpha1.Account{ObjectMeta: metav1.ObjectMeta{Name: "err-org"}, Spec: corev1alpha1.AccountSpec{Type: corev1alpha1.AccountTypeOrg}}
+
+	// Underlying clients
+	mainClient := fake.NewClientBuilder().WithScheme(scheme).Build()
+	rootBase := fake.NewClientBuilder().WithScheme(scheme).Build()
+	// Wrap root client to error on Get("org")
+	rootErr := &errorClient{Client: rootBase, failGet: map[string]bool{"org": true}}
+
+	sub := subroutines.NewWorkspaceTypeSubroutineWithRootClient(mainClient, rootErr)
+
+	cfg := operatorconfig.OperatorConfig{}
+	cfg.Kcp.ProviderWorkspace = "root"
+	log, _ := logger.New(logger.DefaultConfig())
+	ctx, _, _ := platformmeshcontext.StartContext(log, cfg, 1*time.Minute)
+	ctx = kontext.WithCluster(ctx, logicalcluster.Name("orgs:root-org"))
+
+	_, opErr := sub.Process(ctx, acct)
+	require.NotNil(t, opErr)
+}
+
+func TestWorkspaceTypeSubroutine_Process_BaseAccGetError(t *testing.T) {
+	scheme := runtime.NewScheme()
+	utilruntime.Must(corev1alpha1.AddToScheme(scheme))
+	utilruntime.Must(kcptenancyv1alpha.AddToScheme(scheme))
+
+	acct := &corev1alpha1.Account{ObjectMeta: metav1.ObjectMeta{Name: "err-acc"}, Spec: corev1alpha1.AccountSpec{Type: corev1alpha1.AccountTypeOrg}}
+
+	mainClient := fake.NewClientBuilder().WithScheme(scheme).Build()
+	rootBase := fake.NewClientBuilder().WithScheme(scheme).Build()
+	// Wrap root client to error on Get("account")
+	rootErr := &errorClient{Client: rootBase, failGet: map[string]bool{"account": true}}
+
+	sub := subroutines.NewWorkspaceTypeSubroutineWithRootClient(mainClient, rootErr)
+
+	cfg := operatorconfig.OperatorConfig{}
+	cfg.Kcp.ProviderWorkspace = "root"
+	log, _ := logger.New(logger.DefaultConfig())
+	ctx, _, _ := platformmeshcontext.StartContext(log, cfg, 1*time.Minute)
+	ctx = kontext.WithCluster(ctx, logicalcluster.Name("orgs:root-org"))
+
+	_, opErr := sub.Process(ctx, acct)
+	require.NotNil(t, opErr)
+}
+
+func TestWorkspaceTypeSubroutine_Process_CustomAccCreateError(t *testing.T) {
+	scheme := runtime.NewScheme()
+	utilruntime.Must(corev1alpha1.AddToScheme(scheme))
+	utilruntime.Must(kcptenancyv1alpha.AddToScheme(scheme))
+
+	acct := &corev1alpha1.Account{ObjectMeta: metav1.ObjectMeta{Name: "x"}, Spec: corev1alpha1.AccountSpec{Type: corev1alpha1.AccountTypeOrg}}
+
+	// Preload base types so earlier gets succeed
+	rootBaseOrg := &kcptenancyv1alpha.WorkspaceType{ObjectMeta: metav1.ObjectMeta{Name: "org"}}
+	rootBaseAcc := &kcptenancyv1alpha.WorkspaceType{ObjectMeta: metav1.ObjectMeta{Name: "account"}}
+	mainBase := fake.NewClientBuilder().WithScheme(scheme).Build()
+	rootBase := fake.NewClientBuilder().WithScheme(scheme).WithObjects(rootBaseOrg, rootBaseAcc).Build()
+	// Wrap main client to error on Create for customAcc (name: "x-acc")
+	mainErr := &errorClient{Client: mainBase, failCreate: map[string]bool{"x-acc": true}}
+
+	sub := subroutines.NewWorkspaceTypeSubroutineWithRootClient(mainErr, rootBase)
+
+	cfg := operatorconfig.OperatorConfig{}
+	cfg.Kcp.ProviderWorkspace = "root"
+	log, _ := logger.New(logger.DefaultConfig())
+	ctx, _, _ := platformmeshcontext.StartContext(log, cfg, 1*time.Minute)
+	ctx = kontext.WithCluster(ctx, logicalcluster.Name("orgs:root-org"))
+
+	_, opErr := sub.Process(ctx, acct)
+	require.NotNil(t, opErr)
+}
+
+func TestWorkspaceTypeSubroutine_Process_CustomOrgCreateError(t *testing.T) {
+	scheme := runtime.NewScheme()
+	utilruntime.Must(corev1alpha1.AddToScheme(scheme))
+	utilruntime.Must(kcptenancyv1alpha.AddToScheme(scheme))
+
+	acct := &corev1alpha1.Account{ObjectMeta: metav1.ObjectMeta{Name: "y"}, Spec: corev1alpha1.AccountSpec{Type: corev1alpha1.AccountTypeOrg}}
+
+	rootBaseOrg := &kcptenancyv1alpha.WorkspaceType{ObjectMeta: metav1.ObjectMeta{Name: "org"}}
+	rootBaseAcc := &kcptenancyv1alpha.WorkspaceType{ObjectMeta: metav1.ObjectMeta{Name: "account"}}
+	mainBase := fake.NewClientBuilder().WithScheme(scheme).Build()
+	rootBase := fake.NewClientBuilder().WithScheme(scheme).WithObjects(rootBaseOrg, rootBaseAcc).Build()
+	// Wrap main client to error on Create for customOrg (name: "y-org"). Account should succeed first.
+	mainErr := &errorClient{Client: mainBase, failCreate: map[string]bool{"y-org": true}}
+
+	sub := subroutines.NewWorkspaceTypeSubroutineWithRootClient(mainErr, rootBase)
+
+	cfg := operatorconfig.OperatorConfig{}
+	cfg.Kcp.ProviderWorkspace = "root"
+	log, _ := logger.New(logger.DefaultConfig())
+	ctx, _, _ := platformmeshcontext.StartContext(log, cfg, 1*time.Minute)
+	ctx = kontext.WithCluster(ctx, logicalcluster.Name("orgs:root-org"))
+
+	_, opErr := sub.Process(ctx, acct)
+	require.NotNil(t, opErr)
 }
