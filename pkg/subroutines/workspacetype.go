@@ -94,10 +94,16 @@ func (r *WorkspaceTypeSubroutine) Process(ctx context.Context, ro runtimeobject.
 
 	// Ensure custom account workspace type using extend.with for inheritance.
 	customAccName := GetAccWorkspaceTypeName(acct.Name)
+	customOrgName := GetOrgWorkspaceTypeName(acct.Name)
 	customAcc := &kcptenancyv1alpha.WorkspaceType{ObjectMeta: metav1.ObjectMeta{Name: customAccName}}
 	_, err := controllerutil.CreateOrUpdate(ctx, r.client, customAcc, func() error {
 		// Build new spec relying on extension
 		customAcc.Spec.Extend = kcptenancyv1alpha.WorkspaceTypeExtension{With: []kcptenancyv1alpha.WorkspaceTypeReference{{Name: "account", Path: "root"}}}
+		// Allow creating this account type under either the custom org type or under another account of the same custom type (both in current cluster)
+		customAcc.Spec.LimitAllowedParents = &kcptenancyv1alpha.WorkspaceTypeSelector{Types: []kcptenancyv1alpha.WorkspaceTypeReference{
+			{Name: kcptenancyv1alpha.WorkspaceTypeName(customOrgName), Path: currentPath},
+			{Name: kcptenancyv1alpha.WorkspaceTypeName(customAccName), Path: currentPath},
+		}}
 		// Do not set cross-cluster owner reference; rely on label if needed in the future.
 		return nil
 	})
@@ -116,7 +122,7 @@ func (r *WorkspaceTypeSubroutine) Process(ctx context.Context, ro runtimeobject.
 	// Ensure custom org workspace type. Do NOT extend base "org" type because it restricts allowed parents to [root:orgs],
 	// which prevents creating org workspaces under an org parent. Instead, define a standalone type, copy bindings, and
 	// allow parent type "org" explicitly. Default child type points to the custom account type created above.
-	customOrgName := GetOrgWorkspaceTypeName(acct.Name)
+	// reuse computed customOrgName above
 	customOrg := &kcptenancyv1alpha.WorkspaceType{ObjectMeta: metav1.ObjectMeta{Name: customOrgName}}
 	_, err = controllerutil.CreateOrUpdate(ctx, r.client, customOrg, func() error {
 		// Implement "account" so that parent type "org" (which allows [account] children) accepts this as a child
