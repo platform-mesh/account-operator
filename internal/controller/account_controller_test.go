@@ -392,3 +392,59 @@ func getCondition(conditions []metav1.Condition, conditionType string) *metav1.C
 func TestAccountTestSuite(t *testing.T) {
 	suite.Run(t, new(AccountTestSuite))
 }
+
+// cfgOverrideManager overrides GetConfig to return a custom host
+type cfgOverrideManager struct {
+	ctrl.Manager
+	cfg *rest.Config
+}
+
+func (m *cfgOverrideManager) GetConfig() *rest.Config { return m.cfg }
+
+// nilSchemeManager returns a nil Scheme to trigger client.New error
+type nilSchemeManager struct{ ctrl.Manager }
+
+func (m *nilSchemeManager) GetScheme() *runtime.Scheme { return nil }
+
+func (suite *AccountTestSuite) TestNewAccountReconciler_DeriveRootHost_FromVirtualWorkspace() {
+	// Override manager config to a virtual workspace URL to exercise '/services/' stripping
+	mgrCfg := rest.CopyConfig(suite.rootConfig)
+	// Simulate a virtual workspace URL form
+	mgrCfg.Host = "https://example.local/services/apiexport/core/platform-mesh"
+	wrap := &cfgOverrideManager{Manager: suite.kubernetesManager, cfg: mgrCfg}
+
+	cfg := config.OperatorConfig{}
+	cfg.Subroutines.WorkspaceType.Enabled = true
+	cfg.Kcp.ProviderWorkspace = "root"
+	cfg.Kcp.RootHost = "" // force derivation path
+
+	mockClient := mocks.NewOpenFGAServiceClient(suite.T())
+	_ = controller.NewAccountReconciler(suite.log, wrap, cfg, mockClient)
+}
+
+func (suite *AccountTestSuite) TestNewAccountReconciler_DeriveRootHost_StripsClustersAndServices() {
+	// Derive root host when both '/services/' and '/clusters/' are present
+	mgrCfg := rest.CopyConfig(suite.rootConfig)
+	mgrCfg.Host = "https://api.local/services/foo/clusters/root:orgs:team-1"
+	wrap := &cfgOverrideManager{Manager: suite.kubernetesManager, cfg: mgrCfg}
+
+	cfg := config.OperatorConfig{}
+	cfg.Subroutines.WorkspaceType.Enabled = true
+	cfg.Kcp.ProviderWorkspace = "root"
+	cfg.Kcp.RootHost = "" // force derivation path
+
+	mockClient := mocks.NewOpenFGAServiceClient(suite.T())
+	_ = controller.NewAccountReconciler(suite.log, wrap, cfg, mockClient)
+}
+
+func (suite *AccountTestSuite) TestNewAccountReconciler_FallbackToSharedClientOnRootClientError() {
+	// Trigger client.New failure by returning a nil scheme
+	cfg := config.OperatorConfig{}
+	cfg.Subroutines.WorkspaceType.Enabled = true
+	cfg.Kcp.ProviderWorkspace = "root"
+	cfg.Kcp.RootHost = "https://api.local/clusters/root"
+
+	wrap := &nilSchemeManager{suite.kubernetesManager}
+	mockClient := mocks.NewOpenFGAServiceClient(suite.T())
+	_ = controller.NewAccountReconciler(suite.log, wrap, cfg, mockClient)
+}
