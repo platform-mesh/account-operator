@@ -93,10 +93,9 @@ func (r *WorkspaceTypeSubroutine) Process(ctx context.Context, ro runtimeobject.
 	_, err := controllerutil.CreateOrUpdate(ctx, r.client, customAcc, func() error {
 		// Build new spec relying on extension
 		customAcc.Spec.Extend = kcptenancyv1alpha.WorkspaceTypeExtension{With: []kcptenancyv1alpha.WorkspaceTypeReference{{Name: "account", Path: "root"}}}
-		// Allow creating this account type under either the custom org type or under another account of the same custom type (both in current cluster)
+		// Allow creating this account type under only the custom org type (in current cluster)
 		customAcc.Spec.LimitAllowedParents = &kcptenancyv1alpha.WorkspaceTypeSelector{Types: []kcptenancyv1alpha.WorkspaceTypeReference{
 			{Name: kcptenancyv1alpha.WorkspaceTypeName(customOrgName), Path: currentPath},
-			{Name: kcptenancyv1alpha.WorkspaceTypeName(customAccName), Path: currentPath},
 		}}
 		// Do not set cross-cluster owner reference; rely on label if needed in the future.
 		return nil
@@ -105,26 +104,33 @@ func (r *WorkspaceTypeSubroutine) Process(ctx context.Context, ro runtimeobject.
 		return ctrl.Result{}, errors.NewOperatorError(err, true, true)
 	}
 
-	// Fallback: if defaultAPIBindings weren't inherited (empty), copy from base.
-	if baseAcc != nil && len(customAcc.Spec.DefaultAPIBindings) == 0 && len(baseAcc.Spec.DefaultAPIBindings) > 0 {
+	// Always copy defaultAPIBindings from base types to ensure proper initialization
+	if baseAcc != nil {
 		customAcc.Spec.DefaultAPIBindings = baseAcc.Spec.DefaultAPIBindings
 		if e := r.client.Update(ctx, customAcc); e != nil {
 			return ctrl.Result{}, errors.NewOperatorError(e, true, true)
 		}
 	}
 
-	// Ensure custom org workspace type. Do NOT extend base "org" type because it restricts allowed parents to [root:orgs],
-	// which prevents creating org workspaces under an org parent. Instead, define a standalone type, copy bindings, and
-	// allow parent type "org" explicitly. Default child type points to the custom account type created above.
+	// Ensure custom org workspace type. Extend base "org" to inherit initializers and default bindings.
+	// We'll still explicitly constrain parents to type "orgs" and set default child to the custom account type.
 	// reuse computed customOrgName above
 	customOrg := &kcptenancyv1alpha.WorkspaceType{ObjectMeta: metav1.ObjectMeta{Name: customOrgName}}
 	_, err = controllerutil.CreateOrUpdate(ctx, r.client, customOrg, func() error {
-		// Implement "account" so that parent type "org" (which allows [account] children) accepts this as a child
-		customOrg.Spec.Extend = kcptenancyv1alpha.WorkspaceTypeExtension{With: []kcptenancyv1alpha.WorkspaceTypeReference{{Name: "account", Path: "root"}}}
+		// Extend base "org" to inherit initializers and default bindings
+		customOrg.Spec.Extend = kcptenancyv1alpha.WorkspaceTypeExtension{With: []kcptenancyv1alpha.WorkspaceTypeReference{{Name: "org", Path: "root"}}}
 		// Default child type is the custom account type created in the current cluster; admission requires path
 		customOrg.Spec.DefaultChildWorkspaceType = &kcptenancyv1alpha.WorkspaceTypeReference{Name: kcptenancyv1alpha.WorkspaceTypeName(customAccName), Path: currentPath}
-		// Make it legal to create this org type under an org parent
-		customOrg.Spec.LimitAllowedParents = &kcptenancyv1alpha.WorkspaceTypeSelector{Types: []kcptenancyv1alpha.WorkspaceTypeReference{{Name: "org", Path: "root"}}}
+		// Allow creating this org type under parent type "orgs"
+		customOrg.Spec.LimitAllowedParents = &kcptenancyv1alpha.WorkspaceTypeSelector{
+			Types: []kcptenancyv1alpha.WorkspaceTypeReference{{Name: "orgs", Path: "root"}},
+		}
+		// Explicitly allow custom account children under this custom org type
+		customOrg.Spec.LimitAllowedChildren = &kcptenancyv1alpha.WorkspaceTypeSelector{
+			Types: []kcptenancyv1alpha.WorkspaceTypeReference{
+				{Name: kcptenancyv1alpha.WorkspaceTypeName(customAccName), Path: currentPath},
+			},
+		}
 		// Do not set cross-cluster owner reference; rely on label if needed in the future.
 		return nil
 	})
@@ -132,7 +138,8 @@ func (r *WorkspaceTypeSubroutine) Process(ctx context.Context, ro runtimeobject.
 		return ctrl.Result{}, errors.NewOperatorError(err, true, true)
 	}
 
-	if baseOrg != nil && len(customOrg.Spec.DefaultAPIBindings) == 0 && len(baseOrg.Spec.DefaultAPIBindings) > 0 {
+	// Always copy defaultAPIBindings from base types to ensure proper initialization
+	if baseOrg != nil {
 		customOrg.Spec.DefaultAPIBindings = baseOrg.Spec.DefaultAPIBindings
 		if e := r.client.Update(ctx, customOrg); e != nil {
 			return ctrl.Result{}, errors.NewOperatorError(e, true, true)

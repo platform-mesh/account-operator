@@ -5,6 +5,7 @@ import (
 	"time"
 
 	kcptenancyv1alpha "github.com/kcp-dev/kcp/sdk/apis/tenancy/v1alpha1"
+	"github.com/kcp-dev/logicalcluster/v3"
 	commonconfig "github.com/platform-mesh/golang-commons/config"
 	"github.com/platform-mesh/golang-commons/controller/lifecycle/runtimeobject"
 	"github.com/platform-mesh/golang-commons/errors"
@@ -14,6 +15,7 @@ import (
 	ctrl "sigs.k8s.io/controller-runtime"
 	"sigs.k8s.io/controller-runtime/pkg/client"
 	"sigs.k8s.io/controller-runtime/pkg/controller/controllerutil"
+	"sigs.k8s.io/controller-runtime/pkg/kontext"
 
 	corev1alpha1 "github.com/platform-mesh/account-operator/api/v1alpha1"
 	"github.com/platform-mesh/account-operator/internal/config"
@@ -74,9 +76,21 @@ func (r *WorkspaceSubroutine) Process(ctx context.Context, runtimeObj runtimeobj
 	instance := runtimeObj.(*corev1alpha1.Account)
 	cfg := commonconfig.LoadConfigFromContext(ctx).(config.OperatorConfig)
 
+	// Capture original cluster path (where custom WorkspaceTypes are created)
+	origPath := ""
+	if cl, ok := kontext.ClusterFrom(ctx); ok {
+		origPath = cl.String()
+	}
+	// Select the cluster under which the workspace will be created
+	ctxWS := ctx
+	if instance.Spec.Type == corev1alpha1.AccountTypeOrg {
+		// Org workspaces are created under root:orgs
+		ctxWS = kontext.WithCluster(ctx, logicalcluster.Name("root:orgs"))
+	}
+
 	// Test if namespace was already created based on status
 	createdWorkspace := &kcptenancyv1alpha.Workspace{ObjectMeta: metav1.ObjectMeta{Name: instance.Name}}
-	_, err := controllerutil.CreateOrUpdate(ctx, r.client, createdWorkspace, func() error {
+	_, err := controllerutil.CreateOrUpdate(ctxWS, r.client, createdWorkspace, func() error {
 		// Only set the type on create; Workspace.spec.type.name is immutable.
 		if createdWorkspace.CreationTimestamp.IsZero() {
 			wtName := string(instance.Spec.Type)
@@ -84,8 +98,8 @@ func (r *WorkspaceSubroutine) Process(ctx context.Context, runtimeObj runtimeobj
 			switch instance.Spec.Type {
 			case corev1alpha1.AccountTypeOrg:
 				wtName = GetOrgWorkspaceTypeName(instance.Name)
-				// Local custom type: omit path to resolve in current logical cluster
-				wtPath = ""
+				// Custom org type lives in the original cluster; set explicit path so admission finds it
+				wtPath = origPath
 			case corev1alpha1.AccountTypeAccount:
 				// Use the provider (root) 'account' WorkspaceType. It is not installed in the current cluster.
 				wtPath = cfg.Kcp.ProviderWorkspace
