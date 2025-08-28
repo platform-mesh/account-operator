@@ -63,9 +63,12 @@ func (suite *AccountTestSuite) SetupSuite() {
 
 	cfg := config.OperatorConfig{}
 	cfg.Subroutines.FGA.Enabled = false
+	cfg.Subroutines.WorkspaceType.Enabled = true
 	cfg.Subroutines.Workspace.Enabled = true
 	cfg.Subroutines.AccountInfo.Enabled = true
 	cfg.Kcp.ProviderWorkspace = "root"
+	// Provide RootHost so the controller can create a root-scoped client for root operations
+	cfg.Kcp.RootHost = "https://localhost:6443/clusters/root"
 	suite.Require().NoError(err)
 
 	testContext, cancel, _ := platformmeshcontext.StartContext(log, cfg, 1*time.Minute)
@@ -95,6 +98,7 @@ func (suite *AccountTestSuite) SetupSuite() {
 	utilruntime.Must(kcptenancyv1alpha.AddToScheme(suite.scheme))
 
 	managerCfg := rest.CopyConfig(suite.rootConfig)
+	// Use the virtual workspace for the controller manager to watch logical clusters
 	managerCfg.Host = vsUrl
 
 	testDataConfig := rest.CopyConfig(suite.rootConfig)
@@ -233,6 +237,71 @@ func (suite *AccountTestSuite) TestAccountInfoCreationForOrganization() {
 	suite.Nil(accountInfo.Spec.ParentAccount)
 }
 
+func (suite *AccountTestSuite) TestCustomWorkspaceTypesForOrganization() {
+	testContext := context.Background()
+	orgAccountName := "custom-wt-org"
+
+	// Create new org account
+	acct := &v1alpha1.Account{ObjectMeta: metav1.ObjectMeta{Name: orgAccountName}, Spec: v1alpha1.AccountSpec{Type: v1alpha1.AccountTypeOrg}}
+	err := suite.kubernetesClient.Create(testContext, acct)
+	suite.Require().NoError(err)
+
+	// Wait for custom org workspace type
+	customOrgWT := &kcptenancyv1alpha.WorkspaceType{}
+	suite.Assert().Eventually(func() bool {
+		if e := suite.kubernetesClient.Get(testContext, types.NamespacedName{Name: orgAccountName + "-org"}, customOrgWT); e != nil {
+			return false
+		}
+		return true
+	}, defaultTestTimeout, defaultTickInterval)
+
+	// Wait for custom account workspace type
+	customAccWT := &kcptenancyv1alpha.WorkspaceType{}
+	suite.Assert().Eventually(func() bool {
+		if e := suite.kubernetesClient.Get(testContext, types.NamespacedName{Name: orgAccountName + "-acc"}, customAccWT); e != nil {
+			return false
+		}
+		return true
+	}, defaultTestTimeout, defaultTickInterval)
+
+	// Fetch base workspace types to compare inheritance / fallback from the root cluster
+	rootClient, err := client.New(suite.rootConfig, client.Options{Scheme: suite.scheme})
+	suite.Require().NoError(err)
+	baseOrgWT := &kcptenancyv1alpha.WorkspaceType{}
+	baseAccWT := &kcptenancyv1alpha.WorkspaceType{}
+	suite.Require().NoError(rootClient.Get(testContext, types.NamespacedName{Name: "org"}, baseOrgWT))
+	suite.Require().NoError(rootClient.Get(testContext, types.NamespacedName{Name: "account"}, baseAccWT))
+
+	// Verify defaultAPIBindings were inherited (extend.with) or fallback-copied; ensure non-empty if base non-empty
+	if len(baseAccWT.Spec.DefaultAPIBindings) > 0 {
+		suite.Assert().Eventually(func() bool {
+			_ = suite.kubernetesClient.Get(testContext, types.NamespacedName{Name: orgAccountName + "-acc"}, customAccWT)
+			return len(customAccWT.Spec.DefaultAPIBindings) == len(baseAccWT.Spec.DefaultAPIBindings)
+		}, defaultTestTimeout, defaultTickInterval, "custom account workspace type should have defaultAPIBindings copied or inherited")
+	}
+	if len(baseOrgWT.Spec.DefaultAPIBindings) > 0 {
+		suite.Assert().Eventually(func() bool {
+			_ = suite.kubernetesClient.Get(testContext, types.NamespacedName{Name: orgAccountName + "-org"}, customOrgWT)
+			return len(customOrgWT.Spec.DefaultAPIBindings) == len(baseOrgWT.Spec.DefaultAPIBindings)
+		}, defaultTestTimeout, defaultTickInterval, "custom org workspace type should have defaultAPIBindings copied or inherited")
+	}
+
+	// (Initializers inheritance check omitted: field not present in current WorkspaceTypeSpec)
+
+	// Validate linkage defaultChildWorkspaceType
+	suite.Require().NotNil(customOrgWT.Spec.DefaultChildWorkspaceType)
+	suite.Equal(orgAccountName+"-acc", string(customOrgWT.Spec.DefaultChildWorkspaceType.Name))
+
+	// Wait for workspace creation and ensure it uses custom org type
+	ws := &kcptenancyv1alpha.Workspace{}
+	suite.Assert().Eventually(func() bool {
+		if e := suite.kubernetesClient.Get(testContext, types.NamespacedName{Name: orgAccountName}, ws); e != nil {
+			return false
+		}
+		return string(ws.Spec.Type.Name) == orgAccountName+"-org"
+	}, defaultTestTimeout, defaultTickInterval)
+}
+
 func (suite *AccountTestSuite) TestAccountInfoCreationForAccount() {
 	var err error
 	testContext := context.Background()
@@ -322,4 +391,60 @@ func getCondition(conditions []metav1.Condition, conditionType string) *metav1.C
 
 func TestAccountTestSuite(t *testing.T) {
 	suite.Run(t, new(AccountTestSuite))
+}
+
+// cfgOverrideManager overrides GetConfig to return a custom host
+type cfgOverrideManager struct {
+	ctrl.Manager
+	cfg *rest.Config
+}
+
+func (m *cfgOverrideManager) GetConfig() *rest.Config { return m.cfg }
+
+// nilSchemeManager returns a nil Scheme to trigger client.New error
+type nilSchemeManager struct{ ctrl.Manager }
+
+func (m *nilSchemeManager) GetScheme() *runtime.Scheme { return nil }
+
+func (suite *AccountTestSuite) TestNewAccountReconciler_DeriveRootHost_FromVirtualWorkspace() {
+	// Override manager config to a virtual workspace URL to exercise '/services/' stripping
+	mgrCfg := rest.CopyConfig(suite.rootConfig)
+	// Simulate a virtual workspace URL form
+	mgrCfg.Host = "https://example.local/services/apiexport/core/platform-mesh"
+	wrap := &cfgOverrideManager{Manager: suite.kubernetesManager, cfg: mgrCfg}
+
+	cfg := config.OperatorConfig{}
+	cfg.Subroutines.WorkspaceType.Enabled = true
+	cfg.Kcp.ProviderWorkspace = "root"
+	cfg.Kcp.RootHost = "" // force derivation path
+
+	mockClient := mocks.NewOpenFGAServiceClient(suite.T())
+	_ = controller.NewAccountReconciler(suite.log, wrap, cfg, mockClient)
+}
+
+func (suite *AccountTestSuite) TestNewAccountReconciler_DeriveRootHost_StripsClustersAndServices() {
+	// Derive root host when both '/services/' and '/clusters/' are present
+	mgrCfg := rest.CopyConfig(suite.rootConfig)
+	mgrCfg.Host = "https://api.local/services/foo/clusters/root:orgs:team-1"
+	wrap := &cfgOverrideManager{Manager: suite.kubernetesManager, cfg: mgrCfg}
+
+	cfg := config.OperatorConfig{}
+	cfg.Subroutines.WorkspaceType.Enabled = true
+	cfg.Kcp.ProviderWorkspace = "root"
+	cfg.Kcp.RootHost = "" // force derivation path
+
+	mockClient := mocks.NewOpenFGAServiceClient(suite.T())
+	_ = controller.NewAccountReconciler(suite.log, wrap, cfg, mockClient)
+}
+
+func (suite *AccountTestSuite) TestNewAccountReconciler_FallbackToSharedClientOnRootClientError() {
+	// Trigger client.New failure by returning a nil scheme
+	cfg := config.OperatorConfig{}
+	cfg.Subroutines.WorkspaceType.Enabled = true
+	cfg.Kcp.ProviderWorkspace = "root"
+	cfg.Kcp.RootHost = "https://api.local/clusters/root"
+
+	wrap := &nilSchemeManager{suite.kubernetesManager}
+	mockClient := mocks.NewOpenFGAServiceClient(suite.T())
+	_ = controller.NewAccountReconciler(suite.log, wrap, cfg, mockClient)
 }

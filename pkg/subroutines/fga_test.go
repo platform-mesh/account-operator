@@ -44,6 +44,21 @@ func TestFGASubroutine_GetName(t *testing.T) {
 	assert.Equal(t, "FGASubroutine", routine.GetName())
 }
 
+func TestFGASubroutine_Process_MissingParentForNonOrg(t *testing.T) {
+	ctx := kontext.WithCluster(context.Background(), "some")
+	clientMock := mocks.NewClient(t)
+	openFGA := mocks.NewOpenFGAServiceClient(t)
+	mockGetWorkspaceByName(clientMock, kcpcorev1alpha1.LogicalClusterPhaseReady, "root:platform-mesh:orgs:root-org").Once()
+	clientMock.EXPECT().Get(mock.Anything, mock.Anything, mock.Anything).RunAndReturn(func(ctx context.Context, nn types.NamespacedName, o client.Object, opts ...client.GetOption) error {
+		ai := o.(*v1alpha1.AccountInfo)
+		*ai = v1alpha1.AccountInfo{Spec: v1alpha1.AccountInfoSpec{FGA: v1alpha1.FGAInfo{Store: v1alpha1.StoreInfo{Id: "store"}}, Account: v1alpha1.AccountLocation{GeneratedClusterId: "acc"}, ParentAccount: &v1alpha1.AccountLocation{GeneratedClusterId: ""}}}
+		return nil
+	}).Once()
+	sub := subroutines.NewFGASubroutine(clientMock, openFGA, "owner", "parent", "account")
+	_, err := sub.Process(ctx, &v1alpha1.Account{Spec: v1alpha1.AccountSpec{Type: v1alpha1.AccountTypeAccount}})
+	assert.NotNil(t, err)
+}
+
 func TestFGASubroutine_Finalizers(t *testing.T) {
 	routine := subroutines.NewFGASubroutine(nil, nil, "", "", "")
 	assert.Equal(t, []string{"account.core.platform-mesh.io/fga"}, routine.Finalizers())
