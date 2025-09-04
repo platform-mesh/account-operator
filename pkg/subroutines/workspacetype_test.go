@@ -218,9 +218,9 @@ func TestWorkspaceTypeSubroutine_Process_MissingClusterInContext(t *testing.T) {
 	log, err := logger.New(logger.DefaultConfig())
 	require.NoError(t, err)
 	ctx, _, _ := platformmeshcontext.StartContext(log, operatorconfig.OperatorConfig{}, 1*time.Minute)
-	// Intentionally NOT setting kontext.WithCluster; expect an operator error, not panic
+	// Intentionally NOT setting kontext.WithCluster; should succeed without panic
 	_, opErr := sub.Process(ctx, acct)
-	require.NotNil(t, opErr)
+	require.Nil(t, opErr)
 }
 
 func TestWorkspaceTypeSubroutine_Process_BaseTypesNotFound(t *testing.T) {

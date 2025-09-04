@@ -2,6 +2,7 @@ package subroutines
 
 import (
 	"context"
+	"fmt"
 
 	kcptenancyv1alpha "github.com/kcp-dev/kcp/sdk/apis/tenancy/v1alpha1"
 	"github.com/platform-mesh/golang-commons/errors"
@@ -20,4 +21,12 @@ func retrieveWorkspace(ctx context.Context, instance *v1alpha1.Account, c client
 		return nil, errors.Wrap(err, msg)
 	}
 	return ws, nil
+}
+
+func GetOrgWorkspaceTypeName(accountName string) string {
+	return fmt.Sprintf("%s-org", accountName)
+}
+
+func GetAccWorkspaceTypeName(accountName string) string {
+	return fmt.Sprintf("%s-acc", accountName)
 }
