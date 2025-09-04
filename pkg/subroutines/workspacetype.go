@@ -95,6 +95,12 @@ func (r *WorkspaceTypeSubroutine) Process(ctx context.Context, ro runtimeobject.
 		if baseAcc != nil {
 			customAcc.Spec = baseAcc.Spec
 		}
+		// Set up extension relationship to base account type
+		customAcc.Spec.Extend = kcptenancyv1alpha.WorkspaceTypeExtension{
+			With: []kcptenancyv1alpha.WorkspaceTypeReference{
+				{Name: "account", Path: "root"},
+			},
+		}
 		// Allow creating this account type under only the custom org type (in current cluster)
 		customAcc.Spec.LimitAllowedParents = &kcptenancyv1alpha.WorkspaceTypeSelector{Types: []kcptenancyv1alpha.WorkspaceTypeReference{
 			{Name: kcptenancyv1alpha.WorkspaceTypeName(customOrgName), Path: currentPath},
@@ -114,17 +120,17 @@ func (r *WorkspaceTypeSubroutine) Process(ctx context.Context, ro runtimeobject.
 		if baseOrg != nil {
 			customOrg.Spec = baseOrg.Spec
 		}
+		// Set up extension relationship to base org type
+		customOrg.Spec.Extend = kcptenancyv1alpha.WorkspaceTypeExtension{
+			With: []kcptenancyv1alpha.WorkspaceTypeReference{
+				{Name: "org", Path: "root"},
+			},
+		}
 		// Default child type is the custom account type created in the current cluster; admission requires path
 		customOrg.Spec.DefaultChildWorkspaceType = &kcptenancyv1alpha.WorkspaceTypeReference{Name: kcptenancyv1alpha.WorkspaceTypeName(customAccName), Path: currentPath}
 		// Allow creating this org type under appropriate parent type
-		if origPath == "root" {
-			customOrg.Spec.LimitAllowedParents = &kcptenancyv1alpha.WorkspaceTypeSelector{
-				Types: []kcptenancyv1alpha.WorkspaceTypeReference{{Name: "orgs", Path: "root"}},
-			}
-		} else {
-			customOrg.Spec.LimitAllowedParents = &kcptenancyv1alpha.WorkspaceTypeSelector{
-				Types: []kcptenancyv1alpha.WorkspaceTypeReference{{Name: "orgs", Path: "root"}},
-			}
+		customOrg.Spec.LimitAllowedParents = &kcptenancyv1alpha.WorkspaceTypeSelector{
+			Types: []kcptenancyv1alpha.WorkspaceTypeReference{{Name: "orgs", Path: "root"}},
 		}
 		// Explicitly allow custom account children under this custom org type
 		customOrg.Spec.LimitAllowedChildren = &kcptenancyv1alpha.WorkspaceTypeSelector{
@@ -146,9 +152,14 @@ func (r *WorkspaceTypeSubroutine) Process(ctx context.Context, ro runtimeobject.
 		if baseOrg.Spec.LimitAllowedChildren == nil {
 			baseOrg.Spec.LimitAllowedChildren = &kcptenancyv1alpha.WorkspaceTypeSelector{}
 		}
+		// Use the path where the custom org type will be created
+		customOrgPath := currentPath
+		if cfg.Kcp.OrgWorkspaceCluster != "" {
+			customOrgPath = cfg.Kcp.OrgWorkspaceCluster
+		}
 		baseOrg.Spec.LimitAllowedChildren.Types = append(baseOrg.Spec.LimitAllowedChildren.Types, kcptenancyv1alpha.WorkspaceTypeReference{
 			Name: kcptenancyv1alpha.WorkspaceTypeName(customOrgName),
-			Path: currentPath,
+			Path: customOrgPath,
 		})
 		err = r.client.Update(updateCtx, baseOrg)
 		if err != nil {

@@ -181,7 +181,12 @@ func TestWorkspaceTypeSubroutine_Process_FallbackClient(t *testing.T) {
 			string(wtOrg.Spec.LimitAllowedParents.Types[0].Name) == "orgs" &&
 			wtAcc.Spec.LimitAllowedParents != nil &&
 			len(wtAcc.Spec.LimitAllowedParents.Types) == 1 &&
-			string(wtAcc.Spec.LimitAllowedParents.Types[0].Name) == "test-org-org"
+			string(wtAcc.Spec.LimitAllowedParents.Types[0].Name) == "test-org-org" &&
+			// Verify extension relationships
+			len(wtOrg.Spec.Extend.With) == 1 &&
+			string(wtOrg.Spec.Extend.With[0].Name) == "org" &&
+			len(wtAcc.Spec.Extend.With) == 1 &&
+			string(wtAcc.Spec.Extend.With[0].Name) == "account"
 	}, 5*time.Second, 200*time.Millisecond)
 }
 
