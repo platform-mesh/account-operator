@@ -5,6 +5,7 @@ import (
 	"fmt"
 	"os"
 	"strconv"
+	"strings"
 	"testing"
 	"time"
 
@@ -242,24 +243,48 @@ func (suite *AccountTestSuite) TestCustomWorkspaceTypesForOrganization() {
 	testContext := context.Background()
 	orgAccountName := "custom-wt-org"
 
-	// Create new org account
+	// Create new org account first
 	acct := &v1alpha1.Account{ObjectMeta: metav1.ObjectMeta{Name: orgAccountName}, Spec: v1alpha1.AccountSpec{Type: v1alpha1.AccountTypeOrg}}
 	err := suite.kubernetesClient.Create(testContext, acct)
 	suite.Require().NoError(err)
 
-	// Wait for custom org workspace type
-	customOrgWT := &kcptenancyv1alpha.WorkspaceType{}
+	// Wait a bit for the controller to process and create workspace types
+	time.Sleep(2 * time.Second)
+
+	// Now list all workspace types to find the ones created by the controller
+	var workspaceTypes kcptenancyv1alpha.WorkspaceTypeList
+	err = suite.kubernetesClient.List(testContext, &workspaceTypes)
+	suite.Require().NoError(err)
+
+	// Find workspace types that match our account name pattern
+	var customOrgWT, customAccWT *kcptenancyv1alpha.WorkspaceType
+	for i := range workspaceTypes.Items {
+		wt := &workspaceTypes.Items[i]
+		if strings.Contains(wt.Name, orgAccountName+"-org") {
+			customOrgWT = wt
+			fmt.Printf("[TEST DEBUG] Found org workspace type: %s\n", wt.Name)
+		}
+		if strings.Contains(wt.Name, orgAccountName+"-acc") {
+			customAccWT = wt
+			fmt.Printf("[TEST DEBUG] Found acc workspace type: %s\n", wt.Name)
+		}
+	}
+
+	// Ensure we found both workspace types
+	suite.Require().NotNil(customOrgWT, "Custom org workspace type should be created")
+	suite.Require().NotNil(customAccWT, "Custom account workspace type should be created")
+
+	// Wait for custom org workspace type to be fully ready
 	suite.Assert().Eventually(func() bool {
-		if e := suite.kubernetesClient.Get(testContext, types.NamespacedName{Name: orgAccountName + "-org"}, customOrgWT); e != nil {
+		if e := suite.kubernetesClient.Get(testContext, types.NamespacedName{Name: customOrgWT.Name}, customOrgWT); e != nil {
 			return false
 		}
 		return true
 	}, defaultTestTimeout, defaultTickInterval)
 
-	// Wait for custom account workspace type
-	customAccWT := &kcptenancyv1alpha.WorkspaceType{}
+	// Wait for custom account workspace type to be fully ready
 	suite.Assert().Eventually(func() bool {
-		if e := suite.kubernetesClient.Get(testContext, types.NamespacedName{Name: orgAccountName + "-acc"}, customAccWT); e != nil {
+		if e := suite.kubernetesClient.Get(testContext, types.NamespacedName{Name: customAccWT.Name}, customAccWT); e != nil {
 			return false
 		}
 		return true
@@ -276,13 +301,13 @@ func (suite *AccountTestSuite) TestCustomWorkspaceTypesForOrganization() {
 	// Verify defaultAPIBindings were inherited (extend.with) or fallback-copied; ensure non-empty if base non-empty
 	if len(baseAccWT.Spec.DefaultAPIBindings) > 0 {
 		suite.Assert().Eventually(func() bool {
-			_ = suite.kubernetesClient.Get(testContext, types.NamespacedName{Name: orgAccountName + "-acc"}, customAccWT)
+			_ = suite.kubernetesClient.Get(testContext, types.NamespacedName{Name: customAccWT.Name}, customAccWT)
 			return len(customAccWT.Spec.DefaultAPIBindings) == len(baseAccWT.Spec.DefaultAPIBindings)
 		}, defaultTestTimeout, defaultTickInterval, "custom account workspace type should have defaultAPIBindings copied or inherited")
 	}
 	if len(baseOrgWT.Spec.DefaultAPIBindings) > 0 {
 		suite.Assert().Eventually(func() bool {
-			_ = suite.kubernetesClient.Get(testContext, types.NamespacedName{Name: orgAccountName + "-org"}, customOrgWT)
+			_ = suite.kubernetesClient.Get(testContext, types.NamespacedName{Name: customOrgWT.Name}, customOrgWT)
 			return len(customOrgWT.Spec.DefaultAPIBindings) == len(baseOrgWT.Spec.DefaultAPIBindings)
 		}, defaultTestTimeout, defaultTickInterval, "custom org workspace type should have defaultAPIBindings copied or inherited")
 	}
@@ -291,7 +316,7 @@ func (suite *AccountTestSuite) TestCustomWorkspaceTypesForOrganization() {
 
 	// Validate linkage defaultChildWorkspaceType
 	suite.Require().NotNil(customOrgWT.Spec.DefaultChildWorkspaceType)
-	suite.Equal(orgAccountName+"-acc", string(customOrgWT.Spec.DefaultChildWorkspaceType.Name))
+	suite.Equal(customAccWT.Name, string(customOrgWT.Spec.DefaultChildWorkspaceType.Name))
 
 	// Wait for workspace creation and ensure it uses custom org type
 	// In test environments, workspace creation may fail due to base type restrictions
@@ -304,12 +329,12 @@ func (suite *AccountTestSuite) TestCustomWorkspaceTypesForOrganization() {
 		}
 		// Workspace exists - check if it uses the custom type
 		workspaceCreated = true
-		return string(ws.Spec.Type.Name) == orgAccountName+"-org"
+		return string(ws.Spec.Type.Name) == customOrgWT.Name
 	}, defaultTestTimeout, defaultTickInterval)
 
 	// If workspace was created, verify it uses the expected custom type
 	if workspaceCreated {
-		suite.Equal(orgAccountName+"-org", string(ws.Spec.Type.Name))
+		suite.Equal(customOrgWT.Name, string(ws.Spec.Type.Name))
 	}
 }
 

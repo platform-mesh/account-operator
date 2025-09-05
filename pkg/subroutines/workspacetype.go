@@ -87,8 +87,8 @@ func (r *WorkspaceTypeSubroutine) Process(ctx context.Context, ro runtimeobject.
 	}
 
 	// Ensure custom account workspace type by copying base spec for inheritance.
-	customAccName := GetAccWorkspaceTypeName(acct.Name)
-	customOrgName := GetOrgWorkspaceTypeName(acct.Name)
+	customAccName := GetAccWorkspaceTypeName(acct.Name, currentPath)
+	customOrgName := GetOrgWorkspaceTypeName(acct.Name, currentPath)
 	customAcc := &kcptenancyv1alpha.WorkspaceType{ObjectMeta: metav1.ObjectMeta{Name: customAccName}}
 	_, err := controllerutil.CreateOrUpdate(ctx, r.client, customAcc, func() error {
 		// Copy base spec if available

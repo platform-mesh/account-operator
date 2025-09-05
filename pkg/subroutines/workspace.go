@@ -105,7 +105,7 @@ func (r *WorkspaceSubroutine) Process(ctx context.Context, runtimeObj runtimeobj
 			wtPath := cfg.Kcp.ProviderWorkspace
 			switch instance.Spec.Type {
 			case corev1alpha1.AccountTypeOrg:
-				wtName = GetOrgWorkspaceTypeName(instance.Name)
+				wtName = GetOrgWorkspaceTypeName(instance.Name, origPath)
 				// Custom org type lives in the configured org cluster; set explicit path so admission finds it
 				if cfg.Kcp.OrgWorkspaceCluster != "" {
 					wtPath = cfg.Kcp.OrgWorkspaceCluster
@@ -118,7 +118,7 @@ func (r *WorkspaceSubroutine) Process(ctx context.Context, runtimeObj runtimeobj
 				parts := strings.Split(origPath, ":")
 				if len(parts) >= 3 && parts[1] == "orgs" {
 					orgName := parts[2]
-					wtName = GetAccWorkspaceTypeName(orgName)
+					wtName = GetAccWorkspaceTypeName(orgName, origPath)
 					wtPath = strings.Join(parts[:2], ":") // parent path where custom types are created
 				} else {
 					// Fallback to base account type

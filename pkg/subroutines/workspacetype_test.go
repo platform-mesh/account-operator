@@ -118,17 +118,17 @@ func TestWorkspaceTypeSubroutine_Process_FallbackClient(t *testing.T) {
 
 	// Check that the custom WorkspaceTypes were created correctly
 	customOrgWT := &kcptenancyv1alpha.WorkspaceType{}
-	err = fakeClient.Get(ctx, types.NamespacedName{Name: "test-org-org"}, customOrgWT)
+	err = fakeClient.Get(ctx, types.NamespacedName{Name: "root-org-test-org-org"}, customOrgWT)
 	require.NoError(t, err, "custom org workspacetype should be created")
 
 	customAccWT := &kcptenancyv1alpha.WorkspaceType{}
-	err = fakeClient.Get(ctx, types.NamespacedName{Name: "test-org-acc"}, customAccWT)
+	err = fakeClient.Get(ctx, types.NamespacedName{Name: "root-org-test-org-acc"}, customAccWT)
 	require.NoError(t, err, "custom account workspacetype should be created")
 
 	// LimitAllowedParents may not be set depending on subroutine logic; log for debug
 	if customAccWT.Spec.LimitAllowedParents != nil {
 		require.Len(t, customAccWT.Spec.LimitAllowedParents.Types, 1)
-		require.Equal(t, "test-org-org", string(customAccWT.Spec.LimitAllowedParents.Types[0].Name))
+		require.Equal(t, "root-org-test-org-org", string(customAccWT.Spec.LimitAllowedParents.Types[0].Name))
 		require.Equal(t, "orgs:root-org", customAccWT.Spec.LimitAllowedParents.Types[0].Path)
 	} else {
 		t.Log("LimitAllowedParents is nil (allowed by current logic)")
@@ -146,7 +146,7 @@ func TestWorkspaceTypeSubroutine_Process_FallbackClient(t *testing.T) {
 	// LimitAllowedChildren may not be set depending on subroutine logic; log for debug
 	if customOrgWT.Spec.LimitAllowedChildren != nil {
 		require.Len(t, customOrgWT.Spec.LimitAllowedChildren.Types, 1)
-		require.Equal(t, "test-org-acc", string(customOrgWT.Spec.LimitAllowedChildren.Types[0].Name))
+		require.Equal(t, "root-org-test-org-acc", string(customOrgWT.Spec.LimitAllowedChildren.Types[0].Name))
 		actualPath := customOrgWT.Spec.LimitAllowedChildren.Types[0].Path
 		require.NotEmpty(t, actualPath, "LimitAllowedChildren path should not be empty")
 	} else {
@@ -168,20 +168,20 @@ func TestWorkspaceTypeSubroutine_Process_FallbackClient(t *testing.T) {
 	require.Eventually(t, func() bool {
 		var wtOrg kcptenancyv1alpha.WorkspaceType
 		var wtAcc kcptenancyv1alpha.WorkspaceType
-		if err := fakeClient.Get(ctx, types.NamespacedName{Name: "test-org-org"}, &wtOrg); err != nil {
+		if err := fakeClient.Get(ctx, types.NamespacedName{Name: "root-org-test-org-org"}, &wtOrg); err != nil {
 			return false
 		}
-		if err := fakeClient.Get(ctx, types.NamespacedName{Name: "test-org-acc"}, &wtAcc); err != nil {
+		if err := fakeClient.Get(ctx, types.NamespacedName{Name: "root-org-test-org-acc"}, &wtAcc); err != nil {
 			return false
 		}
 		return wtOrg.Spec.DefaultChildWorkspaceType != nil &&
-			string(wtOrg.Spec.DefaultChildWorkspaceType.Name) == "test-org-acc" &&
+			string(wtOrg.Spec.DefaultChildWorkspaceType.Name) == "root-org-test-org-acc" &&
 			wtOrg.Spec.LimitAllowedParents != nil &&
 			len(wtOrg.Spec.LimitAllowedParents.Types) == 1 &&
 			string(wtOrg.Spec.LimitAllowedParents.Types[0].Name) == "orgs" &&
 			wtAcc.Spec.LimitAllowedParents != nil &&
 			len(wtAcc.Spec.LimitAllowedParents.Types) == 1 &&
-			string(wtAcc.Spec.LimitAllowedParents.Types[0].Name) == "test-org-org" &&
+			string(wtAcc.Spec.LimitAllowedParents.Types[0].Name) == "root-org-test-org-org" &&
 			// Verify extension relationships
 			len(wtOrg.Spec.Extend.With) == 1 &&
 			string(wtOrg.Spec.Extend.With[0].Name) == "org" &&
@@ -259,10 +259,10 @@ func TestWorkspaceTypeSubroutine_Process_BaseTypesNotFound(t *testing.T) {
 
 	// Custom types should be created even if base types are not found
 	customOrgWT := &kcptenancyv1alpha.WorkspaceType{}
-	err = fakeClient.Get(ctx, types.NamespacedName{Name: "no-base-org"}, customOrgWT)
+	err = fakeClient.Get(ctx, types.NamespacedName{Name: "root-org-no-base-org"}, customOrgWT)
 	require.NoError(t, err)
 	customAccWT := &kcptenancyv1alpha.WorkspaceType{}
-	err = fakeClient.Get(ctx, types.NamespacedName{Name: "no-base-acc"}, customAccWT)
+	err = fakeClient.Get(ctx, types.NamespacedName{Name: "root-org-no-base-acc"}, customAccWT)
 	require.NoError(t, err)
 }
 
@@ -327,8 +327,8 @@ func TestWorkspaceTypeSubroutine_Process_CustomAccCreateError(t *testing.T) {
 	rootBaseAcc := &kcptenancyv1alpha.WorkspaceType{ObjectMeta: metav1.ObjectMeta{Name: "account"}}
 	mainBase := fake.NewClientBuilder().WithScheme(scheme).Build()
 	rootBase := fake.NewClientBuilder().WithScheme(scheme).WithObjects(rootBaseOrg, rootBaseAcc).Build()
-	// Wrap main client to error on Create for customAcc (name: "x-acc")
-	mainErr := &errorClient{Client: mainBase, failCreate: map[string]bool{"x-acc": true}}
+	// Wrap main client to error on Create for customAcc (name: "root-org-x-acc")
+	mainErr := &errorClient{Client: mainBase, failCreate: map[string]bool{"root-org-x-acc": true}}
 
 	sub := subroutines.NewWorkspaceTypeSubroutineWithRootClient(mainErr, rootBase)
 
@@ -353,8 +353,8 @@ func TestWorkspaceTypeSubroutine_Process_CustomOrgCreateError(t *testing.T) {
 	rootBaseAcc := &kcptenancyv1alpha.WorkspaceType{ObjectMeta: metav1.ObjectMeta{Name: "account"}}
 	mainBase := fake.NewClientBuilder().WithScheme(scheme).Build()
 	rootBase := fake.NewClientBuilder().WithScheme(scheme).WithObjects(rootBaseOrg, rootBaseAcc).Build()
-	// Wrap main client to error on Create for customOrg (name: "y-org"). Account should succeed first.
-	mainErr := &errorClient{Client: mainBase, failCreate: map[string]bool{"y-org": true}}
+	// Wrap main client to error on Create for customOrg (name: "root-org-y-org"). Account should succeed first.
+	mainErr := &errorClient{Client: mainBase, failCreate: map[string]bool{"root-org-y-org": true}}
 
 	sub := subroutines.NewWorkspaceTypeSubroutineWithRootClient(mainErr, rootBase)
 
