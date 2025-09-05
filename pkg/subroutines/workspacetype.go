@@ -67,9 +67,7 @@ func (r *WorkspaceTypeSubroutine) Process(ctx context.Context, ro runtimeobject.
 		origPath = cl.String()
 		currentPath = origPath // Use current cluster path for creating custom types
 	}
-	var baseOrg *kcptenancyv1alpha.WorkspaceType
-	var baseAcc *kcptenancyv1alpha.WorkspaceType
-	baseOrg = &kcptenancyv1alpha.WorkspaceType{}
+	baseOrg := &kcptenancyv1alpha.WorkspaceType{}
 	if err := rc.Get(rootCtx, client.ObjectKey{Name: "org"}, baseOrg); err != nil {
 		if !kerrors.IsNotFound(err) {
 			return ctrl.Result{}, errors.NewOperatorError(err, true, true)
@@ -77,7 +75,7 @@ func (r *WorkspaceTypeSubroutine) Process(ctx context.Context, ro runtimeobject.
 		log.Debug().Str("account", acct.Name).Msg("base org WorkspaceType not found yet; continuing without fallback copy")
 		baseOrg = nil
 	}
-	baseAcc = &kcptenancyv1alpha.WorkspaceType{}
+	baseAcc := &kcptenancyv1alpha.WorkspaceType{}
 	if err := rc.Get(rootCtx, client.ObjectKey{Name: "account"}, baseAcc); err != nil {
 		if !kerrors.IsNotFound(err) {
 			return ctrl.Result{}, errors.NewOperatorError(err, true, true)
