@@ -42,6 +42,16 @@ var (
 	accountReconcilerName = "AccountReconciler"
 )
 
+//+kubebuilder:rbac:groups=core.platform-mesh.io,resources=accounts,verbs=get;list;watch;create;update;patch;delete
+//+kubebuilder:rbac:groups=core.platform-mesh.io,resources=accounts/status,verbs=get;update;patch
+//+kubebuilder:rbac:groups=core.platform-mesh.io,resources=accounts/finalizers,verbs=update
+//+kubebuilder:rbac:groups=core.platform-mesh.io,resources=accountinfos,verbs=get;list;watch;create;update;patch;delete
+//+kubebuilder:rbac:groups=core.platform-mesh.io,resources=accountinfos/status,verbs=get;update;patch
+//+kubebuilder:rbac:groups=tenancy.kcp.io,resources=workspaces,verbs=get;list;watch;create;update;patch;delete
+//+kubebuilder:rbac:groups=tenancy.kcp.io,resources=workspaces/status,verbs=get;update;patch
+//+kubebuilder:rbac:groups=tenancy.kcp.io,resources=workspacetypes,verbs=get;list;watch;create;update;patch;delete
+//+kubebuilder:rbac:groups=tenancy.kcp.io,resources=workspacetypes/status,verbs=get;update;patch
+
 // AccountReconciler reconciles a Account object
 type AccountReconciler struct {
 	lifecycle *controllerruntime.LifecycleManager
