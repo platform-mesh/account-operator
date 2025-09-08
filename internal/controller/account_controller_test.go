@@ -68,7 +68,7 @@ func (suite *AccountTestSuite) SetupSuite() {
 	cfg.Subroutines.Workspace.Enabled = true
 	cfg.Subroutines.AccountInfo.Enabled = true
 	cfg.Kcp.ProviderWorkspace = "root"
-	cfg.Kcp.OrgWorkspaceCluster = "" // Use current cluster for tests
+	cfg.Kcp.OrgWorkspaceCluster = "root:orgs" // Use consistent behavior in tests
 	// Provide RootHost so the controller can create a root-scoped client for root operations
 	cfg.Kcp.RootHost = "https://localhost:6443/clusters/root"
 	suite.Require().NoError(err)

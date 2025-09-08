@@ -155,7 +155,7 @@ func (r *WorkspaceTypeSubroutine) Process(ctx context.Context, ro runtimeobject.
 		baseOrg.Spec.LimitAllowedChildren = &kcptenancyv1alpha.WorkspaceTypeSelector{}
 	}
 	// Use the path where the custom org type will be created
-	customOrgPath := currentPath
+	customOrgPath := "root:orgs"
 	if cfg.Kcp.OrgWorkspaceCluster != "" {
 		customOrgPath = cfg.Kcp.OrgWorkspaceCluster
 	}
@@ -165,10 +165,13 @@ func (r *WorkspaceTypeSubroutine) Process(ctx context.Context, ro runtimeobject.
 	})
 	err = r.client.Update(updateCtx, baseOrg)
 	if err != nil {
-		// In test environments, we may not have permission to update base types
-		// Log a warning but don't fail the operation
-		log.Warn().Err(err).Str("baseOrgType", "org").Msg("failed to update base org type to allow custom org as child; this may be expected in test environments")
-		// Don't return error - continue with the operation
+		// If we cannot update the base workspace type due to permission restrictions,
+		// log the error but continue - the custom workspace types are still functional
+		if kerrors.IsForbidden(err) {
+			log.Debug().Str("customOrgWorkspaceType", customOrgName).Str("customAccountWorkspaceType", customAccName).Err(err).Msg("custom workspace types ensured (base type update forbidden)")
+			return ctrl.Result{}, nil
+		}
+		return ctrl.Result{}, errors.NewOperatorError(err, true, true)
 	}
 
 	log.Debug().Str("customOrgWorkspaceType", customOrgName).Str("customAccountWorkspaceType", customAccName).Msg("custom workspace types ensured (with spec copy)")

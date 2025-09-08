@@ -31,6 +31,6 @@ type OperatorConfig struct {
 		ApiExportEndpointSliceName string `mapstructure:"kcp-api-export-endpoint-slice-name"`
 		ProviderWorkspace          string `mapstructure:"kcp-provider-workspace" default:"root"`
 		RootHost                   string `mapstructure:"kcp-root-host" default:""`
-		OrgWorkspaceCluster        string `mapstructure:"kcp-org-workspace-cluster" default:""`
+		OrgWorkspaceCluster        string `mapstructure:"kcp-org-workspace-cluster" default:"root:orgs"`
 	} `mapstructure:",squash"`
 }
