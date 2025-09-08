@@ -15,6 +15,12 @@ import (
 	"github.com/platform-mesh/account-operator/api/v1alpha1"
 )
 
+var (
+	validCharsRegex           = regexp.MustCompile(`[^a-z0-9-]`)
+	startsWithAlphaRegex      = regexp.MustCompile(`^[a-z]`)
+	endsWithAlphanumericRegex = regexp.MustCompile(`[a-z0-9]$`)
+)
+
 func retrieveWorkspace(ctx context.Context, instance *v1alpha1.Account, c client.Client, log *logger.Logger) (*kcptenancyv1alpha.Workspace, error) {
 	ws := &kcptenancyv1alpha.Workspace{}
 	err := c.Get(ctx, client.ObjectKey{Name: instance.Name}, ws)
@@ -42,14 +48,13 @@ func sanitizeForKubernetes(name string) string {
 		return ""
 	}
 
-	validChars := regexp.MustCompile(`[^a-z0-9-]`)
-	sanitized := validChars.ReplaceAllString(strings.ToLower(name), "-")
+	sanitized := validCharsRegex.ReplaceAllString(strings.ToLower(name), "-")
 
-	if len(sanitized) > 0 && !regexp.MustCompile(`^[a-z]`).MatchString(sanitized) {
+	if len(sanitized) > 0 && !startsWithAlphaRegex.MatchString(sanitized) {
 		sanitized = "w-" + sanitized
 	}
 
-	if len(sanitized) > 0 && !regexp.MustCompile(`[a-z0-9]$`).MatchString(sanitized) {
+	if len(sanitized) > 0 && !endsWithAlphanumericRegex.MatchString(sanitized) {
 		sanitized = sanitized + "w"
 	}
 

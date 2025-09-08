@@ -74,8 +74,7 @@ func NewAccountReconciler(log *logger.Logger, mgr ctrl.Manager, cfg config.Opera
 				base = base[:idx]
 			}
 			rootHost = strings.TrimRight(base, "/") + "/clusters/root"
-		}
-		if rootHost != "" {
+		} else {
 			rootCfg := rest.CopyConfig(mgr.GetConfig())
 			rootCfg.Host = rootHost
 			if c, err := client.New(rootCfg, client.Options{Scheme: mgr.GetScheme()}); err == nil {
