@@ -146,26 +146,29 @@ func (r *WorkspaceTypeSubroutine) Process(ctx context.Context, ro runtimeobject.
 	// Update base org type to allow custom org as child
 	// This may fail in test environments due to permission restrictions
 	updateCtx := kontext.WithCluster(ctx, logicalcluster.Name("root"))
-	if baseOrg != nil {
-		if baseOrg.Spec.LimitAllowedChildren == nil {
-			baseOrg.Spec.LimitAllowedChildren = &kcptenancyv1alpha.WorkspaceTypeSelector{}
-		}
-		// Use the path where the custom org type will be created
-		customOrgPath := currentPath
-		if cfg.Kcp.OrgWorkspaceCluster != "" {
-			customOrgPath = cfg.Kcp.OrgWorkspaceCluster
-		}
-		baseOrg.Spec.LimitAllowedChildren.Types = append(baseOrg.Spec.LimitAllowedChildren.Types, kcptenancyv1alpha.WorkspaceTypeReference{
-			Name: kcptenancyv1alpha.WorkspaceTypeName(customOrgName),
-			Path: customOrgPath,
-		})
-		err = r.client.Update(updateCtx, baseOrg)
-		if err != nil {
-			// In test environments, we may not have permission to update base types
-			// Log a warning but don't fail the operation
-			log.Warn().Err(err).Str("baseOrgType", "org").Msg("failed to update base org type to allow custom org as child; this may be expected in test environments")
-			// Don't return error - continue with the operation
-		}
+	if baseOrg == nil {
+		log.Debug().Str("account", acct.Name).Msg("custom workspace types ensured (with spec copy)")
+		return ctrl.Result{}, nil
+	}
+
+	if baseOrg.Spec.LimitAllowedChildren == nil {
+		baseOrg.Spec.LimitAllowedChildren = &kcptenancyv1alpha.WorkspaceTypeSelector{}
+	}
+	// Use the path where the custom org type will be created
+	customOrgPath := currentPath
+	if cfg.Kcp.OrgWorkspaceCluster != "" {
+		customOrgPath = cfg.Kcp.OrgWorkspaceCluster
+	}
+	baseOrg.Spec.LimitAllowedChildren.Types = append(baseOrg.Spec.LimitAllowedChildren.Types, kcptenancyv1alpha.WorkspaceTypeReference{
+		Name: kcptenancyv1alpha.WorkspaceTypeName(customOrgName),
+		Path: customOrgPath,
+	})
+	err = r.client.Update(updateCtx, baseOrg)
+	if err != nil {
+		// In test environments, we may not have permission to update base types
+		// Log a warning but don't fail the operation
+		log.Warn().Err(err).Str("baseOrgType", "org").Msg("failed to update base org type to allow custom org as child; this may be expected in test environments")
+		// Don't return error - continue with the operation
 	}
 
 	log.Debug().Str("customOrgWorkspaceType", customOrgName).Str("customAccountWorkspaceType", customAccName).Msg("custom workspace types ensured (with spec copy)")
