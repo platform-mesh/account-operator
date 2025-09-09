@@ -62,6 +62,7 @@ func NewAccountReconciler(log *logger.Logger, mgr ctrl.Manager, cfg config.Opera
 	if cfg.Subroutines.WorkspaceType.Enabled {
 		var rootClient client.Client
 		rootHost := cfg.Kcp.RootHost
+
 		if rootHost == "" {
 			h := mgr.GetConfig().Host
 			base := h
@@ -74,15 +75,16 @@ func NewAccountReconciler(log *logger.Logger, mgr ctrl.Manager, cfg config.Opera
 				base = base[:idx]
 			}
 			rootHost = strings.TrimRight(base, "/") + "/clusters/root"
-		} else {
-			rootCfg := rest.CopyConfig(mgr.GetConfig())
-			rootCfg.Host = rootHost
-			if c, err := client.New(rootCfg, client.Options{Scheme: mgr.GetScheme()}); err == nil {
-				rootClient = c
-			} else {
-				log.Warn().Err(err).Str("host", rootHost).Msg("failed to create derived root-scoped client; falling back to shared client")
-			}
 		}
+
+		rootCfg := rest.CopyConfig(mgr.GetConfig())
+		rootCfg.Host = rootHost
+		if c, err := client.New(rootCfg, client.Options{Scheme: mgr.GetScheme()}); err == nil {
+			rootClient = c
+		} else {
+			log.Warn().Err(err).Str("host", rootHost).Msg("failed to create derived root-scoped client; falling back to shared client")
+		}
+
 		if rootClient != nil {
 			subs = append(subs, subroutines.NewWorkspaceTypeSubroutineWithRootClient(mgr.GetClient(), rootClient))
 		} else {
