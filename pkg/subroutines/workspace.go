@@ -94,30 +94,30 @@ func (r *WorkspaceSubroutine) Process(ctx context.Context, runtimeObj runtimeobj
 	createdWorkspace := &kcptenancyv1alpha.Workspace{ObjectMeta: metav1.ObjectMeta{Name: instance.Name}}
 	_, err := controllerutil.CreateOrUpdate(ctxWS, r.client, createdWorkspace, func() error {
 		// Only set the type on create; Workspace.spec.type.name is immutable.
-		if createdWorkspace.CreationTimestamp.IsZero() {
-			wtName := string(instance.Spec.Type)
-			wtPath := cfg.Kcp.ProviderWorkspace
-			switch instance.Spec.Type {
-			case corev1alpha1.AccountTypeOrg:
-				wtName = GetOrgWorkspaceTypeName(instance.Name, origPath)
+		if !createdWorkspace.CreationTimestamp.IsZero() {
+			return controllerutil.SetOwnerReference(instance, createdWorkspace, r.client.Scheme())
+		}
+
+		wtName := string(instance.Spec.Type)
+		wtPath := cfg.Kcp.ProviderWorkspace
+		switch instance.Spec.Type {
+		case corev1alpha1.AccountTypeOrg:
+			wtName = GetOrgWorkspaceTypeName(instance.Name, origPath)
+			if cfg.Kcp.OrgWorkspaceCluster != "" {
 				wtPath = cfg.Kcp.OrgWorkspaceCluster
-			case corev1alpha1.AccountTypeAccount:
-				// Parse cluster path to determine org name
-				parts := strings.Split(origPath, ":")
-				if len(parts) >= 3 && parts[1] == "orgs" {
-					orgName := parts[2]
-					wtName = GetAccWorkspaceTypeName(orgName, origPath)
-					wtPath = strings.Join(parts[:2], ":") // parent path where custom types are created
-				} else {
-					// Fallback to base account type
-					wtName = string(instance.Spec.Type)
-					wtPath = cfg.Kcp.ProviderWorkspace
-				}
 			}
-			createdWorkspace.Spec.Type = kcptenancyv1alpha.WorkspaceTypeReference{
-				Name: kcptenancyv1alpha.WorkspaceTypeName(wtName),
-				Path: wtPath,
+		case corev1alpha1.AccountTypeAccount:
+			// Parse cluster path to determine org name
+			parts := strings.SplitN(origPath, ":", 3)
+			if len(parts) >= 3 && parts[1] == "orgs" {
+				orgName := parts[2]
+				wtName = GetAccWorkspaceTypeName(orgName, origPath)
+				wtPath = strings.Join(parts[:2], ":") // parent path where custom types are created
 			}
+		}
+		createdWorkspace.Spec.Type = kcptenancyv1alpha.WorkspaceTypeReference{
+			Name: kcptenancyv1alpha.WorkspaceTypeName(wtName),
+			Path: wtPath,
 		}
 		return controllerutil.SetOwnerReference(instance, createdWorkspace, r.client.Scheme())
 	})
