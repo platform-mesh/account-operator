@@ -72,23 +72,21 @@ func sanitizeForKubernetes(name string) string {
 }
 
 func GetOrgWorkspaceTypeName(accountName, workspacePath string) string {
-	workspaceName := extractWorkspaceNameFromPath(workspacePath)
-	var name string
-	if workspaceName != "" {
-		name = fmt.Sprintf("%s-%s-org", workspaceName, accountName)
-	} else {
-		name = fmt.Sprintf("%s-org", accountName)
-	}
-	return sanitizeForKubernetes(name)
+	return getWorkspaceTypeName(accountName, workspacePath, "org")
 }
 
 func GetAccWorkspaceTypeName(accountName, workspacePath string) string {
+	return getWorkspaceTypeName(accountName, workspacePath, "acc")
+}
+
+// getWorkspaceTypeName is a helper function to generate workspace type names
+func getWorkspaceTypeName(accountName, workspacePath, suffix string) string {
 	workspaceName := extractWorkspaceNameFromPath(workspacePath)
 	var name string
 	if workspaceName != "" {
-		name = fmt.Sprintf("%s-%s-acc", workspaceName, accountName)
+		name = fmt.Sprintf("%s-%s-%s", workspaceName, accountName, suffix)
 	} else {
-		name = fmt.Sprintf("%s-acc", accountName)
+		name = fmt.Sprintf("%s-%s", accountName, suffix)
 	}
 	return sanitizeForKubernetes(name)
 }
