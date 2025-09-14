@@ -2,6 +2,7 @@ package subroutines
 
 import (
 	"context"
+	// "fmt" // TODO: Uncomment when enabling authentication
 
 	kcptenancyv1alpha "github.com/kcp-dev/kcp/sdk/apis/tenancy/v1alpha1"
 	"github.com/kcp-dev/logicalcluster/v3"
@@ -169,6 +170,12 @@ func (r *WorkspaceTypeSubroutine) createCustomOrgWorkspaceType(ctx context.Conte
 		customOrg.Spec.LimitAllowedChildren = createWorkspaceTypeSelector(
 			createWorkspaceTypeReference(customAccName, currentPath),
 		)
+		// TODO: Enable authentication when KCP main is deployed
+		// Set authentication configuration for the workspace type
+		// authConfigName := getAuthConfigName(accountName, currentPath)
+		// customOrg.Spec.AuthenticationConfigurations = []kcptenancyv1alpha.AuthenticationConfigurationReference{
+		//     {Name: authConfigName},
+		// }
 		return nil
 	})
 	return err
@@ -222,3 +229,9 @@ func createWorkspaceTypeSelector(refs ...kcptenancyv1alpha.WorkspaceTypeReferenc
 		Types: refs,
 	}
 }
+
+// TODO: Enable when KCP main is deployed
+// getAuthConfigName generates a consistent name for the WorkspaceAuthenticationConfiguration
+// func getAuthConfigName(accountName, currentPath string) string {
+//     return fmt.Sprintf("%s-auth", GetOrgWorkspaceTypeName(accountName, currentPath))
+// }
