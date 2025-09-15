@@ -8,8 +8,8 @@ vars:
   ENVTEST_VERSION: release-0.17
   CRD_DIRECTORY: config/crd
   TEST_SETUP_DIRECTORY: test/setup/01-platform-mesh-system
-  KCP_APIGEN_VERSION: v0.28.1
-  KCP_VERSION: 0.28.1
+  KCP_APIGEN_VERSION: v0.27.1
+  KCP_VERSION: 0.27.1
   GOMPLATE_VERSION: v4.3.0
   GOARCH:
     sh: go env GOARCH
