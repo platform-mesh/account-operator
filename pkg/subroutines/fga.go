@@ -10,6 +10,7 @@ import (
 	kcpcorev1alpha "github.com/kcp-dev/kcp/sdk/apis/core/v1alpha1"
 	"github.com/kcp-dev/logicalcluster/v3"
 	openfgav1 "github.com/openfga/api/proto/openfga/v1"
+	pmconfig "github.com/platform-mesh/golang-commons/config"
 	"github.com/platform-mesh/golang-commons/controller/lifecycle/runtimeobject"
 	"github.com/platform-mesh/golang-commons/errors"
 	"github.com/platform-mesh/golang-commons/fga/helpers"
@@ -21,6 +22,7 @@ import (
 	"sigs.k8s.io/controller-runtime/pkg/kontext"
 
 	"github.com/platform-mesh/account-operator/api/v1alpha1"
+	"github.com/platform-mesh/account-operator/internal/config"
 )
 
 type FGASubroutine struct {
@@ -47,6 +49,7 @@ func NewFGASubroutine(cl client.Client, fgaClient openfgav1.OpenFGAServiceClient
 func (e *FGASubroutine) Process(ctx context.Context, ro runtimeobject.RuntimeObject) (ctrl.Result, errors.OperatorError) {
 	account := ro.(*v1alpha1.Account)
 	cn := MustGetClusteredName(ctx, ro)
+	cfg := pmconfig.LoadConfigFromContext(ctx).(config.OperatorConfig)
 
 	log := logger.LoadLoggerFromContext(ctx)
 	log.Debug().Msg("Starting creator subroutine process() function")
@@ -110,7 +113,7 @@ func (e *FGASubroutine) Process(ctx context.Context, ro runtimeobject.RuntimeObj
 		creator := formatUser(*account.Spec.Creator)
 
 		writes = append(writes, &openfgav1.TupleKey{
-			Object:   fmt.Sprintf("role:core_platform-mesh_io_account/%s/%s/owner", accountInfo.Spec.Account.OriginClusterId, account.Name),
+			Object:   fmt.Sprintf("role:%s/%s/%s/owner", cfg.Subroutines.FGA.ObjectType, accountInfo.Spec.Account.OriginClusterId, account.Name),
 			Relation: "assignee",
 			User:     fmt.Sprintf("user:%s", creator),
 		})
@@ -118,7 +121,7 @@ func (e *FGASubroutine) Process(ctx context.Context, ro runtimeobject.RuntimeObj
 		writes = append(writes, &openfgav1.TupleKey{
 			Object:   fmt.Sprintf("%s:%s/%s", e.objectType, accountInfo.Spec.Account.OriginClusterId, account.Name),
 			Relation: e.creatorRelation,
-			User:     fmt.Sprintf("role:core_platform-mesh_io_account/%s/%s/owner#assignee", accountInfo.Spec.Account.OriginClusterId, account.Name),
+			User:     fmt.Sprintf("role:%s/%s/%s/owner#assignee", cfg.Subroutines.FGA.ObjectType, accountInfo.Spec.Account.OriginClusterId, account.Name),
 		})
 	}
 
@@ -148,6 +151,7 @@ func (e *FGASubroutine) Process(ctx context.Context, ro runtimeobject.RuntimeObj
 func (e *FGASubroutine) Finalize(ctx context.Context, runtimeObj runtimeobject.RuntimeObject) (ctrl.Result, errors.OperatorError) {
 	account := runtimeObj.(*v1alpha1.Account)
 	log := logger.LoadLoggerFromContext(ctx)
+	cfg := pmconfig.LoadConfigFromContext(ctx).(config.OperatorConfig)
 
 	// Skip fga account finalization for organizations because the store is removed completely
 	if account.Spec.Type != v1alpha1.AccountTypeOrg {
@@ -176,7 +180,7 @@ func (e *FGASubroutine) Finalize(ctx context.Context, runtimeObj runtimeobject.R
 		if account.Spec.Creator != nil {
 			creator := formatUser(*account.Spec.Creator)
 			deletes = append(deletes, &openfgav1.TupleKeyWithoutCondition{
-				Object:   fmt.Sprintf("role:core_platform-mesh_io_account/%s/%s/owner", accountInfo.Spec.Account.GeneratedClusterId, account.Name),
+				Object:   fmt.Sprintf("role:%s/%s/%s/owner", cfg.Subroutines.FGA.ObjectType, accountInfo.Spec.Account.GeneratedClusterId, account.Name),
 				Relation: "assignee",
 				User:     fmt.Sprintf("user:%s", creator),
 			})
@@ -184,7 +188,7 @@ func (e *FGASubroutine) Finalize(ctx context.Context, runtimeObj runtimeobject.R
 			deletes = append(deletes, &openfgav1.TupleKeyWithoutCondition{
 				Object:   fmt.Sprintf("%s:%s/%s", e.objectType, accountInfo.Spec.Account.GeneratedClusterId, account.Name),
 				Relation: e.creatorRelation,
-				User:     fmt.Sprintf("role:core_platform-mesh_io_account/%s/%s/owner#assignee", accountInfo.Spec.Account.GeneratedClusterId, account.Name),
+				User:     fmt.Sprintf("role:%s/%s/%s/owner#assignee", cfg.Subroutines.FGA.ObjectType, accountInfo.Spec.Account.GeneratedClusterId, account.Name),
 			})
 		}
 
