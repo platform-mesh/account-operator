@@ -1,10 +1,18 @@
-apiVersion: apis.kcp.io/v1alpha1
+apiVersion: apis.kcp.io/v1alpha2
 kind: APIExport
 metadata:
   creationTimestamp: null
   name: core.platform-mesh.io
 spec:
-  latestResourceSchemas:
-  - v250715-5b899f6.accountinfos.core.platform-mesh.io
-  - v250715-5b899f6.accounts.core.platform-mesh.io
+  resources:
+  - group: core.platform-mesh.io
+    name: accountinfos
+    schema: v250715-5b899f6.accountinfos.core.platform-mesh.io
+    storage:
+      crd: {}
+  - group: core.platform-mesh.io
+    name: accounts
+    schema: v250915-1185c0b.accounts.core.platform-mesh.io
+    storage:
+      crd: {}
 status: {}
