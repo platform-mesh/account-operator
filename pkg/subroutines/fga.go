@@ -110,7 +110,7 @@ func (e *FGASubroutine) Process(ctx context.Context, ro runtimeobject.RuntimeObj
 		creator := formatUser(*account.Spec.Creator)
 
 		writes = append(writes, &openfgav1.TupleKey{
-			Object:   fmt.Sprintf("role:%s/%s/owner", accountInfo.Spec.Account.OriginClusterId, account.Name),
+			Object:   fmt.Sprintf("role:core_platform-mesh_io_account/%s/%s/owner", accountInfo.Spec.Account.OriginClusterId, account.Name),
 			Relation: "assignee",
 			User:     fmt.Sprintf("user:%s", creator),
 		})
@@ -118,7 +118,7 @@ func (e *FGASubroutine) Process(ctx context.Context, ro runtimeobject.RuntimeObj
 		writes = append(writes, &openfgav1.TupleKey{
 			Object:   fmt.Sprintf("%s:%s/%s", e.objectType, accountInfo.Spec.Account.OriginClusterId, account.Name),
 			Relation: e.creatorRelation,
-			User:     fmt.Sprintf("role:%s/%s/owner#assignee", accountInfo.Spec.Account.OriginClusterId, account.Name),
+			User:     fmt.Sprintf("role:core_platform-mesh_io_account/%s/%s/owner#assignee", accountInfo.Spec.Account.OriginClusterId, account.Name),
 		})
 	}
 
@@ -176,7 +176,7 @@ func (e *FGASubroutine) Finalize(ctx context.Context, runtimeObj runtimeobject.R
 		if account.Spec.Creator != nil {
 			creator := formatUser(*account.Spec.Creator)
 			deletes = append(deletes, &openfgav1.TupleKeyWithoutCondition{
-				Object:   fmt.Sprintf("role:%s/%s/owner", accountInfo.Spec.Account.GeneratedClusterId, account.Name),
+				Object:   fmt.Sprintf("role:core_platform-mesh_io_account/%s/%s/owner", accountInfo.Spec.Account.GeneratedClusterId, account.Name),
 				Relation: "assignee",
 				User:     fmt.Sprintf("user:%s", creator),
 			})
@@ -184,7 +184,7 @@ func (e *FGASubroutine) Finalize(ctx context.Context, runtimeObj runtimeobject.R
 			deletes = append(deletes, &openfgav1.TupleKeyWithoutCondition{
 				Object:   fmt.Sprintf("%s:%s/%s", e.objectType, accountInfo.Spec.Account.GeneratedClusterId, account.Name),
 				Relation: e.creatorRelation,
-				User:     fmt.Sprintf("role:%s/%s/owner#assignee", accountInfo.Spec.Account.GeneratedClusterId, account.Name),
+				User:     fmt.Sprintf("role:core_platform-mesh_io_account/%s/%s/owner#assignee", accountInfo.Spec.Account.GeneratedClusterId, account.Name),
 			})
 		}
 
