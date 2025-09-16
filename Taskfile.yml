@@ -77,13 +77,6 @@ tasks:
       - task: envtest
         vars:
           ADDITIONAL_COMMAND_ARGS: -coverprofile=./cover.out -covermode=atomic -coverpkg=./...
-  helm-unittest:
-    cmds:
-      - helm unittest chart
-  validate:
-    cmds:
-      - task: lint
-      - task: test
   start-kcp:
     deps: [setup:kcp]
     cmds:

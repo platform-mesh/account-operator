@@ -7,4 +7,12 @@ spec:
   latestResourceSchemas:
   - v250715-5b899f6.accountinfos.core.platform-mesh.io
   - v250915-1185c0b.accounts.core.platform-mesh.io
+  permissionClaims:
+  - resource: namespaces
+  - group: tenancy.kcp.io
+    identityHash: '{{ .data.apiExportRootTenancyKcpIoIdentityHash }}'
+    resource: workspaces
+  - group: tenancy.kcp.io
+    identityHash: '{{ .data.apiExportRootTenancyKcpIoIdentityHash }}'
+    resource: workspacetypes
 status: {}
