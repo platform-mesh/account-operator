@@ -791,7 +791,7 @@ func TestCreatorSubroutine_Finalize(t *testing.T) {
 			},
 		},
 	}
-
+	defaultContext := pmconfig.SetConfigInContext(context.Background(), config.OperatorConfig{})
 	for _, test := range testCases {
 		t.Run(test.name, func(t *testing.T) {
 
@@ -803,7 +803,7 @@ func TestCreatorSubroutine_Finalize(t *testing.T) {
 			}
 
 			routine := subroutines.NewFGASubroutine(k8sClient, openFGAClient, "owner", "parent", "account")
-			ctx := kontext.WithCluster(context.Background(), "abcdefghi")
+			ctx := kontext.WithCluster(defaultContext, "abcdefghi")
 			_, err := routine.Finalize(ctx, test.account)
 			if test.expectedError {
 				assert.NotNil(t, err)
