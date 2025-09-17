@@ -73,6 +73,29 @@ func (r *WorkspaceSubroutine) Finalizers() []string { // coverage-ignore
 	return []string{"account.core.platform-mesh.io/finalizer"}
 }
 
+// waitForWorkspaceType waits for a WorkspaceType to be ready by checking if it exists and has Ready condition
+func (r *WorkspaceSubroutine) waitForWorkspaceType(ctx context.Context, name string) errors.OperatorError {
+	log := ctrl.LoggerFrom(ctx)
+	wt := &kcptenancyv1alpha.WorkspaceType{}
+	key := client.ObjectKey{Name: name}
+
+	log.Info("checking workspace type", "name", name)
+	err := r.client.Get(ctx, key, wt)
+	if err != nil {
+		log.Error(err, "failed to get workspace type", "name", name)
+		return errors.NewOperatorError(err, true, false)
+	}
+
+	log.Info("workspace type found", "name", name, "conditions", wt.Status.Conditions)
+	// Check if the workspace type is Ready
+	for _, cond := range wt.Status.Conditions {
+		if cond.Type == "Ready" && cond.Status == "True" {
+			log.Info("workspace type is ready", "name", name)
+			return nil
+		}
+	}
+	return errors.NewOperatorError(errors.New("workspace type not ready"), true, false)
+}
 func (r *WorkspaceSubroutine) Process(ctx context.Context, runtimeObj runtimeobject.RuntimeObject) (ctrl.Result, errors.OperatorError) {
 	instance := runtimeObj.(*corev1alpha1.Account)
 	cfg := commonconfig.LoadConfigFromContext(ctx).(config.OperatorConfig)
@@ -90,6 +113,40 @@ func (r *WorkspaceSubroutine) Process(ctx context.Context, runtimeObj runtimeobj
 		ctxWS = kontext.WithCluster(ctx, logicalcluster.Name(orgCluster))
 	}
 
+	// Determine workspace type name and path
+	wtName := string(instance.Spec.Type)
+	wtPath := cfg.Kcp.ProviderWorkspace
+	switch instance.Spec.Type {
+	case corev1alpha1.AccountTypeOrg:
+		wtName = GetOrgWorkspaceTypeName(instance.Name, origPath)
+		if cfg.Kcp.OrgWorkspaceCluster != "" {
+			wtPath = cfg.Kcp.OrgWorkspaceCluster
+		}
+		// Wait for org workspace type to be ready before proceeding
+		if err := r.waitForWorkspaceType(ctx, wtName); err != nil {
+			ctrl.LoggerFrom(ctx).Info("waiting for org workspace type to be ready", "name", wtName)
+			return ctrl.Result{Requeue: true, RequeueAfter: 5 * time.Second}, err
+		}
+	case corev1alpha1.AccountTypeAccount:
+		// Parse cluster path robustly: find the "orgs" segment anywhere
+		segs := strings.Split(origPath, ":")
+		for i := 0; i < len(segs); i++ {
+			if segs[i] == "orgs" {
+				// parent path where custom types are created: up to and including "orgs"
+				if i+1 < len(segs) {
+					wtName = GetAccWorkspaceTypeName(instance.Name, origPath)
+				}
+				wtPath = strings.Join(segs[:i+1], ":")
+				break
+			}
+		}
+		// Wait for account workspace type to be ready before proceeding
+		if err := r.waitForWorkspaceType(ctx, wtName); err != nil {
+			ctrl.LoggerFrom(ctx).Info("waiting for account workspace type to be ready", "name", wtName)
+			return ctrl.Result{Requeue: true, RequeueAfter: 5 * time.Second}, err
+		}
+	}
+
 	// Test if namespace was already created based on status
 	createdWorkspace := &kcptenancyv1alpha.Workspace{ObjectMeta: metav1.ObjectMeta{Name: instance.Name}}
 	_, err := controllerutil.CreateOrUpdate(ctxWS, r.client, createdWorkspace, func() error {
@@ -98,24 +155,7 @@ func (r *WorkspaceSubroutine) Process(ctx context.Context, runtimeObj runtimeobj
 			return controllerutil.SetOwnerReference(instance, createdWorkspace, r.client.Scheme())
 		}
 
-		wtName := string(instance.Spec.Type)
-		wtPath := cfg.Kcp.ProviderWorkspace
-		switch instance.Spec.Type {
-		case corev1alpha1.AccountTypeOrg:
-			wtName = GetOrgWorkspaceTypeName(instance.Name, origPath)
-			if cfg.Kcp.OrgWorkspaceCluster != "" {
-				wtPath = cfg.Kcp.OrgWorkspaceCluster
-			}
-		case corev1alpha1.AccountTypeAccount:
-			// Parse cluster path to determine org name
-			parts := strings.SplitN(origPath, ":", 3)
-			if len(parts) >= 3 && parts[1] == "orgs" {
-				orgName := parts[2]
-				wtName = GetAccWorkspaceTypeName(orgName, origPath)
-				wtPath = strings.Join(parts[:2], ":") // parent path where custom types are created
-			}
-		}
-		createdWorkspace.Spec.Type = kcptenancyv1alpha.WorkspaceTypeReference{
+		createdWorkspace.Spec.Type = &kcptenancyv1alpha.WorkspaceTypeReference{
 			Name: kcptenancyv1alpha.WorkspaceTypeName(wtName),
 			Path: wtPath,
 		}

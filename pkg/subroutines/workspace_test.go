@@ -8,6 +8,8 @@ import (
 
 	kcpcorev1alpha1 "github.com/kcp-dev/kcp/sdk/apis/core/v1alpha1"
 	kcptenancyv1alpha "github.com/kcp-dev/kcp/sdk/apis/tenancy/v1alpha1"
+	conditionsv1alpha1 "github.com/kcp-dev/kcp/sdk/apis/third_party/conditions/apis/conditions/v1alpha1"
+	"github.com/kcp-dev/logicalcluster/v3"
 	platformmeshcontext "github.com/platform-mesh/golang-commons/context"
 	"github.com/platform-mesh/golang-commons/logger"
 	"github.com/stretchr/testify/assert"
@@ -219,6 +221,56 @@ func (suite *WorkspaceSubroutineTestSuite) TestProcessing_CreateError() {
 	suite.NotNil(err)
 	suite.True(err.Retry())
 	suite.True(err.Sentry())
+	suite.clientMock.AssertExpectations(suite.T())
+}
+
+func (suite *WorkspaceSubroutineTestSuite) TestProcessing_AccountType_MultiSegmentPath() {
+	// Given
+	testAccount := &corev1alpha1.Account{
+		Spec: corev1alpha1.AccountSpec{
+			Type: corev1alpha1.AccountTypeAccount,
+		},
+	}
+	testAccount.Name = "test-account"
+
+	// Setup context with multi-segment cluster path: "root:platform-mesh:orgs:acme"
+	// This tests the fixed parsing logic that should extract "acme" as the org name
+	// and "root:platform-mesh:orgs" as the workspace path
+	clusterPath := logicalcluster.Name("root:platform-mesh:orgs:acme")
+	ctx := kontext.WithCluster(suite.context, clusterPath)
+
+	// Mock all Get/Create calls in expected order
+	suite.clientMock.On("Scheme").Return(scheme.Scheme).Maybe() // Allow multiple calls
+
+	// 1. waitForWorkspaceType Get call - workspace type should be ready
+	suite.clientMock.On("Get", mock.Anything, types.NamespacedName{Name: "acme-test-account-acc"}, mock.Anything).
+		Run(func(args mock.Arguments) {
+			obj := args[2].(*kcptenancyv1alpha.WorkspaceType)
+			obj.Name = "acme-test-account-acc"
+			obj.Status.Conditions = conditionsv1alpha1.Conditions{
+				{
+					Type:   "Ready",
+					Status: "True",
+				},
+			}
+		}).Return(nil)
+
+	// 2. CreateOrUpdate Get call for Workspace - not found (will trigger creation)
+	suite.clientMock.On("Get", mock.Anything, types.NamespacedName{Name: "test-account"}, mock.Anything).
+		Return(kerrors.NewNotFound(schema.GroupResource{}, "test-account"))
+
+	// 3. CreateOrUpdate Create call for Workspace
+	suite.clientMock.On("Create", mock.Anything, mock.Anything).
+		Run(func(args mock.Arguments) {
+			obj := args[1].(*kcptenancyv1alpha.Workspace)
+			obj.Name = "test-account"
+		}).Return(nil)
+
+	// When
+	_, err := suite.testObj.Process(ctx, testAccount)
+
+	// Then
+	suite.Nil(err)
 	suite.clientMock.AssertExpectations(suite.T())
 }
 

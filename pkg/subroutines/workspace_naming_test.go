@@ -104,6 +104,12 @@ func TestGetAccWorkspaceTypeName(t *testing.T) {
 			workspacePath: "root:orgs:very-long-workspace-name-that-also-exceeds-limits",
 			expected:      "very-long-workspace-name-that-also-exceeds-limits-very-78eb1d5b",
 		},
+		{
+			name:          "with multi-segment path before orgs",
+			accountName:   "test-account",
+			workspacePath: "root:platform-mesh:orgs:acme",
+			expected:      "acme-test-account-acc",
+		},
 	}
 
 	for _, tt := range tests {

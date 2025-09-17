@@ -1,0 +1,8 @@
+apiVersion: core.platform-mesh.io/v1alpha1
+kind: Account
+metadata:
+  name: test-org-auth
+spec:
+  type: org
+  displayName: "Test Organization with Authentication"
+  description: "Testing OIDC authentication configuration on workspace types"

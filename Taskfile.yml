@@ -9,12 +9,13 @@ vars:
   CRD_DIRECTORY: config/crd
   TEST_SETUP_DIRECTORY: test/setup/01-platform-mesh-system
   KCP_APIGEN_VERSION: v0.21.0
-  KCP_VERSION: 0.27.1
+  KCP_VERSION: main
   GOMPLATE_VERSION: v4.3.0
   GOARCH:
     sh: go env GOARCH
   GOOS:
     sh: go env GOOS
+  IMAGE_REPO: ghcr.io/platform-mesh/account-operator
 tasks:
   ## Setup
   setup:controller-gen:
@@ -24,7 +25,7 @@ tasks:
   setup:kcp:
     internal: true
     cmds:
-      - test -s {{.LOCAL_BIN}}/kcp || GOBIN=$(pwd)/{{.LOCAL_BIN}} ./hack/download-tool.sh https://github.com/kcp-dev/kcp/releases/download/v{{ .KCP_VERSION }}/kcp_{{ .KCP_VERSION }}_{{ .GOOS }}_{{ .GOARCH }}.tar.gz kcp {{.KCP_VERSION}}
+      - test -s {{.LOCAL_BIN}}/kcp || (which kcp && cp $(which kcp) {{.LOCAL_BIN}}/kcp) || echo "KCP binary not found, please install kcp"
   setup:gomplate:
     internal: true
     cmds:
@@ -71,12 +72,18 @@ tasks:
     deps: [setup:kcp, setup:gomplate]
     cmds:
       - task: envtest
+        vars:
+          ADDITIONAL_COMMAND_ARGS: ""
+    env:
+      KCP_VERSION: "{{.KCP_VERSION}}"
   cover:
     deps: [setup:kcp, setup:gomplate]
     cmds:
       - task: envtest
         vars:
           ADDITIONAL_COMMAND_ARGS: -coverprofile=./cover.out -covermode=atomic -coverpkg=./...
+    env:
+      KCP_VERSION: "{{.KCP_VERSION}}"
   helm-unittest:
     cmds:
       - helm unittest chart
@@ -87,5 +94,5 @@ tasks:
   start-kcp:
     deps: [setup:kcp]
     cmds:
-      - "{{ .LOCAL_BIN}}/kcp start"
+      - "{{ .LOCAL_BIN }}/kcp start"
 

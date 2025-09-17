@@ -367,3 +367,42 @@ func TestWorkspaceTypeSubroutine_Process_CustomOrgCreateError(t *testing.T) {
 	_, opErr := sub.Process(ctx, acct)
 	require.NotNil(t, opErr)
 }
+func TestWorkspaceTypeSubroutine_Process_AuthenticationConfiguration(t *testing.T) {
+scheme := runtime.NewScheme()
+utilruntime.Must(kcptenancyv1alpha.AddToScheme(scheme))
+
+baseOrg := &kcptenancyv1alpha.WorkspaceType{ObjectMeta: metav1.ObjectMeta{Name: "org"}}
+baseAcc := &kcptenancyv1alpha.WorkspaceType{ObjectMeta: metav1.ObjectMeta{Name: "account"}}
+
+c := fake.NewClientBuilder().WithScheme(scheme).WithObjects(baseOrg, baseAcc).Build()
+
+acct := &corev1alpha1.Account{
+ObjectMeta: metav1.ObjectMeta{Name: "test-org", UID: "1234"},
+Spec:       corev1alpha1.AccountSpec{Type: corev1alpha1.AccountTypeOrg},
+}
+
+cfg := operatorconfig.OperatorConfig{}
+cfg.Kcp.ProviderWorkspace = "root"
+log, _ := logger.New(logger.DefaultConfig())
+ctx, _, _ := platformmeshcontext.StartContext(log, cfg, 1*time.Minute)
+ctx = kontext.WithCluster(ctx, logicalcluster.Name("orgs:root-org"))
+
+sub := subroutines.NewWorkspaceTypeSubroutine(c)
+
+_, opErr := sub.Process(ctx, acct)
+require.Nil(t, opErr)
+
+// Verify that the custom org workspace type was created with authentication configuration
+customOrgName := subroutines.GetOrgWorkspaceTypeName(acct.Name, "orgs:root-org")
+customOrg := &kcptenancyv1alpha.WorkspaceType{}
+err := c.Get(ctx, client.ObjectKey{Name: customOrgName}, customOrg)
+require.NoError(t, err)
+
+// Verify that AuthenticationConfigurations is set
+require.NotNil(t, customOrg.Spec.AuthenticationConfigurations)
+require.Len(t, customOrg.Spec.AuthenticationConfigurations, 1)
+
+// Verify the authentication configuration name
+expectedAuthConfigName := fmt.Sprintf("%s-auth", customOrgName)
+require.Equal(t, expectedAuthConfigName, string(customOrg.Spec.AuthenticationConfigurations[0].Name))
+}
