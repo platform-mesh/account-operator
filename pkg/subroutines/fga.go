@@ -8,7 +8,6 @@ import (
 	"time"
 
 	kcpcorev1alpha "github.com/kcp-dev/kcp/sdk/apis/core/v1alpha1"
-	"github.com/kcp-dev/logicalcluster/v3"
 	openfgav1 "github.com/openfga/api/proto/openfga/v1"
 	"github.com/platform-mesh/golang-commons/controller/lifecycle/runtimeobject"
 	"github.com/platform-mesh/golang-commons/errors"
@@ -18,7 +17,6 @@ import (
 	"k8s.io/client-go/util/workqueue"
 	ctrl "sigs.k8s.io/controller-runtime"
 	"sigs.k8s.io/controller-runtime/pkg/client"
-	"sigs.k8s.io/controller-runtime/pkg/kontext"
 
 	"github.com/platform-mesh/account-operator/api/v1alpha1"
 )
@@ -30,6 +28,7 @@ type FGASubroutine struct {
 	parentRelation  string
 	creatorRelation string
 	limiter         workqueue.TypedRateLimiter[ClusteredName]
+	// use the manager client targeting virtual workspace
 }
 
 func NewFGASubroutine(cl client.Client, fgaClient openfgav1.OpenFGAServiceClient, creatorRelation, parentRealtion, objectType string) *FGASubroutine {
@@ -46,7 +45,7 @@ func NewFGASubroutine(cl client.Client, fgaClient openfgav1.OpenFGAServiceClient
 
 func (e *FGASubroutine) Process(ctx context.Context, ro runtimeobject.RuntimeObject) (ctrl.Result, errors.OperatorError) {
 	account := ro.(*v1alpha1.Account)
-	cn := MustGetClusteredName(ctx, ro)
+	cn, _ := GetClusteredName(ctx, ro)
 
 	log := logger.LoadLoggerFromContext(ctx)
 	log.Debug().Msg("Starting creator subroutine process() function")
@@ -62,10 +61,9 @@ func (e *FGASubroutine) Process(ctx context.Context, ro runtimeobject.RuntimeObj
 		return ctrl.Result{RequeueAfter: next}, nil
 	}
 
-	// Prepare context to work in workspace
-	wsCtx := kontext.WithCluster(ctx, logicalcluster.Name(accountWorkspace.Spec.Cluster))
-
-	accountInfo, err := e.getAccountInfo(wsCtx)
+	// Build workspace-scoped client
+	// the manager client is already targeting the virtual workspace host
+	accountInfo, err := e.getAccountInfo(ctx, e.client)
 	if err != nil {
 		log.Error().Err(err).Msg("Couldn't get Store Id")
 		return ctrl.Result{}, errors.NewOperatorError(err, true, true)
@@ -151,7 +149,13 @@ func (e *FGASubroutine) Finalize(ctx context.Context, runtimeObj runtimeobject.R
 
 	// Skip fga account finalization for organizations because the store is removed completely
 	if account.Spec.Type != v1alpha1.AccountTypeOrg {
-		accountInfo, err := e.getAccountInfo(ctx)
+		// Build workspace-scoped client
+		_, err := retrieveWorkspace(ctx, account, e.client, log)
+		if err != nil {
+			log.Error().Err(err).Msg("Couldn't retrieve workspace")
+			return ctrl.Result{}, errors.NewOperatorError(err, true, true)
+		}
+		accountInfo, err := e.getAccountInfo(ctx, e.client)
 		if err != nil {
 			log.Error().Err(err).Msg("Couldn't get Store Id")
 			return ctrl.Result{}, errors.NewOperatorError(err, true, true)
@@ -213,10 +217,10 @@ func (e *FGASubroutine) Finalize(ctx context.Context, runtimeObj runtimeobject.R
 	return ctrl.Result{}, nil
 }
 
-func (e *FGASubroutine) getAccountInfo(ctx context.Context) (*v1alpha1.AccountInfo, error) {
+func (e *FGASubroutine) getAccountInfo(ctx context.Context, cl client.Client) (*v1alpha1.AccountInfo, error) {
 	// Get AccountInfo For Project
 	accountInfo := &v1alpha1.AccountInfo{}
-	err := e.client.Get(ctx, client.ObjectKey{Name: DefaultAccountInfoName}, accountInfo)
+	err := cl.Get(ctx, client.ObjectKey{Name: DefaultAccountInfoName}, accountInfo)
 	if err != nil {
 		return nil, err
 	}

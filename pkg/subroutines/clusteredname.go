@@ -6,7 +6,6 @@ import (
 	"github.com/kcp-dev/logicalcluster/v3"
 	"github.com/platform-mesh/golang-commons/controller/lifecycle/runtimeobject"
 	"k8s.io/apimachinery/pkg/types"
-	"sigs.k8s.io/controller-runtime/pkg/kontext"
 )
 
 type ClusteredName struct {
@@ -16,20 +15,16 @@ type ClusteredName struct {
 
 func GetClusteredName(ctx context.Context, instance runtimeobject.RuntimeObject) (ClusteredName, bool) {
 	var cn ClusteredName
-	if cluster, ok := kontext.ClusterFrom(ctx); ok {
-		cn = ClusteredName{NamespacedName: types.NamespacedName{Name: instance.GetName(), Namespace: instance.GetNamespace()}, ClusterID: cluster}
-		return cn, true
-	} else {
-		return cn, false
-	}
+	// Upstream controller-runtime does not inject KCP cluster into context.
+	// Without KCP's fork, we cannot extract a logical cluster from context.
+	// Return false to indicate absence; callers should handle single-cluster behavior.
+	_ = ctx
+	cn = ClusteredName{NamespacedName: types.NamespacedName{Name: instance.GetName(), Namespace: instance.GetNamespace()}}
+	return cn, false
 }
 
 func MustGetClusteredName(ctx context.Context, instance runtimeobject.RuntimeObject) ClusteredName {
-	var cn ClusteredName
-	if cluster, ok := kontext.ClusterFrom(ctx); ok {
-		cn = ClusteredName{NamespacedName: types.NamespacedName{Name: instance.GetName(), Namespace: instance.GetNamespace()}, ClusterID: cluster}
-		return cn
-	} else {
-		panic("cluster not found in context, cannot requeue")
-	}
+	// No cluster in context when not using KCP controller-runtime; panic to preserve contract
+	_ = ctx
+	panic("cluster not found in context, cannot requeue")
 }

@@ -4,11 +4,9 @@ import (
 	"context"
 	"testing"
 
-	"github.com/kcp-dev/logicalcluster/v3"
 	metav1 "k8s.io/apimachinery/pkg/apis/meta/v1"
 	"k8s.io/apimachinery/pkg/runtime"
 	"k8s.io/apimachinery/pkg/runtime/schema"
-	"sigs.k8s.io/controller-runtime/pkg/kontext"
 )
 
 // dummyRuntimeObject implements runtimeobject.RuntimeObject for testing
@@ -21,22 +19,7 @@ func (d *dummyRuntimeObject) DeepCopyObject() runtime.Object   { return d }
 func (d *dummyRuntimeObject) GetName() string                  { return d.Name }
 func (d *dummyRuntimeObject) GetNamespace() string             { return d.Namespace }
 
-func TestGetClusteredName_WithCluster(t *testing.T) {
-	cluster := logicalcluster.Name("test-cluster")
-	ctx := kontext.WithCluster(context.Background(), cluster)
-	obj := &dummyRuntimeObject{}
-	obj.Name = "foo"
-	obj.Namespace = "bar"
-
-	cn, ok := GetClusteredName(ctx, obj)
-	if !ok {
-		t.Fatalf("expected ok=true, got false")
-	}
-	if cn.Name != "foo" || cn.Namespace != "bar" || cn.ClusterID != cluster {
-		t.Errorf("unexpected ClusteredName: %+v", cn)
-	}
-}
-
+// Without KCP context, GetClusteredName returns ok=false
 func TestGetClusteredName_WithoutCluster(t *testing.T) {
 	ctx := context.Background()
 	obj := &dummyRuntimeObject{}
@@ -49,18 +32,7 @@ func TestGetClusteredName_WithoutCluster(t *testing.T) {
 	}
 }
 
-func TestMustGetClusteredName_WithCluster(t *testing.T) {
-	cluster := logicalcluster.Name("test-cluster")
-	ctx := kontext.WithCluster(context.Background(), cluster)
-	obj := &dummyRuntimeObject{}
-	obj.Name = "foo"
-	obj.Namespace = "bar"
-
-	cn := MustGetClusteredName(ctx, obj)
-	if cn.Name != "foo" || cn.Namespace != "bar" || cn.ClusterID != cluster {
-		t.Errorf("unexpected ClusteredName: %+v", cn)
-	}
-}
+// MustGetClusteredName should panic without cluster in context
 
 func TestMustGetClusteredName_WithoutCluster(t *testing.T) {
 	defer func() {

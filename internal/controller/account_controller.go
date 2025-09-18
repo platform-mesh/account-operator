@@ -25,7 +25,6 @@ import (
 	"github.com/platform-mesh/golang-commons/controller/lifecycle/subroutine"
 	"github.com/platform-mesh/golang-commons/logger"
 	ctrl "sigs.k8s.io/controller-runtime"
-	"sigs.k8s.io/controller-runtime/pkg/kcp"
 	"sigs.k8s.io/controller-runtime/pkg/predicate"
 
 	corev1alpha1 "github.com/platform-mesh/account-operator/api/v1alpha1"
@@ -68,5 +67,5 @@ func (r *AccountReconciler) SetupWithManager(mgr ctrl.Manager, cfg *platformmesh
 	if err != nil {
 		return err
 	}
-	return builder.Complete(kcp.WithClusterInContext(r))
+	return builder.Complete(r)
 }
