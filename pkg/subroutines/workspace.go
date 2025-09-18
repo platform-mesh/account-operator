@@ -10,6 +10,7 @@ import (
 	"github.com/platform-mesh/golang-commons/errors"
 	kerrors "k8s.io/apimachinery/pkg/api/errors"
 	metav1 "k8s.io/apimachinery/pkg/apis/meta/v1"
+	"k8s.io/apimachinery/pkg/types"
 	"k8s.io/client-go/util/workqueue"
 	ctrl "sigs.k8s.io/controller-runtime"
 	"sigs.k8s.io/controller-runtime/pkg/client"
@@ -40,7 +41,11 @@ func (r *WorkspaceSubroutine) GetName() string {
 
 func (r *WorkspaceSubroutine) Finalize(ctx context.Context, ro runtimeobject.RuntimeObject) (ctrl.Result, errors.OperatorError) {
 	instance := ro.(*corev1alpha1.Account)
-	cn := MustGetClusteredName(ctx, ro)
+	// In upstream controller-runtime, cluster is not injected; synthesize a stable key
+	cn, _ := GetClusteredName(ctx, ro)
+	if cn.NamespacedName.Name == "" {
+		cn = ClusteredName{NamespacedName: types.NamespacedName{Name: instance.Name, Namespace: instance.Namespace}}
+	}
 
 	ws := kcptenancyv1alpha.Workspace{}
 	err := r.client.Get(ctx, client.ObjectKey{Name: instance.Name}, &ws)

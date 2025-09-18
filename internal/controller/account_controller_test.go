@@ -23,7 +23,6 @@ import (
 	"k8s.io/client-go/rest"
 	ctrl "sigs.k8s.io/controller-runtime"
 	"sigs.k8s.io/controller-runtime/pkg/client"
-	"sigs.k8s.io/controller-runtime/pkg/kcp"
 
 	"github.com/platform-mesh/account-operator/api/v1alpha1"
 	"github.com/platform-mesh/account-operator/internal/config"
@@ -106,7 +105,7 @@ func (suite *AccountTestSuite) SetupSuite() {
 	})
 	suite.Require().NoError(err)
 
-	suite.kubernetesManager, err = kcp.NewClusterAwareManager(managerCfg, ctrl.Options{
+	suite.kubernetesManager, err = ctrl.NewManager(managerCfg, ctrl.Options{
 		Scheme:      suite.scheme,
 		Logger:      log.Logr(),
 		BaseContext: func() context.Context { return testContext },

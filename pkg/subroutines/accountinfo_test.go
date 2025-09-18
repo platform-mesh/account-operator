@@ -10,7 +10,6 @@ import (
 	kcptenancyv1alpha "github.com/kcp-dev/kcp/sdk/apis/tenancy/v1alpha1"
 	platformmeshcontext "github.com/platform-mesh/golang-commons/context"
 	"github.com/platform-mesh/golang-commons/logger"
-	"github.com/stretchr/testify/assert"
 	"github.com/stretchr/testify/mock"
 	"github.com/stretchr/testify/suite"
 	corev1 "k8s.io/api/core/v1"
@@ -20,8 +19,8 @@ import (
 	"k8s.io/apimachinery/pkg/types"
 	utilruntime "k8s.io/apimachinery/pkg/util/runtime"
 	"k8s.io/client-go/kubernetes/scheme"
+
 	"sigs.k8s.io/controller-runtime/pkg/client"
-	"sigs.k8s.io/controller-runtime/pkg/kontext"
 
 	"github.com/platform-mesh/account-operator/api/v1alpha1"
 	"github.com/platform-mesh/account-operator/internal/config"
@@ -106,7 +105,6 @@ func (suite *AccountInfoSubroutineTestSuite) TestProcessing_OK_ForOrganization()
 	suite.mockGetAccountInfoCallNotFound()
 	suite.mockCreateAccountInfoCall(expectedAccountInfo)
 	ctx := context.Background()
-	ctx = kontext.WithCluster(ctx, "some-cluster-id")
 	// When
 	res, err := suite.testObj.Process(ctx, testAccount)
 
@@ -161,9 +159,12 @@ func (suite *AccountInfoSubroutineTestSuite) TestProcessing_ForOrganization_Miss
 	suite.mockCreateAccountInfoCall(expectedAccountInfo)
 
 	// When
-	assert.Panics(suite.T(), func() {
-		suite.testObj.Process(context.Background(), testAccount)
-	})
+	res, err := suite.testObj.Process(context.Background(), testAccount)
+
+	// Then
+	suite.Nil(err)
+	suite.Assert().Zero(res.RequeueAfter)
+	suite.clientMock.AssertExpectations(suite.T())
 }
 
 func (suite *AccountInfoSubroutineTestSuite) TestProcessing_ForOrganization_Workspace_Not_Ready() {
@@ -177,7 +178,6 @@ func (suite *AccountInfoSubroutineTestSuite) TestProcessing_ForOrganization_Work
 		},
 	}
 	ctx := context.Background()
-	ctx = kontext.WithCluster(ctx, "some-cluster-id")
 
 	suite.mockGetWorkspaceByName(kcpcorev1alpha1.LogicalClusterPhaseInitializing, "root:platform-mesh:orgs")
 
@@ -205,9 +205,12 @@ func (suite *AccountInfoSubroutineTestSuite) TestProcessing_ForOrganization_Work
 	suite.mockGetWorkspaceByName(kcpcorev1alpha1.LogicalClusterPhaseInitializing, "root:platform-mesh:orgs")
 
 	// When
-	assert.Panics(suite.T(), func() {
-		suite.testObj.Process(ctx, testAccount)
-	})
+	res, err := suite.testObj.Process(ctx, testAccount)
+
+	// Then
+	suite.Nil(err)
+	suite.Assert().NotZero(res.RequeueAfter)
+	suite.clientMock.AssertExpectations(suite.T())
 }
 
 func (suite *AccountInfoSubroutineTestSuite) TestProcessing_ForOrganization_No_Workspace() {
@@ -222,7 +225,7 @@ func (suite *AccountInfoSubroutineTestSuite) TestProcessing_ForOrganization_No_W
 	}
 
 	suite.mockGetWorkspaceNotFound()
-	ctx := kontext.WithCluster(suite.context, "some-cluster-id")
+	ctx := suite.context
 
 	// When
 	_, err := suite.testObj.Process(ctx, testAccount)
@@ -247,7 +250,7 @@ func (suite *AccountInfoSubroutineTestSuite) TestProcessing_OK_No_Path() {
 		},
 	}
 	suite.mockGetWorkspaceByName(kcpcorev1alpha1.LogicalClusterPhaseReady, "")
-	ctx := kontext.WithCluster(suite.context, "some-cluster-id")
+	ctx := suite.context
 
 	// When
 	_, err := suite.testObj.Process(ctx, testAccount)
@@ -272,7 +275,7 @@ func (suite *AccountInfoSubroutineTestSuite) TestProcessing_OK_Empty_Path() {
 		},
 	}
 	suite.mockGetWorkspaceByName(kcpcorev1alpha1.LogicalClusterPhaseReady, " ")
-	ctx := kontext.WithCluster(suite.context, "some-cluster-id")
+	ctx := suite.context
 
 	// When
 	_, err := suite.testObj.Process(ctx, testAccount)
@@ -297,7 +300,7 @@ func (suite *AccountInfoSubroutineTestSuite) TestProcessing_OK_Invalid_Path() {
 		},
 	}
 	suite.mockGetWorkspaceByWrongPath(kcpcorev1alpha1.LogicalClusterPhaseReady)
-	ctx := kontext.WithCluster(suite.context, "some-cluster-id")
+	ctx := suite.context
 
 	// When
 	_, err := suite.testObj.Process(ctx, testAccount)
@@ -370,7 +373,7 @@ func (suite *AccountInfoSubroutineTestSuite) TestProcessing_OK_ForAccount() {
 	suite.mockGetAccountInfo(parentAccountInfoSpec).Once()
 	suite.mockGetAccountInfoCallNotFound()
 	suite.mockCreateAccountInfoCall(expectedAccountInfo)
-	ctx := kontext.WithCluster(suite.context, "some-cluster-id")
+	ctx := suite.context
 
 	// When
 	_, err := suite.testObj.Process(ctx, testAccount)
@@ -397,7 +400,7 @@ func (suite *AccountInfoSubroutineTestSuite) TestProcessing_ForAccount_No_Parent
 	suite.mockGetWorkspaceByName(kcpcorev1alpha1.LogicalClusterPhaseReady, "root:platform-mesh:orgs:root-org")
 	suite.mockGetAccountInfoCallNotFound()
 
-	ctx := kontext.WithCluster(suite.context, "some-cluster-id")
+	ctx := suite.context
 	// When
 	_, err := suite.testObj.Process(ctx, testAccount)
 
@@ -426,7 +429,7 @@ func (suite *AccountInfoSubroutineTestSuite) TestProcessing_ForAccount_Parent_Lo
 
 	suite.mockGetWorkspaceByName(kcpcorev1alpha1.LogicalClusterPhaseReady, "root:platform-mesh:orgs:root-org")
 	suite.mockGetAccountInfoCallFailed()
-	ctx := kontext.WithCluster(suite.context, "some-cluster-id")
+	ctx := suite.context
 
 	// When
 	_, err := suite.testObj.Process(ctx, testAccount)
@@ -459,7 +462,7 @@ func (suite *AccountInfoSubroutineTestSuite) TestGetFinalizerName() {
 func (suite *AccountInfoSubroutineTestSuite) TestFinalize() {
 	// When
 	ctx := context.Background()
-	ctx = kontext.WithCluster(ctx, "some-cluster-id")
+	// keep simple background context
 	res, err := suite.testObj.Finalize(ctx, &v1alpha1.Account{
 		ObjectMeta: v1.ObjectMeta{
 			Name:       "example-account",
@@ -475,14 +478,16 @@ func (suite *AccountInfoSubroutineTestSuite) TestFinalize() {
 func (suite *AccountInfoSubroutineTestSuite) TestFinalizeNoContext() {
 	// When
 	ctx := context.Background()
-	assert.Panics(suite.T(), func() {
-		suite.testObj.Finalize(ctx, &v1alpha1.Account{
-			ObjectMeta: v1.ObjectMeta{
-				Name:       "example-account",
-				Finalizers: []string{"account.core.platform-mesh.io/info", "account.core.platform-mesh.io/abc"},
-			},
-		})
+	res, err := suite.testObj.Finalize(ctx, &v1alpha1.Account{
+		ObjectMeta: v1.ObjectMeta{
+			Name:       "example-account",
+			Finalizers: []string{"account.core.platform-mesh.io/info", "account.core.platform-mesh.io/abc"},
+		},
 	})
+
+	// Then
+	suite.Nil(err)
+	suite.Assert().NotZero(res.RequeueAfter)
 }
 
 func (suite *AccountInfoSubroutineTestSuite) mockGetAccountInfoCallNotFound() *mocks.Client_Get_Call {

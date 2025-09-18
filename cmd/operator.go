@@ -35,7 +35,6 @@ import (
 	ctrl "sigs.k8s.io/controller-runtime"
 	"sigs.k8s.io/controller-runtime/pkg/client"
 	"sigs.k8s.io/controller-runtime/pkg/healthz"
-	"sigs.k8s.io/controller-runtime/pkg/kcp"
 	metricsserver "sigs.k8s.io/controller-runtime/pkg/metrics/server"
 	"sigs.k8s.io/controller-runtime/pkg/webhook"
 
@@ -138,7 +137,7 @@ func RunController(_ *cobra.Command, _ []string) { // coverage-ignore
 		log.Info().Str("host", es.Status.APIExportEndpoints[0].URL).Msg("using host")
 		mgrConfig.Host = es.Status.APIExportEndpoints[0].URL
 	}
-	mgr, err = kcp.NewClusterAwareManager(mgrConfig, opts)
+	mgr, err = ctrl.NewManager(mgrConfig, opts)
 	if err != nil {
 		log.Fatal().Err(err).Msg("unable to start manager")
 	}

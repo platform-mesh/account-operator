@@ -21,7 +21,6 @@ import (
 	utilruntime "k8s.io/apimachinery/pkg/util/runtime"
 	"k8s.io/client-go/kubernetes/scheme"
 	"sigs.k8s.io/controller-runtime/pkg/client"
-	"sigs.k8s.io/controller-runtime/pkg/kontext"
 
 	corev1alpha1 "github.com/platform-mesh/account-operator/api/v1alpha1"
 	"github.com/platform-mesh/account-operator/internal/config"
@@ -81,7 +80,7 @@ func (suite *WorkspaceSubroutineTestSuite) TestFinalize_OK_Workspace_NotExisting
 	// Given
 	testAccount := &corev1alpha1.Account{}
 	mockGetWorkspaceCallNotFound(suite)
-	ctx := kontext.WithCluster(suite.context, "some-cluster-id")
+	ctx := suite.context
 	// When
 	res, err := suite.testObj.Finalize(ctx, testAccount)
 
@@ -109,7 +108,7 @@ func (suite *WorkspaceSubroutineTestSuite) TestFinalize_OK_Workspace_ExistingBut
 	// Given
 	testAccount := &corev1alpha1.Account{}
 	mockGetWorkspaceByNameInDeletion(suite)
-	ctx := kontext.WithCluster(suite.context, "some-cluster-id")
+	ctx := suite.context
 
 	// When
 	res, err := suite.testObj.Finalize(ctx, testAccount)
@@ -126,7 +125,6 @@ func (suite *WorkspaceSubroutineTestSuite) TestFinalize_OK_Workspace_Existing() 
 	mockGetWorkspaceByName(suite.clientMock, kcpcorev1alpha1.LogicalClusterPhaseReady, "https://example.com/")
 	mockDeleteWorkspaceCall(suite)
 	ctx := context.Background()
-	ctx = kontext.WithCluster(ctx, "some-cluster-id")
 
 	// When
 	res, err := suite.testObj.Finalize(ctx, testAccount)
@@ -142,7 +140,7 @@ func (suite *WorkspaceSubroutineTestSuite) TestFinalize_Error_On_Deletion() {
 	testAccount := &corev1alpha1.Account{}
 	mockGetWorkspaceByName(suite.clientMock, kcpcorev1alpha1.LogicalClusterPhaseReady, "https://example.com/")
 	mockDeleteWorkspaceCallFailed(suite)
-	ctx := kontext.WithCluster(suite.context, "some-cluster-id")
+	ctx := suite.context
 	// When
 	_, err := suite.testObj.Finalize(ctx, testAccount)
 
@@ -159,7 +157,7 @@ func (suite *WorkspaceSubroutineTestSuite) TestFinalize_Error_On_Get() {
 	// Given
 	testAccount := &corev1alpha1.Account{}
 	mockGetWorkspaceFailed(suite)
-	ctx := kontext.WithCluster(suite.context, "some-cluster-id")
+	ctx := suite.context
 	// When
 	_, err := suite.testObj.Finalize(ctx, testAccount)
 
