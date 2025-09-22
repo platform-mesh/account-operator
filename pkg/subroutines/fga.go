@@ -7,8 +7,8 @@ import (
 	"strings"
 	"time"
 
-	kcpcorev1alpha "github.com/kcp-dev/kcp/sdk/apis/core/v1alpha1"
 	openfgav1 "github.com/openfga/api/proto/openfga/v1"
+	kcptypes "github.com/platform-mesh/account-operator/pkg/types"
 	"github.com/platform-mesh/golang-commons/controller/lifecycle/runtimeobject"
 	"github.com/platform-mesh/golang-commons/errors"
 	"github.com/platform-mesh/golang-commons/fga/helpers"
@@ -55,7 +55,7 @@ func (e *FGASubroutine) Process(ctx context.Context, ro runtimeobject.RuntimeObj
 		return ctrl.Result{}, errors.NewOperatorError(err, true, true)
 	}
 
-	if accountWorkspace.Status.Phase != kcpcorev1alpha.LogicalClusterPhaseReady {
+	if accountWorkspace.Status.Phase != kcptypes.LogicalClusterPhaseReady {
 		log.Info().Msg("workspace is not ready yet, retry")
 		next := e.limiter.When(cn)
 		return ctrl.Result{RequeueAfter: next}, nil

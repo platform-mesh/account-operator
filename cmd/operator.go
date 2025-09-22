@@ -22,8 +22,8 @@ import (
 	"net/http"
 	"strings"
 
-	apisv1alpha1 "github.com/kcp-dev/kcp/sdk/apis/apis/v1alpha1"
 	openfgav1 "github.com/openfga/api/proto/openfga/v1"
+	kcptypes "github.com/platform-mesh/account-operator/pkg/types"
 	platformmeshcontext "github.com/platform-mesh/golang-commons/context"
 	"github.com/platform-mesh/golang-commons/traces"
 	"github.com/spf13/cobra"
@@ -126,7 +126,7 @@ func RunController(_ *cobra.Command, _ []string) { // coverage-ignore
 		if err != nil {
 			log.Fatal().Err(err).Msg("unable to create client")
 		}
-		es := &apisv1alpha1.APIExportEndpointSlice{}
+		es := &kcptypes.APIExportEndpointSlice{}
 		err = kclient.Get(ctx, client.ObjectKey{Name: operatorCfg.Kcp.ApiExportEndpointSliceName}, es)
 		if err != nil {
 			log.Fatal().Err(err).Msg("unable to create client")

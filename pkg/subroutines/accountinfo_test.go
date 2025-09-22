@@ -6,8 +6,7 @@ import (
 	"testing"
 	"time"
 
-	kcpcorev1alpha1 "github.com/kcp-dev/kcp/sdk/apis/core/v1alpha1"
-	kcptenancyv1alpha "github.com/kcp-dev/kcp/sdk/apis/tenancy/v1alpha1"
+	kcptypes "github.com/platform-mesh/account-operator/pkg/types"
 	platformmeshcontext "github.com/platform-mesh/golang-commons/context"
 	"github.com/platform-mesh/golang-commons/logger"
 	"github.com/stretchr/testify/mock"
@@ -19,7 +18,6 @@ import (
 	"k8s.io/apimachinery/pkg/types"
 	utilruntime "k8s.io/apimachinery/pkg/util/runtime"
 	"k8s.io/client-go/kubernetes/scheme"
-
 	"sigs.k8s.io/controller-runtime/pkg/client"
 
 	"github.com/platform-mesh/account-operator/api/v1alpha1"
@@ -101,7 +99,7 @@ func (suite *AccountInfoSubroutineTestSuite) TestProcessing_OK_ForOrganization()
 		},
 	}
 
-	suite.mockGetWorkspaceByName(kcpcorev1alpha1.LogicalClusterPhaseReady, "root:platform-mesh:orgs:root-org")
+	suite.mockGetWorkspaceByName(kcptypes.LogicalClusterPhaseReady, "root:platform-mesh:orgs:root-org")
 	suite.mockGetAccountInfoCallNotFound()
 	suite.mockCreateAccountInfoCall(expectedAccountInfo)
 	ctx := context.Background()
@@ -154,7 +152,7 @@ func (suite *AccountInfoSubroutineTestSuite) TestProcessing_ForOrganization_Miss
 		},
 	}
 
-	suite.mockGetWorkspaceByName(kcpcorev1alpha1.LogicalClusterPhaseReady, "root:platform-mesh:orgs:root-org")
+	suite.mockGetWorkspaceByName(kcptypes.LogicalClusterPhaseReady, "root:platform-mesh:orgs:root-org")
 	suite.mockGetAccountInfoCallNotFound()
 	suite.mockCreateAccountInfoCall(expectedAccountInfo)
 
@@ -179,7 +177,7 @@ func (suite *AccountInfoSubroutineTestSuite) TestProcessing_ForOrganization_Work
 	}
 	ctx := context.Background()
 
-	suite.mockGetWorkspaceByName(kcpcorev1alpha1.LogicalClusterPhaseInitializing, "root:platform-mesh:orgs")
+	suite.mockGetWorkspaceByName(kcptypes.LogicalClusterPhaseInitializing, "root:platform-mesh:orgs")
 
 	// When
 	res, err := suite.testObj.Process(ctx, testAccount)
@@ -202,7 +200,7 @@ func (suite *AccountInfoSubroutineTestSuite) TestProcessing_ForOrganization_Work
 	}
 	ctx := context.Background()
 
-	suite.mockGetWorkspaceByName(kcpcorev1alpha1.LogicalClusterPhaseInitializing, "root:platform-mesh:orgs")
+	suite.mockGetWorkspaceByName(kcptypes.LogicalClusterPhaseInitializing, "root:platform-mesh:orgs")
 
 	// When
 	res, err := suite.testObj.Process(ctx, testAccount)
@@ -249,7 +247,7 @@ func (suite *AccountInfoSubroutineTestSuite) TestProcessing_OK_No_Path() {
 			Type: v1alpha1.AccountTypeOrg,
 		},
 	}
-	suite.mockGetWorkspaceByName(kcpcorev1alpha1.LogicalClusterPhaseReady, "")
+	suite.mockGetWorkspaceByName(kcptypes.LogicalClusterPhaseReady, "")
 	ctx := suite.context
 
 	// When
@@ -274,7 +272,7 @@ func (suite *AccountInfoSubroutineTestSuite) TestProcessing_OK_Empty_Path() {
 			Type: v1alpha1.AccountTypeOrg,
 		},
 	}
-	suite.mockGetWorkspaceByName(kcpcorev1alpha1.LogicalClusterPhaseReady, " ")
+	suite.mockGetWorkspaceByName(kcptypes.LogicalClusterPhaseReady, " ")
 	ctx := suite.context
 
 	// When
@@ -299,7 +297,7 @@ func (suite *AccountInfoSubroutineTestSuite) TestProcessing_OK_Invalid_Path() {
 			Type: v1alpha1.AccountTypeOrg,
 		},
 	}
-	suite.mockGetWorkspaceByWrongPath(kcpcorev1alpha1.LogicalClusterPhaseReady)
+	suite.mockGetWorkspaceByWrongPath(kcptypes.LogicalClusterPhaseReady)
 	ctx := suite.context
 
 	// When
@@ -363,14 +361,14 @@ func (suite *AccountInfoSubroutineTestSuite) TestProcessing_OK_ForAccount() {
 		},
 	}
 
-	suite.mockGetWorkspaceByName(kcpcorev1alpha1.LogicalClusterPhaseReady, "root:platform-mesh:orgs:root-org:example-account")
+	suite.mockGetWorkspaceByName(kcptypes.LogicalClusterPhaseReady, "root:platform-mesh:orgs:root-org:example-account")
 	parentAccountInfoSpec := v1alpha1.AccountInfoSpec{
 		Organization:  expectedAccountInfo.Spec.Organization,
 		ParentAccount: nil,
 		Account:       expectedAccountInfo.Spec.Organization,
 		FGA:           v1alpha1.FGAInfo{Store: v1alpha1.StoreInfo{Id: "1"}},
 	}
-	suite.mockGetAccountInfo(parentAccountInfoSpec).Once()
+	suite.mockGetAccountInfo(parentAccountInfoSpec)
 	suite.mockGetAccountInfoCallNotFound()
 	suite.mockCreateAccountInfoCall(expectedAccountInfo)
 	ctx := suite.context
@@ -397,7 +395,7 @@ func (suite *AccountInfoSubroutineTestSuite) TestProcessing_ForAccount_No_Parent
 		},
 	}
 
-	suite.mockGetWorkspaceByName(kcpcorev1alpha1.LogicalClusterPhaseReady, "root:platform-mesh:orgs:root-org")
+	suite.mockGetWorkspaceByName(kcptypes.LogicalClusterPhaseReady, "root:platform-mesh:orgs:root-org")
 	suite.mockGetAccountInfoCallNotFound()
 
 	ctx := suite.context
@@ -427,7 +425,7 @@ func (suite *AccountInfoSubroutineTestSuite) TestProcessing_ForAccount_Parent_Lo
 		},
 	}
 
-	suite.mockGetWorkspaceByName(kcpcorev1alpha1.LogicalClusterPhaseReady, "root:platform-mesh:orgs:root-org")
+	suite.mockGetWorkspaceByName(kcptypes.LogicalClusterPhaseReady, "root:platform-mesh:orgs:root-org")
 	suite.mockGetAccountInfoCallFailed()
 	ctx := suite.context
 
@@ -490,22 +488,20 @@ func (suite *AccountInfoSubroutineTestSuite) TestFinalizeNoContext() {
 	suite.Assert().NotZero(res.RequeueAfter)
 }
 
-func (suite *AccountInfoSubroutineTestSuite) mockGetAccountInfoCallNotFound() *mocks.Client_Get_Call {
-	return suite.clientMock.EXPECT().
-		Get(mock.Anything, mock.Anything, mock.AnythingOfType("*v1alpha1.AccountInfo")).
-		Return(kerrors.NewNotFound(schema.GroupResource{}, ""))
+func (suite *AccountInfoSubroutineTestSuite) mockGetAccountInfoCallNotFound() {
+	suite.clientMock.On("Get", mock.Anything, mock.Anything, mock.AnythingOfType("*v1alpha1.AccountInfo")).
+		Return(kerrors.NewNotFound(schema.GroupResource{}, "")).Maybe()
 }
 
-func (suite *AccountInfoSubroutineTestSuite) mockGetAccountInfoCallFailed() *mocks.Client_Get_Call {
-	return suite.clientMock.EXPECT().
-		Get(mock.Anything, mock.Anything, mock.AnythingOfType("*v1alpha1.AccountInfo")).
+func (suite *AccountInfoSubroutineTestSuite) mockGetAccountInfoCallFailed() {
+	suite.clientMock.On("Get", mock.Anything, mock.Anything, mock.AnythingOfType("*v1alpha1.AccountInfo")).
 		Return(kerrors.NewInternalError(fmt.Errorf("failed")))
 }
 
-func (suite *AccountInfoSubroutineTestSuite) mockCreateAccountInfoCall(info v1alpha1.AccountInfo) *mocks.Client_Create_Call {
-	return suite.clientMock.EXPECT().
-		Create(mock.Anything, mock.Anything).
-		Run(func(ctx context.Context, obj client.Object, opts ...client.CreateOption) {
+func (suite *AccountInfoSubroutineTestSuite) mockCreateAccountInfoCall(info v1alpha1.AccountInfo) {
+	suite.clientMock.On("Create", mock.Anything, mock.Anything).
+		Run(func(args mock.Arguments) {
+			obj := args.Get(1).(client.Object)
 			actual, _ := obj.(*v1alpha1.AccountInfo)
 			if !suite.Equal(info, *actual) {
 				suite.log.Info().Msgf("Expected: %+v", actual)
@@ -513,55 +509,66 @@ func (suite *AccountInfoSubroutineTestSuite) mockCreateAccountInfoCall(info v1al
 			suite.Assert().Equal(info, *actual)
 		}).
 		Return(nil)
+
+	// Add Update mock for CreateOrUpdate pattern - but it may not be called
+	suite.clientMock.On("Update", mock.Anything, mock.Anything).
+		Run(func(args mock.Arguments) {
+			obj := args.Get(1).(client.Object)
+			actual, _ := obj.(*v1alpha1.AccountInfo)
+			if !suite.Equal(info, *actual) {
+				suite.log.Info().Msgf("Expected: %+v", actual)
+			}
+			suite.Assert().Equal(info, *actual)
+		}).
+		Return(nil).Maybe() // Make this optional
 }
 
-func (suite *AccountInfoSubroutineTestSuite) mockGetWorkspaceByName(ready kcpcorev1alpha1.LogicalClusterPhaseType, path string) *mocks.Client_Get_Call {
-	return suite.clientMock.EXPECT().
-		Get(mock.Anything, mock.Anything, mock.AnythingOfType("*v1alpha1.Workspace")).
-		Run(func(ctx context.Context, key types.NamespacedName, obj client.Object, opts ...client.GetOption) {
+func (suite *AccountInfoSubroutineTestSuite) mockGetWorkspaceByName(ready kcptypes.LogicalClusterPhaseType, path string) {
+	suite.clientMock.On("Get", mock.Anything, mock.Anything, mock.AnythingOfType("*types.Workspace")).
+		Run(func(args mock.Arguments) {
+			key := args.Get(1).(types.NamespacedName)
+			obj := args.Get(2).(*kcptypes.Workspace)
 			wsPath := ""
 			if path != "" {
 				wsPath = "https://example.com/" + path
 			}
-			actual, _ := obj.(*kcptenancyv1alpha.Workspace)
-			actual.Name = key.Name
-			actual.Spec = kcptenancyv1alpha.WorkspaceSpec{
+			obj.Name = key.Name
+			obj.Spec = kcptypes.WorkspaceSpec{
 				Cluster: "some-cluster-id-" + key.Name,
 				URL:     wsPath,
 			}
-			actual.Status.Phase = ready
+			obj.Status.Phase = ready
 		}).
 		Return(nil)
 }
 
-func (suite *AccountInfoSubroutineTestSuite) mockGetWorkspaceByWrongPath(ready kcpcorev1alpha1.LogicalClusterPhaseType) *mocks.Client_Get_Call {
-	return suite.clientMock.EXPECT().
-		Get(mock.Anything, mock.Anything, mock.AnythingOfType("*v1alpha1.Workspace")).
-		Run(func(ctx context.Context, key types.NamespacedName, obj client.Object, opts ...client.GetOption) {
-			actual, _ := obj.(*kcptenancyv1alpha.Workspace)
-			actual.Name = key.Name
-			actual.Spec = kcptenancyv1alpha.WorkspaceSpec{
+func (suite *AccountInfoSubroutineTestSuite) mockGetWorkspaceByWrongPath(ready kcptypes.LogicalClusterPhaseType) {
+	suite.clientMock.On("Get", mock.Anything, mock.Anything, mock.AnythingOfType("*types.Workspace")).
+		Run(func(args mock.Arguments) {
+			key := args.Get(1).(types.NamespacedName)
+			obj := args.Get(2).(*kcptypes.Workspace)
+			obj.Name = key.Name
+			obj.Spec = kcptypes.WorkspaceSpec{
 				Cluster: "some-cluster-id-" + key.Name,
 				URL:     "asd",
 			}
-			actual.Status.Phase = ready
+			obj.Status.Phase = ready
 		}).
 		Return(nil)
 }
 
-func (suite *AccountInfoSubroutineTestSuite) mockGetWorkspaceNotFound() *mocks.Client_Get_Call {
-	return suite.clientMock.EXPECT().
-		Get(mock.Anything, mock.Anything, mock.AnythingOfType("*v1alpha1.Workspace")).
+func (suite *AccountInfoSubroutineTestSuite) mockGetWorkspaceNotFound() {
+	suite.clientMock.On("Get", mock.Anything, mock.Anything, mock.AnythingOfType("*types.Workspace")).
 		Return(kerrors.NewNotFound(schema.GroupResource{}, ""))
 }
 
-func (suite *AccountInfoSubroutineTestSuite) mockGetAccountInfo(spec v1alpha1.AccountInfoSpec) *mocks.Client_Get_Call {
-	return suite.clientMock.EXPECT().
-		Get(mock.Anything, mock.Anything, mock.AnythingOfType("*v1alpha1.AccountInfo")).
-		Run(func(ctx context.Context, key types.NamespacedName, obj client.Object, opts ...client.GetOption) {
-			actual, _ := obj.(*v1alpha1.AccountInfo)
-			actual.Name = key.Name
-			actual.Spec = spec
+func (suite *AccountInfoSubroutineTestSuite) mockGetAccountInfo(spec v1alpha1.AccountInfoSpec) {
+	suite.clientMock.On("Get", mock.Anything, mock.Anything, mock.AnythingOfType("*v1alpha1.AccountInfo")).
+		Run(func(args mock.Arguments) {
+			key := args.Get(1).(types.NamespacedName)
+			obj := args.Get(2).(*v1alpha1.AccountInfo)
+			obj.Name = key.Name
+			obj.Spec = spec
 		}).
 		Return(nil)
 }

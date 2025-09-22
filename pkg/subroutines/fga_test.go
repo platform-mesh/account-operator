@@ -4,10 +4,8 @@ import (
 	"context"
 	"testing"
 
-	kcpcorev1alpha1 "github.com/kcp-dev/kcp/sdk/apis/core/v1alpha1"
+	kcptypes "github.com/platform-mesh/account-operator/pkg/types"
 	pmconfig "github.com/platform-mesh/golang-commons/config"
-	"k8s.io/apimachinery/pkg/types"
-	"sigs.k8s.io/controller-runtime/pkg/client"
 
 	openfgav1 "github.com/openfga/api/proto/openfga/v1"
 	"github.com/stretchr/testify/assert"
@@ -79,36 +77,33 @@ func TestFGASubroutine_Process(t *testing.T) {
 				},
 			},
 			setupMocks: func(openFGAServiceClientMock *mocks.OpenFGAServiceClient, clientMock *mocks.Client) {
-				mockGetWorkspaceByName(clientMock, kcpcorev1alpha1.LogicalClusterPhaseReady, "root:platform-mesh:orgs:root-org").Once()
-				clientMock.EXPECT().Get(mock.Anything, mock.Anything, mock.AnythingOfType("*v1alpha1.AccountInfo")).RunAndReturn(func(ctx context.Context, nn types.NamespacedName, o client.Object, opts ...client.GetOption) error {
-
-					account := o.(*v1alpha1.AccountInfo)
-
-					*account = v1alpha1.AccountInfo{
-						ObjectMeta: metav1.ObjectMeta{
-							Name: "root-org",
-						},
-						Spec: v1alpha1.AccountInfoSpec{
-							Organization: v1alpha1.AccountLocation{
-								Name:               "root-org",
-								GeneratedClusterId: "root-org",
-								Path:               "root:platform-mesh:org:root-org",
-								URL:                "http://example.com/clusters/root:platform-mesh:org:root-org",
-								Type:               v1alpha1.AccountTypeOrg,
+				mockGetWorkspaceByName(clientMock, kcptypes.LogicalClusterPhaseReady, "root:platform-mesh:orgs:root-org")
+				clientMock.On("Get", mock.Anything, mock.Anything, mock.AnythingOfType("*v1alpha1.AccountInfo")).
+					Run(func(args mock.Arguments) {
+						account := args.Get(2).(*v1alpha1.AccountInfo)
+						*account = v1alpha1.AccountInfo{
+							ObjectMeta: metav1.ObjectMeta{
+								Name: "root-org",
 							},
-							Account: v1alpha1.AccountLocation{
-								Name:               "root-org",
-								GeneratedClusterId: "root-org",
-								Path:               "root:platform-mesh:org:root-org",
-								URL:                "http://example.com/clusters/root:platform-mesh:org:root-org",
-								Type:               v1alpha1.AccountTypeOrg,
+							Spec: v1alpha1.AccountInfoSpec{
+								Organization: v1alpha1.AccountLocation{
+									Name:               "root-org",
+									GeneratedClusterId: "root-org",
+									Path:               "root:platform-mesh:org:root-org",
+									URL:                "http://example.com/clusters/root:platform-mesh:org:root-org",
+									Type:               v1alpha1.AccountTypeOrg,
+								},
+								Account: v1alpha1.AccountLocation{
+									Name:               "root-org",
+									GeneratedClusterId: "root-org",
+									Path:               "root:platform-mesh:org:root-org",
+									URL:                "http://example.com/clusters/root:platform-mesh:org:root-org",
+									Type:               v1alpha1.AccountTypeOrg,
+								},
+								FGA: v1alpha1.FGAInfo{Store: v1alpha1.StoreInfo{Id: "123123"}},
 							},
-							FGA: v1alpha1.FGAInfo{Store: v1alpha1.StoreInfo{Id: "123123"}},
-						},
-					}
-
-					return nil
-				}).Once()
+						}
+					}).Return(nil).Once()
 			},
 		},
 		{
@@ -122,9 +117,10 @@ func TestFGASubroutine_Process(t *testing.T) {
 				},
 			},
 			setupMocks: func(openFGAServiceClientMock *mocks.OpenFGAServiceClient, clientMock *mocks.Client) {
-				mockGetWorkspaceByName(clientMock, kcpcorev1alpha1.LogicalClusterPhaseReady, "root:platform-mesh:orgs:root-org")
-				clientMock.EXPECT().Get(mock.Anything, mock.Anything, mock.AnythingOfType("*v1alpha1.AccountInfo")).RunAndReturn(func(ctx context.Context, nn types.NamespacedName, o client.Object, opts ...client.GetOption) error {
-					account := o.(*v1alpha1.AccountInfo)
+				mockGetWorkspaceByName(clientMock, kcptypes.LogicalClusterPhaseReady, "root:platform-mesh:orgs:root-org")
+				clientMock.On("Get", mock.Anything, mock.Anything, mock.AnythingOfType("*v1alpha1.AccountInfo")).Run(func(args mock.Arguments) {
+					o := args.Get(2).(*v1alpha1.AccountInfo)
+					account := o
 
 					*account = v1alpha1.AccountInfo{
 						ObjectMeta: metav1.ObjectMeta{
@@ -146,8 +142,7 @@ func TestFGASubroutine_Process(t *testing.T) {
 						},
 					}
 
-					return nil
-				}).Once()
+				}).Return(assert.AnError).Once()
 			},
 		},
 		{
@@ -161,8 +156,8 @@ func TestFGASubroutine_Process(t *testing.T) {
 				},
 			},
 			setupMocks: func(openFGAServiceClientMock *mocks.OpenFGAServiceClient, clientMock *mocks.Client) {
-				mockGetWorkspaceByName(clientMock, kcpcorev1alpha1.LogicalClusterPhaseReady, "root:platform-mesh:orgs:root-org")
-				clientMock.EXPECT().Get(mock.Anything, mock.Anything, mock.AnythingOfType("*v1alpha1.AccountInfo")).Return(assert.AnError)
+				mockGetWorkspaceByName(clientMock, kcptypes.LogicalClusterPhaseReady, "root:platform-mesh:orgs:root-org")
+				clientMock.On("Get", mock.Anything, mock.Anything, mock.AnythingOfType("*v1alpha1.AccountInfo")).Return(assert.AnError)
 			},
 		},
 		{
@@ -179,10 +174,11 @@ func TestFGASubroutine_Process(t *testing.T) {
 				},
 			},
 			setupMocks: func(openFGAServiceClientMock *mocks.OpenFGAServiceClient, clientMock *mocks.Client) {
-				mockGetWorkspaceByName(clientMock, kcpcorev1alpha1.LogicalClusterPhaseReady, "root:platform-mesh:orgs:root-org").Once()
-				clientMock.EXPECT().Get(mock.Anything, mock.Anything, mock.AnythingOfType("*v1alpha1.AccountInfo")).RunAndReturn(func(ctx context.Context, nn types.NamespacedName, o client.Object, opts ...client.GetOption) error {
+				mockGetWorkspaceByName(clientMock, kcptypes.LogicalClusterPhaseReady, "root:platform-mesh:orgs:root-org")
+				clientMock.On("Get", mock.Anything, mock.Anything, mock.AnythingOfType("*v1alpha1.AccountInfo")).Run(func(args mock.Arguments) {
 
-					account := o.(*v1alpha1.AccountInfo)
+					o := args.Get(2).(*v1alpha1.AccountInfo)
+					account := o
 
 					*account = v1alpha1.AccountInfo{
 						ObjectMeta: metav1.ObjectMeta{
@@ -211,9 +207,8 @@ func TestFGASubroutine_Process(t *testing.T) {
 						},
 					}
 
-					return nil
-				}).Once()
-				openFGAServiceClientMock.EXPECT().Write(mock.Anything, mock.Anything).Return(nil, assert.AnError)
+				}).Return(nil).Once()
+				openFGAServiceClientMock.On("Write", mock.Anything, mock.Anything).Return(nil, assert.AnError)
 			},
 		},
 		{
@@ -229,10 +224,11 @@ func TestFGASubroutine_Process(t *testing.T) {
 				},
 			},
 			setupMocks: func(openFGAServiceClientMock *mocks.OpenFGAServiceClient, clientMock *mocks.Client) {
-				mockGetWorkspaceByName(clientMock, kcpcorev1alpha1.LogicalClusterPhaseReady, "root:platform-mesh:orgs:root-org").Once()
-				clientMock.EXPECT().Get(mock.Anything, mock.Anything, mock.AnythingOfType("*v1alpha1.AccountInfo")).RunAndReturn(func(ctx context.Context, nn types.NamespacedName, o client.Object, opts ...client.GetOption) error {
+				mockGetWorkspaceByName(clientMock, kcptypes.LogicalClusterPhaseReady, "root:platform-mesh:orgs:root-org")
+				clientMock.On("Get", mock.Anything, mock.Anything, mock.AnythingOfType("*v1alpha1.AccountInfo")).Run(func(args mock.Arguments) {
 
-					account := o.(*v1alpha1.AccountInfo)
+					o := args.Get(2).(*v1alpha1.AccountInfo)
+					account := o
 
 					*account = v1alpha1.AccountInfo{
 						ObjectMeta: metav1.ObjectMeta{
@@ -261,10 +257,8 @@ func TestFGASubroutine_Process(t *testing.T) {
 						},
 					}
 
-					return nil
-				}).Once()
-				openFGAServiceClientMock.EXPECT().
-					Write(mock.Anything, mock.Anything).
+				}).Return(nil).Once()
+				openFGAServiceClientMock.On("Write", mock.Anything, mock.Anything).
 					Return(nil, newFgaError(openfgav1.ErrorCode_write_failed_due_to_invalid_input, "error"))
 			},
 		},
@@ -280,10 +274,11 @@ func TestFGASubroutine_Process(t *testing.T) {
 					Type: v1alpha1.AccountTypeAccount,
 				}},
 			setupMocks: func(openFGAServiceClientMock *mocks.OpenFGAServiceClient, clientMock *mocks.Client) {
-				mockGetWorkspaceByName(clientMock, kcpcorev1alpha1.LogicalClusterPhaseReady, "root:platform-mesh:orgs:root-org").Once()
-				clientMock.EXPECT().Get(mock.Anything, mock.Anything, mock.AnythingOfType("*v1alpha1.AccountInfo")).RunAndReturn(func(ctx context.Context, nn types.NamespacedName, o client.Object, opts ...client.GetOption) error {
+				mockGetWorkspaceByName(clientMock, kcptypes.LogicalClusterPhaseReady, "root:platform-mesh:orgs:root-org")
+				clientMock.On("Get", mock.Anything, mock.Anything, mock.AnythingOfType("*v1alpha1.AccountInfo")).Run(func(args mock.Arguments) {
 
-					account := o.(*v1alpha1.AccountInfo)
+					o := args.Get(2).(*v1alpha1.AccountInfo)
+					account := o
 
 					*account = v1alpha1.AccountInfo{
 						ObjectMeta: metav1.ObjectMeta{
@@ -312,10 +307,8 @@ func TestFGASubroutine_Process(t *testing.T) {
 						},
 					}
 
-					return nil
-				}).Once()
-				openFGAServiceClientMock.EXPECT().
-					Write(mock.Anything, mock.Anything).
+				}).Return(nil).Once()
+				openFGAServiceClientMock.On("Write", mock.Anything, mock.Anything).
 					Return(&openfgav1.WriteResponse{}, nil)
 			},
 		},
@@ -333,10 +326,11 @@ func TestFGASubroutine_Process(t *testing.T) {
 				},
 			},
 			setupMocks: func(openFGAServiceClientMock *mocks.OpenFGAServiceClient, clientMock *mocks.Client) {
-				mockGetWorkspaceByName(clientMock, kcpcorev1alpha1.LogicalClusterPhaseReady, "root:platform-mesh:orgs:root-org").Once()
-				clientMock.EXPECT().Get(mock.Anything, mock.Anything, mock.AnythingOfType("*v1alpha1.AccountInfo")).RunAndReturn(func(ctx context.Context, nn types.NamespacedName, o client.Object, opts ...client.GetOption) error {
+				mockGetWorkspaceByName(clientMock, kcptypes.LogicalClusterPhaseReady, "root:platform-mesh:orgs:root-org")
+				clientMock.On("Get", mock.Anything, mock.Anything, mock.AnythingOfType("*v1alpha1.AccountInfo")).Run(func(args mock.Arguments) {
 
-					account := o.(*v1alpha1.AccountInfo)
+					o := args.Get(2).(*v1alpha1.AccountInfo)
+					account := o
 
 					*account = v1alpha1.AccountInfo{
 						ObjectMeta: metav1.ObjectMeta{
@@ -365,17 +359,16 @@ func TestFGASubroutine_Process(t *testing.T) {
 						},
 					}
 
-					return nil
-				}).Once()
-				openFGAServiceClientMock.EXPECT().
-					Write(mock.Anything, mock.Anything).
+				}).Return(nil).Once()
+				openFGAServiceClientMock.On("Write", mock.Anything, mock.Anything).
 					Return(&openfgav1.WriteResponse{}, nil)
 
-				openFGAServiceClientMock.EXPECT().
-					Write(mock.Anything, mock.MatchedBy(func(req *openfgav1.WriteRequest) bool {
-						// Check for partial match
-						return len(req.Writes.TupleKeys) == 1 && req.Writes.TupleKeys[0].User == "user:system.serviceaccount.some-namespace.some-service-account"
-					})).
+				openFGAServiceClientMock.On("Write", mock.Anything, mock.Anything).
+					Return(&openfgav1.WriteResponse{}, nil)
+				openFGAServiceClientMock.On("Write", mock.Anything, mock.MatchedBy(func(req *openfgav1.WriteRequest) bool {
+					// Check for partial match
+					return len(req.Writes.TupleKeys) == 1 && req.Writes.TupleKeys[0].User == "user:system.serviceaccount.some-namespace.some-service-account"
+				})).
 					Return(&openfgav1.WriteResponse{}, nil)
 			},
 		},
@@ -393,10 +386,11 @@ func TestFGASubroutine_Process(t *testing.T) {
 				},
 			},
 			setupMocks: func(openFGAServiceClientMock *mocks.OpenFGAServiceClient, clientMock *mocks.Client) {
-				mockGetWorkspaceByName(clientMock, kcpcorev1alpha1.LogicalClusterPhaseReady, "root:platform-mesh:orgs:root-org").Once()
-				clientMock.EXPECT().Get(mock.Anything, mock.Anything, mock.Anything).RunAndReturn(func(ctx context.Context, nn types.NamespacedName, o client.Object, opts ...client.GetOption) error {
+				mockGetWorkspaceByName(clientMock, kcptypes.LogicalClusterPhaseReady, "root:platform-mesh:orgs:root-org")
+				clientMock.On("Get", mock.Anything, mock.Anything, mock.Anything).Run(func(args mock.Arguments) {
 
-					account := o.(*v1alpha1.AccountInfo)
+					o := args.Get(2).(*v1alpha1.AccountInfo)
+					account := o
 
 					*account = v1alpha1.AccountInfo{
 						ObjectMeta: metav1.ObjectMeta{
@@ -425,9 +419,8 @@ func TestFGASubroutine_Process(t *testing.T) {
 						},
 					}
 
-					return nil
-				}).Once()
-				clientMock.EXPECT().Get(mock.Anything, mock.Anything, mock.AnythingOfType("*v1alpha1.AccountInfo")).Return(nil)
+				}).Return(nil).Once()
+				clientMock.On("Get", mock.Anything, mock.Anything, mock.AnythingOfType("*v1alpha1.AccountInfo")).Return(nil)
 			},
 		},
 		{
@@ -444,10 +437,11 @@ func TestFGASubroutine_Process(t *testing.T) {
 				},
 			},
 			setupMocks: func(openFGAServiceClientMock *mocks.OpenFGAServiceClient, clientMock *mocks.Client) {
-				mockGetWorkspaceByName(clientMock, kcpcorev1alpha1.LogicalClusterPhaseReady, "root:platform-mesh:orgs:root-org").Once()
-				clientMock.EXPECT().Get(mock.Anything, mock.Anything, mock.AnythingOfType("*v1alpha1.AccountInfo")).RunAndReturn(func(ctx context.Context, nn types.NamespacedName, o client.Object, opts ...client.GetOption) error {
+				mockGetWorkspaceByName(clientMock, kcptypes.LogicalClusterPhaseReady, "root:platform-mesh:orgs:root-org")
+				clientMock.On("Get", mock.Anything, mock.Anything, mock.AnythingOfType("*v1alpha1.AccountInfo")).Run(func(args mock.Arguments) {
 
-					account := o.(*v1alpha1.AccountInfo)
+					o := args.Get(2).(*v1alpha1.AccountInfo)
+					account := o
 
 					*account = v1alpha1.AccountInfo{
 						ObjectMeta: metav1.ObjectMeta{
@@ -476,11 +470,9 @@ func TestFGASubroutine_Process(t *testing.T) {
 						},
 					}
 
-					return nil
-				}).Once()
+				}).Return(nil).Once()
 
-				openFGAServiceClientMock.EXPECT().
-					Write(mock.Anything, mock.Anything).
+				openFGAServiceClientMock.On("Write", mock.Anything, mock.Anything).
 					Return(&openfgav1.WriteResponse{}, nil)
 			},
 		},
@@ -537,8 +529,10 @@ func TestCreatorSubroutine_Finalize(t *testing.T) {
 				},
 			},
 			setupMocks: func(openFGAServiceClientMock *mocks.OpenFGAServiceClient, clientMock *mocks.Client) {
-				clientMock.EXPECT().Get(mock.Anything, mock.Anything, mock.AnythingOfType("*v1alpha1.AccountInfo")).RunAndReturn(func(ctx context.Context, nn types.NamespacedName, o client.Object, opts ...client.GetOption) error {
-					account := o.(*v1alpha1.AccountInfo)
+				mockGetWorkspaceByName(clientMock, kcptypes.LogicalClusterPhaseReady, "test-account")
+				clientMock.On("Get", mock.Anything, mock.Anything, mock.AnythingOfType("*v1alpha1.AccountInfo")).Run(func(args mock.Arguments) {
+					o := args.Get(2).(*v1alpha1.AccountInfo)
+					account := o
 
 					*account = v1alpha1.AccountInfo{
 						ObjectMeta: metav1.ObjectMeta{
@@ -560,8 +554,7 @@ func TestCreatorSubroutine_Finalize(t *testing.T) {
 						},
 					}
 
-					return nil
-				}).Once()
+				}).Return(nil).Once()
 			},
 		},
 		{
@@ -574,8 +567,8 @@ func TestCreatorSubroutine_Finalize(t *testing.T) {
 				},
 			},
 			setupMocks: func(openFGAServiceClientMock *mocks.OpenFGAServiceClient, clientMock *mocks.Client) {
-				mockGetWorkspaceByName(clientMock, kcpcorev1alpha1.LogicalClusterPhaseReady, "root:platform-mesh:orgs:root-org").Once()
-				clientMock.EXPECT().Get(mock.Anything, mock.Anything, mock.AnythingOfType("*v1alpha1.AccountInfo")).Return(assert.AnError)
+				mockGetWorkspaceByName(clientMock, kcptypes.LogicalClusterPhaseReady, "root:platform-mesh:orgs:root-org")
+				clientMock.On("Get", mock.Anything, mock.Anything, mock.AnythingOfType("*v1alpha1.AccountInfo")).Return(assert.AnError)
 			},
 		},
 		{
@@ -588,10 +581,11 @@ func TestCreatorSubroutine_Finalize(t *testing.T) {
 				},
 			},
 			setupMocks: func(openFGAServiceClientMock *mocks.OpenFGAServiceClient, clientMock *mocks.Client) {
-				mockGetWorkspaceByName(clientMock, kcpcorev1alpha1.LogicalClusterPhaseReady, "root:platform-mesh:orgs:root-org").Once()
-				clientMock.EXPECT().Get(mock.Anything, mock.Anything, mock.AnythingOfType("*v1alpha1.AccountInfo")).RunAndReturn(func(ctx context.Context, nn types.NamespacedName, o client.Object, opts ...client.GetOption) error {
+				mockGetWorkspaceByName(clientMock, kcptypes.LogicalClusterPhaseReady, "root:platform-mesh:orgs:root-org")
+				clientMock.On("Get", mock.Anything, mock.Anything, mock.AnythingOfType("*v1alpha1.AccountInfo")).Run(func(args mock.Arguments) {
 
-					account := o.(*v1alpha1.AccountInfo)
+					o := args.Get(2).(*v1alpha1.AccountInfo)
+					account := o
 
 					*account = v1alpha1.AccountInfo{
 						ObjectMeta: metav1.ObjectMeta{
@@ -620,10 +614,8 @@ func TestCreatorSubroutine_Finalize(t *testing.T) {
 						},
 					}
 
-					return nil
-				}).Once()
-				openFGAServiceClientMock.EXPECT().
-					Write(mock.Anything, mock.Anything).
+				}).Return(nil).Once()
+				openFGAServiceClientMock.On("Write", mock.Anything, mock.Anything).
 					Return(nil, assert.AnError)
 
 			},
@@ -637,10 +629,11 @@ func TestCreatorSubroutine_Finalize(t *testing.T) {
 				},
 			},
 			setupMocks: func(openFGAServiceClientMock *mocks.OpenFGAServiceClient, clientMock *mocks.Client) {
-				mockGetWorkspaceByName(clientMock, kcpcorev1alpha1.LogicalClusterPhaseReady, "root:platform-mesh:orgs:root-org").Once()
-				clientMock.EXPECT().Get(mock.Anything, mock.Anything, mock.AnythingOfType("*v1alpha1.AccountInfo")).RunAndReturn(func(ctx context.Context, nn types.NamespacedName, o client.Object, opts ...client.GetOption) error {
+				mockGetWorkspaceByName(clientMock, kcptypes.LogicalClusterPhaseReady, "root:platform-mesh:orgs:root-org")
+				clientMock.On("Get", mock.Anything, mock.Anything, mock.AnythingOfType("*v1alpha1.AccountInfo")).Run(func(args mock.Arguments) {
 
-					account := o.(*v1alpha1.AccountInfo)
+					o := args.Get(2).(*v1alpha1.AccountInfo)
+					account := o
 
 					*account = v1alpha1.AccountInfo{
 						ObjectMeta: metav1.ObjectMeta{
@@ -669,10 +662,8 @@ func TestCreatorSubroutine_Finalize(t *testing.T) {
 						},
 					}
 
-					return nil
-				}).Once()
-				openFGAServiceClientMock.EXPECT().
-					Write(mock.Anything, mock.Anything).
+				}).Return(nil).Once()
+				openFGAServiceClientMock.On("Write", mock.Anything, mock.Anything).
 					Return(nil, newFgaError(openfgav1.ErrorCode_write_failed_due_to_invalid_input, "error"))
 			},
 		},
@@ -685,10 +676,11 @@ func TestCreatorSubroutine_Finalize(t *testing.T) {
 				},
 			},
 			setupMocks: func(openFGAServiceClientMock *mocks.OpenFGAServiceClient, clientMock *mocks.Client) {
-				mockGetWorkspaceByName(clientMock, kcpcorev1alpha1.LogicalClusterPhaseReady, "root:platform-mesh:orgs:root-org").Once()
-				clientMock.EXPECT().Get(mock.Anything, mock.Anything, mock.AnythingOfType("*v1alpha1.AccountInfo")).RunAndReturn(func(ctx context.Context, nn types.NamespacedName, o client.Object, opts ...client.GetOption) error {
+				mockGetWorkspaceByName(clientMock, kcptypes.LogicalClusterPhaseReady, "root:platform-mesh:orgs:root-org")
+				clientMock.On("Get", mock.Anything, mock.Anything, mock.AnythingOfType("*v1alpha1.AccountInfo")).Run(func(args mock.Arguments) {
 
-					account := o.(*v1alpha1.AccountInfo)
+					o := args.Get(2).(*v1alpha1.AccountInfo)
+					account := o
 
 					*account = v1alpha1.AccountInfo{
 						ObjectMeta: metav1.ObjectMeta{
@@ -717,11 +709,9 @@ func TestCreatorSubroutine_Finalize(t *testing.T) {
 						},
 					}
 
-					return nil
-				}).Once()
+				}).Return(nil).Once()
 
-				openFGAServiceClientMock.EXPECT().
-					Write(mock.Anything, mock.Anything).
+				openFGAServiceClientMock.On("Write", mock.Anything, mock.Anything).
 					Return(&openfgav1.WriteResponse{}, nil)
 			},
 		},
@@ -737,10 +727,11 @@ func TestCreatorSubroutine_Finalize(t *testing.T) {
 				},
 			},
 			setupMocks: func(openFGAServiceClientMock *mocks.OpenFGAServiceClient, clientMock *mocks.Client) {
-				mockGetWorkspaceByName(clientMock, kcpcorev1alpha1.LogicalClusterPhaseReady, "root:platform-mesh:orgs:root-org").Once()
-				clientMock.EXPECT().Get(mock.Anything, mock.Anything, mock.Anything).RunAndReturn(func(ctx context.Context, nn types.NamespacedName, o client.Object, opts ...client.GetOption) error {
+				mockGetWorkspaceByName(clientMock, kcptypes.LogicalClusterPhaseReady, "root:platform-mesh:orgs:root-org")
+				clientMock.On("Get", mock.Anything, mock.Anything, mock.Anything).Run(func(args mock.Arguments) {
 
-					account := o.(*v1alpha1.AccountInfo)
+					o := args.Get(2).(*v1alpha1.AccountInfo)
+					account := o
 
 					*account = v1alpha1.AccountInfo{
 						ObjectMeta: metav1.ObjectMeta{
@@ -769,11 +760,9 @@ func TestCreatorSubroutine_Finalize(t *testing.T) {
 						},
 					}
 
-					return nil
-				}).Once()
+				}).Return(nil).Once()
 
-				openFGAServiceClientMock.EXPECT().
-					Write(mock.Anything, mock.Anything).
+				openFGAServiceClientMock.On("Write", mock.Anything, mock.Anything).
 					Return(&openfgav1.WriteResponse{}, nil).Times(3)
 			},
 		},

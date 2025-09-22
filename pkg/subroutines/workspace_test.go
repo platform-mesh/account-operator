@@ -6,8 +6,7 @@ import (
 	"testing"
 	"time"
 
-	kcpcorev1alpha1 "github.com/kcp-dev/kcp/sdk/apis/core/v1alpha1"
-	kcptenancyv1alpha "github.com/kcp-dev/kcp/sdk/apis/tenancy/v1alpha1"
+	kcptypes "github.com/platform-mesh/account-operator/pkg/types"
 	platformmeshcontext "github.com/platform-mesh/golang-commons/context"
 	"github.com/platform-mesh/golang-commons/logger"
 	"github.com/stretchr/testify/assert"
@@ -122,7 +121,7 @@ func (suite *WorkspaceSubroutineTestSuite) TestFinalize_OK_Workspace_ExistingBut
 func (suite *WorkspaceSubroutineTestSuite) TestFinalize_OK_Workspace_Existing() {
 	// Given
 	testAccount := &corev1alpha1.Account{}
-	mockGetWorkspaceByName(suite.clientMock, kcpcorev1alpha1.LogicalClusterPhaseReady, "https://example.com/")
+	mockGetWorkspaceByName(suite.clientMock, kcptypes.LogicalClusterPhaseReady, "https://example.com/")
 	mockDeleteWorkspaceCall(suite)
 	ctx := context.Background()
 
@@ -138,7 +137,7 @@ func (suite *WorkspaceSubroutineTestSuite) TestFinalize_OK_Workspace_Existing() 
 func (suite *WorkspaceSubroutineTestSuite) TestFinalize_Error_On_Deletion() {
 	// Given
 	testAccount := &corev1alpha1.Account{}
-	mockGetWorkspaceByName(suite.clientMock, kcpcorev1alpha1.LogicalClusterPhaseReady, "https://example.com/")
+	mockGetWorkspaceByName(suite.clientMock, kcptypes.LogicalClusterPhaseReady, "https://example.com/")
 	mockDeleteWorkspaceCallFailed(suite)
 	ctx := suite.context
 	// When
@@ -206,8 +205,7 @@ func (suite *WorkspaceSubroutineTestSuite) TestProcessing_CreateError() {
 	testAccount := &corev1alpha1.Account{}
 	suite.clientMock.On("Scheme").Return(scheme.Scheme)
 	mockGetWorkspaceCallNotFound(suite)
-	suite.clientMock.EXPECT().
-		Create(mock.Anything, mock.Anything).
+	suite.clientMock.On("Create", mock.Anything, mock.Anything).
 		Return(kerrors.NewBadRequest(""))
 
 	// When
@@ -225,49 +223,44 @@ func TestWorkspaceSubroutineTestSuite(t *testing.T) {
 }
 
 //nolint:golint,unparam
-func mockNewWorkspaceCreateCall(suite *WorkspaceSubroutineTestSuite, name string) *mocks.Client_Create_Call {
-	return suite.clientMock.EXPECT().
-		Create(mock.Anything, mock.Anything).
-		Run(func(ctx context.Context, obj client.Object, opts ...client.CreateOption) {
-			actual, _ := obj.(*kcptenancyv1alpha.Workspace)
-			actual.Name = name
-		}).
-		Return(nil)
+func mockNewWorkspaceCreateCall(suite *WorkspaceSubroutineTestSuite, name string) {
+	suite.clientMock.On("Create", mock.Anything, mock.MatchedBy(func(obj client.Object) bool {
+		if workspace, ok := obj.(*kcptypes.Workspace); ok {
+			return workspace.Name == name
+		}
+		return false
+	})).Return(nil)
 }
 
 //nolint:golint,unparam
-func mockGetWorkspaceCallNotFound(suite *WorkspaceSubroutineTestSuite) *mocks.Client_Get_Call {
-	return suite.clientMock.EXPECT().
-		Get(mock.Anything, mock.Anything, mock.Anything).
+func mockGetWorkspaceCallNotFound(suite *WorkspaceSubroutineTestSuite) {
+	suite.clientMock.On("Get", mock.Anything, mock.Anything, mock.AnythingOfType("*types.Workspace")).
 		Return(kerrors.NewNotFound(schema.GroupResource{}, ""))
 }
 
-func mockGetWorkspaceFailed(suite *WorkspaceSubroutineTestSuite) *mocks.Client_Get_Call {
-	return suite.clientMock.EXPECT().
-		Get(mock.Anything, types.NamespacedName{}, mock.Anything).
+func mockGetWorkspaceFailed(suite *WorkspaceSubroutineTestSuite) {
+	suite.clientMock.On("Get", mock.Anything, types.NamespacedName{}, mock.Anything).
 		Return(kerrors.NewInternalError(fmt.Errorf("failed")))
 }
 
-func mockGetWorkspaceByNameInDeletion(suite *WorkspaceSubroutineTestSuite) *mocks.Client_Get_Call {
-	return suite.clientMock.EXPECT().
-		Get(mock.Anything, types.NamespacedName{}, mock.Anything).
-		Run(func(ctx context.Context, key types.NamespacedName, obj client.Object, opts ...client.GetOption) {
-			actual, _ := obj.(*kcptenancyv1alpha.Workspace)
-			actual.Name = key.Name
-			actual.DeletionTimestamp = &metav1.Time{}
+func mockGetWorkspaceByNameInDeletion(suite *WorkspaceSubroutineTestSuite) {
+	suite.clientMock.On("Get", mock.Anything, types.NamespacedName{}, mock.Anything).
+		Run(func(args mock.Arguments) {
+			key := args.Get(1).(types.NamespacedName)
+			obj := args.Get(2).(*kcptypes.Workspace)
+			obj.Name = key.Name
+			obj.DeletionTimestamp = &metav1.Time{}
 		}).
 		Return(nil)
 }
 
 //nolint:golint,unparam
-func mockDeleteWorkspaceCall(suite *WorkspaceSubroutineTestSuite) *mocks.Client_Delete_Call {
-	return suite.clientMock.EXPECT().
-		Delete(mock.Anything, mock.Anything).
+func mockDeleteWorkspaceCall(suite *WorkspaceSubroutineTestSuite) {
+	suite.clientMock.On("Delete", mock.Anything, mock.Anything).
 		Return(nil)
 }
 
-func mockDeleteWorkspaceCallFailed(suite *WorkspaceSubroutineTestSuite) *mocks.Client_Delete_Call {
-	return suite.clientMock.EXPECT().
-		Delete(mock.Anything, mock.Anything).
+func mockDeleteWorkspaceCallFailed(suite *WorkspaceSubroutineTestSuite) {
+	suite.clientMock.On("Delete", mock.Anything, mock.Anything).
 		Return(kerrors.NewInternalError(fmt.Errorf("failed")))
 }

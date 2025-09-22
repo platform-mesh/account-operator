@@ -24,8 +24,7 @@ import (
 	"k8s.io/client-go/tools/clientcmd"
 	"sigs.k8s.io/controller-runtime/pkg/client"
 
-	kcpapiv1alpha "github.com/kcp-dev/kcp/sdk/apis/apis/v1alpha1"
-	kcptenancyv1alpha "github.com/kcp-dev/kcp/sdk/apis/tenancy/v1alpha1"
+	kcptypes "github.com/platform-mesh/account-operator/pkg/types"
 )
 
 const (
@@ -102,8 +101,8 @@ func (te *Environment) Start() (*rest.Config, string, error) {
 
 	if te.Scheme == nil {
 		te.Scheme = scheme.Scheme
-		utilruntime.Must(kcpapiv1alpha.AddToScheme(te.Scheme))
-		utilruntime.Must(kcptenancyv1alpha.AddToScheme(te.Scheme))
+		utilruntime.Must(kcptypes.AddToScheme(te.Scheme))
+		utilruntime.Must(kcptypes.AddToScheme(te.Scheme))
 	}
 	//// wait for default namespace to actually be created and seen as available to the apiserver
 	if err := te.waitForDefaultNamespace(); err != nil {
@@ -135,7 +134,7 @@ func (te *Environment) Start() (*rest.Config, string, error) {
 		return nil, "", fmt.Errorf("unable to create client: %w", err)
 	}
 
-	apiExportEndpointSlice := kcpapiv1alpha.APIExportEndpointSlice{}
+	apiExportEndpointSlice := kcptypes.APIExportEndpointSlice{}
 	err = cs.Get(context.Background(), types.NamespacedName{Name: te.APIExportEndpointSliceName}, &apiExportEndpointSlice)
 	if err != nil {
 		return nil, "", err
@@ -189,7 +188,7 @@ func (te *Environment) waitForDefaultNamespace() error {
 func (te *Environment) waitForWorkspace(client client.Client, name string, log *logger.Logger) error {
 	// It shouldn't take longer than 5s for the default namespace to be brought up in etcd
 	err := wait.PollUntilContextTimeout(context.TODO(), time.Millisecond*500, time.Second*15, true, func(ctx context.Context) (bool, error) {
-		ws := &kcptenancyv1alpha.Workspace{}
+		ws := &kcptypes.Workspace{}
 		if err := client.Get(ctx, types.NamespacedName{Name: name}, ws); err != nil {
 			return false, nil //nolint:nilerr
 		}
@@ -305,7 +304,7 @@ func generateTemplateDataFile(config *rest.Config, dataFile string) error {
 	}
 
 	parameters := TemplateParameters{}
-	apiExport := kcpapiv1alpha.APIExport{}
+	apiExport := kcptypes.APIExport{}
 	err = cs.Get(context.Background(), types.NamespacedName{Name: "tenancy.kcp.io"}, &apiExport)
 	if err != nil {
 		return err

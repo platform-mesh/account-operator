@@ -1,14 +1,14 @@
 package cmd
 
 import (
-	apisv1alpha1 "github.com/kcp-dev/kcp/sdk/apis/apis/v1alpha1"
-	tenancyv1alpha1 "github.com/kcp-dev/kcp/sdk/apis/tenancy/v1alpha1"
+	kcptypes "github.com/platform-mesh/account-operator/pkg/types"
 	platformmeshcontext "github.com/platform-mesh/golang-commons/config"
 	"github.com/platform-mesh/golang-commons/logger"
 	"github.com/spf13/cobra"
 	"github.com/spf13/viper"
 	"k8s.io/apimachinery/pkg/runtime"
 	utilruntime "k8s.io/apimachinery/pkg/util/runtime"
+	clientgoscheme "k8s.io/client-go/kubernetes/scheme"
 	ctrl "sigs.k8s.io/controller-runtime"
 
 	"github.com/platform-mesh/account-operator/api/v1alpha1"
@@ -29,9 +29,9 @@ var rootCmd = &cobra.Command{
 }
 
 func init() {
+	utilruntime.Must(clientgoscheme.AddToScheme(scheme))
 	utilruntime.Must(v1alpha1.AddToScheme(scheme))
-	utilruntime.Must(tenancyv1alpha1.AddToScheme(scheme))
-	utilruntime.Must(apisv1alpha1.AddToScheme(scheme))
+	utilruntime.Must(kcptypes.AddToScheme(scheme))
 	//+kubebuilder:scaffold:scheme
 
 	rootCmd.AddCommand(operatorCmd)

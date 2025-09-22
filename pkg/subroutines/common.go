@@ -3,7 +3,7 @@ package subroutines
 import (
 	"context"
 
-	kcptenancyv1alpha "github.com/kcp-dev/kcp/sdk/apis/tenancy/v1alpha1"
+	kcptypes "github.com/platform-mesh/account-operator/pkg/types"
 	"github.com/platform-mesh/golang-commons/errors"
 	"github.com/platform-mesh/golang-commons/logger"
 	"sigs.k8s.io/controller-runtime/pkg/client"
@@ -11,8 +11,8 @@ import (
 	"github.com/platform-mesh/account-operator/api/v1alpha1"
 )
 
-func retrieveWorkspace(ctx context.Context, instance *v1alpha1.Account, c client.Client, log *logger.Logger) (*kcptenancyv1alpha.Workspace, error) {
-	ws := &kcptenancyv1alpha.Workspace{}
+func retrieveWorkspace(ctx context.Context, instance *v1alpha1.Account, c client.Client, log *logger.Logger) (*kcptypes.Workspace, error) {
+	ws := &kcptypes.Workspace{}
 	err := c.Get(ctx, client.ObjectKey{Name: instance.Name}, ws)
 	if err != nil {
 		const msg = "workspace does not exist"

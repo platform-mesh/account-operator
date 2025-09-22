@@ -6,8 +6,7 @@ import (
 	"strings"
 	"time"
 
-	kcpcorev1alpha "github.com/kcp-dev/kcp/sdk/apis/core/v1alpha1"
-	kcptenancyv1alpha "github.com/kcp-dev/kcp/sdk/apis/tenancy/v1alpha1"
+	kcptypes "github.com/platform-mesh/account-operator/pkg/types"
 	"github.com/platform-mesh/golang-commons/controller/lifecycle/runtimeobject"
 	"github.com/platform-mesh/golang-commons/controller/lifecycle/subroutine"
 	"github.com/platform-mesh/golang-commons/errors"
@@ -72,7 +71,7 @@ func (r *AccountInfoSubroutine) Process(ctx context.Context, ro runtimeobject.Ru
 		return ctrl.Result{}, errors.NewOperatorError(err, true, true)
 	}
 
-	if accountWorkspace.Status.Phase != kcpcorev1alpha.LogicalClusterPhaseReady {
+	if accountWorkspace.Status.Phase != kcptypes.LogicalClusterPhaseReady {
 		log.Info().Msg("workspace is not ready yet, retry")
 		delay := r.limiter.When(cn)
 		return ctrl.Result{RequeueAfter: delay}, nil
@@ -156,7 +155,7 @@ func (r *AccountInfoSubroutine) retrieveAccountInfo(ctx context.Context, log *lo
 	return accountInfo, true, nil
 }
 
-func (r *AccountInfoSubroutine) retrieveCurrentWorkspacePath(ws *kcptenancyv1alpha.Workspace) (string, string, error) {
+func (r *AccountInfoSubroutine) retrieveCurrentWorkspacePath(ws *kcptypes.Workspace) (string, string, error) {
 	if ws.Spec.URL == "" {
 		return "", "", fmt.Errorf("workspace URL is empty")
 	}

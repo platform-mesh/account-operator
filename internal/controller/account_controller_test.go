@@ -8,8 +8,7 @@ import (
 	"testing"
 	"time"
 
-	kcpcorev1alpha "github.com/kcp-dev/kcp/sdk/apis/core/v1alpha1"
-	kcptenancyv1alpha "github.com/kcp-dev/kcp/sdk/apis/tenancy/v1alpha1"
+	kcptypes "github.com/platform-mesh/account-operator/pkg/types"
 	platformmeshconfig "github.com/platform-mesh/golang-commons/config"
 	platformmeshcontext "github.com/platform-mesh/golang-commons/context"
 	"github.com/platform-mesh/golang-commons/logger"
@@ -90,8 +89,7 @@ func (suite *AccountTestSuite) SetupSuite() {
 	suite.scheme = runtime.NewScheme()
 	utilruntime.Must(v1alpha1.AddToScheme(suite.scheme))
 	utilruntime.Must(v1.AddToScheme(suite.scheme))
-	utilruntime.Must(kcpcorev1alpha.AddToScheme(suite.scheme))
-	utilruntime.Must(kcptenancyv1alpha.AddToScheme(suite.scheme))
+	utilruntime.Must(kcptypes.AddToScheme(suite.scheme))
 
 	managerCfg := rest.CopyConfig(suite.rootConfig)
 	managerCfg.Host = vsUrl
@@ -186,12 +184,12 @@ func (suite *AccountTestSuite) TestWorkspaceCreation() {
 	// Then
 
 	// Wait for workspace creation and ready
-	createdWorkspace := kcptenancyv1alpha.Workspace{}
+	createdWorkspace := kcptypes.Workspace{}
 	suite.Assert().Eventually(func() bool {
 		err := suite.kubernetesClient.Get(testContext, types.NamespacedName{
 			Name: accountName,
 		}, &createdWorkspace)
-		return err == nil && createdWorkspace.Status.Phase == kcpcorev1alpha.LogicalClusterPhaseReady
+		return err == nil && createdWorkspace.Status.Phase == kcptypes.LogicalClusterPhaseReady
 	}, defaultTestTimeout, defaultTickInterval)
 
 	// Wait for conditions update on account
@@ -296,7 +294,7 @@ func (suite *AccountTestSuite) TestAccountInfoCreationForAccount() {
 func (suite *AccountTestSuite) verifyWorkspace(ctx context.Context, name string) {
 
 	suite.Require().NotNil(name, "failed to verify namespace name")
-	ns := &kcptenancyv1alpha.Workspace{}
+	ns := &kcptypes.Workspace{}
 	err := suite.kubernetesClient.Get(ctx, types.NamespacedName{Name: name}, ns)
 	suite.Nil(err)
 

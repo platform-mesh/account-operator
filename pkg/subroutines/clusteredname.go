@@ -3,14 +3,16 @@ package subroutines
 import (
 	"context"
 
-	"github.com/kcp-dev/logicalcluster/v3"
 	"github.com/platform-mesh/golang-commons/controller/lifecycle/runtimeobject"
 	"k8s.io/apimachinery/pkg/types"
 )
 
+// LogicalClusterName represents a logical cluster name
+type LogicalClusterName string
+
 type ClusteredName struct {
 	types.NamespacedName
-	ClusterID logicalcluster.Name
+	ClusterID LogicalClusterName
 }
 
 func GetClusteredName(ctx context.Context, instance runtimeobject.RuntimeObject) (ClusteredName, bool) {

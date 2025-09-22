@@ -15,8 +15,8 @@ packages:
       OpenFGAServiceClient:
         config:
           include-interface-regex: OpenFGAServiceClient
-          filename: mock_OpenFGAServiceClient.go
+          filename: OpenFGAServiceClient.go
   sigs.k8s.io/controller-runtime/pkg/client:
     config:
       include-interface-regex: Client
-      filename: mock_K8Service.go
+      filename: Client.go
