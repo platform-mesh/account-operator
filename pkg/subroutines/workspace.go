@@ -110,8 +110,6 @@ func (r *WorkspaceSubroutine) Process(ctx context.Context, runtimeObj runtimeobj
 	}
 	// Select the cluster under which the workspace will be created
 	ctxWS := ctx
-	// Use a dedicated context for WorkspaceType checks (currently the original context)
-	ctxWT := ctx
 	// For org accounts, always create in the designated org workspace cluster
 	if instance.Spec.Type == corev1alpha1.AccountTypeOrg {
 		orgCluster := cfg.Kcp.OrgWorkspaceCluster
@@ -128,6 +126,7 @@ func (r *WorkspaceSubroutine) Process(ctx context.Context, runtimeObj runtimeobj
 			wtPath = cfg.Kcp.OrgWorkspaceCluster
 		}
 		// Wait for org workspace type readiness without error-based requeue
+		ctxWT := kontext.WithCluster(ctx, logicalcluster.Name(wtPath))
 		if ready, opErr := r.waitForWorkspaceType(ctxWT, wtName); opErr != nil {
 			return ctrl.Result{}, opErr
 		} else if !ready {
@@ -148,6 +147,7 @@ func (r *WorkspaceSubroutine) Process(ctx context.Context, runtimeObj runtimeobj
 			}
 		}
 		// Wait for account workspace type readiness without error-based requeue
+		ctxWT := kontext.WithCluster(ctx, logicalcluster.Name(wtPath))
 		if ready, opErr := r.waitForWorkspaceType(ctxWT, wtName); opErr != nil {
 			return ctrl.Result{}, opErr
 		} else if !ready {
