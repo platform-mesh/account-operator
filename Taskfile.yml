@@ -20,14 +20,7 @@ tasks:
   setup:controller-gen:
     internal: true
     cmds:
-      - |
-          # Ensure controller-gen is present and matches the pinned version
-          if [ ! -x {{.LOCAL_BIN}}/controller-gen ] || ! {{.LOCAL_BIN}}/controller-gen --version 2>/dev/null | grep -q "{{.CONTROLLER_TOOLS_VERSION}}"; then
-            echo "Installing controller-gen {{.CONTROLLER_TOOLS_VERSION}} into {{.LOCAL_BIN}}"
-            GOBIN=$(pwd)/{{.LOCAL_BIN}} go install sigs.k8s.io/controller-tools/cmd/controller-gen@{{.CONTROLLER_TOOLS_VERSION}}
-          else
-            echo "controller-gen is up-to-date ({{.CONTROLLER_TOOLS_VERSION}})"
-          fi
+    - "[ -x {{.LOCAL_BIN}}/controller-gen ] && {{.LOCAL_BIN}}/controller-gen --version 2>/dev/null | grep -q '{{.CONTROLLER_TOOLS_VERSION}}' || (echo 'Installing controller-gen {{.CONTROLLER_TOOLS_VERSION}} into {{.LOCAL_BIN}}' && GOBIN=$(pwd)/{{.LOCAL_BIN}} go install sigs.k8s.io/controller-tools/cmd/controller-gen@{{.CONTROLLER_TOOLS_VERSION}})"
   setup:kcp:
     internal: true
     cmds:
@@ -49,9 +42,8 @@ tasks:
   manifests:
     deps: [setup:controller-gen,setup:kcp-api-gen]
     cmds:
-    - "# Generate RBAC from all controller code"
-    - "{{.LOCAL_BIN}}/controller-gen rbac:roleName=manager-role paths=./..."
-    - "# Generate CRDs only from versioned APIs; exclude internal shim types under pkg/types"
+    - "mkdir -p {{.CRD_DIRECTORY}}/rbac"
+    - "{{.LOCAL_BIN}}/controller-gen rbac:roleName=manager-role output:rbac:artifacts:config={{.CRD_DIRECTORY}}/rbac paths=./..."
     - "{{.LOCAL_BIN}}/controller-gen crd paths=./api/... output:crd:artifacts:config={{.CRD_DIRECTORY}}"
   generate:
     cmds:
