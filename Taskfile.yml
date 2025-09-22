@@ -20,7 +20,14 @@ tasks:
   setup:controller-gen:
     internal: true
     cmds:
-      - test -s {{.LOCAL_BIN}}/controller-gen || GOBIN=$(pwd)/{{.LOCAL_BIN}} go install sigs.k8s.io/controller-tools/cmd/controller-gen@{{.CONTROLLER_TOOLS_VERSION}}
+      - |
+          # Ensure controller-gen is present and matches the pinned version
+          if [ ! -x {{.LOCAL_BIN}}/controller-gen ] || ! {{.LOCAL_BIN}}/controller-gen --version 2>/dev/null | grep -q "{{.CONTROLLER_TOOLS_VERSION}}"; then
+            echo "Installing controller-gen {{.CONTROLLER_TOOLS_VERSION}} into {{.LOCAL_BIN}}"
+            GOBIN=$(pwd)/{{.LOCAL_BIN}} go install sigs.k8s.io/controller-tools/cmd/controller-gen@{{.CONTROLLER_TOOLS_VERSION}}
+          else
+            echo "controller-gen is up-to-date ({{.CONTROLLER_TOOLS_VERSION}})"
+          fi
   setup:kcp:
     internal: true
     cmds:
