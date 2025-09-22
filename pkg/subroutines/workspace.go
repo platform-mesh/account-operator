@@ -73,8 +73,10 @@ func (r *WorkspaceSubroutine) Finalizers() []string { // coverage-ignore
 	return []string{"account.core.platform-mesh.io/finalizer"}
 }
 
-// waitForWorkspaceType waits for a WorkspaceType to be ready by checking if it exists and has Ready condition
-func (r *WorkspaceSubroutine) waitForWorkspaceType(ctx context.Context, name string) errors.OperatorError {
+// waitForWorkspaceType checks if the WorkspaceType exists and is Ready.
+// Returns (true, nil) when Ready, (false, nil) when found but not Ready,
+// and (false, OperatorError) only on client errors.
+func (r *WorkspaceSubroutine) waitForWorkspaceType(ctx context.Context, name string) (bool, errors.OperatorError) {
 	log := ctrl.LoggerFrom(ctx)
 	wt := &kcptenancyv1alpha.WorkspaceType{}
 	key := client.ObjectKey{Name: name}
@@ -83,7 +85,7 @@ func (r *WorkspaceSubroutine) waitForWorkspaceType(ctx context.Context, name str
 	err := r.client.Get(ctx, key, wt)
 	if err != nil {
 		log.Error(err, "failed to get workspace type", "name", name)
-		return errors.NewOperatorError(err, true, false)
+		return false, errors.NewOperatorError(err, true, false)
 	}
 
 	log.Info("workspace type found", "name", name, "conditions", wt.Status.Conditions)
@@ -91,10 +93,11 @@ func (r *WorkspaceSubroutine) waitForWorkspaceType(ctx context.Context, name str
 	for _, cond := range wt.Status.Conditions {
 		if cond.Type == "Ready" && cond.Status == "True" {
 			log.Info("workspace type is ready", "name", name)
-			return nil
+			return true, nil
 		}
 	}
-	return errors.NewOperatorError(errors.New("workspace type not ready"), true, false)
+	// Found but not Ready yet
+	return false, nil
 }
 func (r *WorkspaceSubroutine) Process(ctx context.Context, runtimeObj runtimeobject.RuntimeObject) (ctrl.Result, errors.OperatorError) {
 	instance := runtimeObj.(*corev1alpha1.Account)
@@ -107,6 +110,8 @@ func (r *WorkspaceSubroutine) Process(ctx context.Context, runtimeObj runtimeobj
 	}
 	// Select the cluster under which the workspace will be created
 	ctxWS := ctx
+	// Use a dedicated context for WorkspaceType checks (currently the original context)
+	ctxWT := ctx
 	// For org accounts, always create in the designated org workspace cluster
 	if instance.Spec.Type == corev1alpha1.AccountTypeOrg {
 		orgCluster := cfg.Kcp.OrgWorkspaceCluster
@@ -122,10 +127,12 @@ func (r *WorkspaceSubroutine) Process(ctx context.Context, runtimeObj runtimeobj
 		if cfg.Kcp.OrgWorkspaceCluster != "" {
 			wtPath = cfg.Kcp.OrgWorkspaceCluster
 		}
-		// Wait for org workspace type to be ready before proceeding
-		if err := r.waitForWorkspaceType(ctx, wtName); err != nil {
+		// Wait for org workspace type readiness without error-based requeue
+		if ready, opErr := r.waitForWorkspaceType(ctxWT, wtName); opErr != nil {
+			return ctrl.Result{}, opErr
+		} else if !ready {
 			ctrl.LoggerFrom(ctx).Info("waiting for org workspace type to be ready", "name", wtName)
-			return ctrl.Result{Requeue: true, RequeueAfter: 5 * time.Second}, err
+			return ctrl.Result{RequeueAfter: 5 * time.Second}, nil
 		}
 	case corev1alpha1.AccountTypeAccount:
 		// Parse cluster path robustly: find the "orgs" segment anywhere
@@ -140,10 +147,12 @@ func (r *WorkspaceSubroutine) Process(ctx context.Context, runtimeObj runtimeobj
 				break
 			}
 		}
-		// Wait for account workspace type to be ready before proceeding
-		if err := r.waitForWorkspaceType(ctx, wtName); err != nil {
+		// Wait for account workspace type readiness without error-based requeue
+		if ready, opErr := r.waitForWorkspaceType(ctxWT, wtName); opErr != nil {
+			return ctrl.Result{}, opErr
+		} else if !ready {
 			ctrl.LoggerFrom(ctx).Info("waiting for account workspace type to be ready", "name", wtName)
-			return ctrl.Result{Requeue: true, RequeueAfter: 5 * time.Second}, err
+			return ctrl.Result{RequeueAfter: 5 * time.Second}, nil
 		}
 	}
 
