@@ -360,16 +360,13 @@ func TestFGASubroutine_Process(t *testing.T) {
 					}
 
 				}).Return(nil).Once()
-				openFGAServiceClientMock.On("Write", mock.Anything, mock.Anything).
-					Return(&openfgav1.WriteResponse{}, nil)
-
-				openFGAServiceClientMock.On("Write", mock.Anything, mock.Anything).
-					Return(&openfgav1.WriteResponse{}, nil)
 				openFGAServiceClientMock.On("Write", mock.Anything, mock.MatchedBy(func(req *openfgav1.WriteRequest) bool {
 					// Check for partial match
 					return len(req.Writes.TupleKeys) == 1 && req.Writes.TupleKeys[0].User == "user:system.serviceaccount.some-namespace.some-service-account"
-				})).
-					Return(&openfgav1.WriteResponse{}, nil)
+				})).Return(&openfgav1.WriteResponse{}, nil).Once()
+
+				openFGAServiceClientMock.On("Write", mock.Anything, mock.Anything).
+					Return(&openfgav1.WriteResponse{}, nil).Times(2)
 			},
 		},
 		{

@@ -270,6 +270,7 @@ func (in *WorkspaceLocation) DeepCopyInto(out *WorkspaceLocation) {
 // APIExportEndpointSlice represents an API export endpoint slice
 // +kubebuilder:object:root=true
 // +kubebuilder:resource:scope=Cluster
+// +kubebuilder:subresource:status
 type APIExportEndpointSlice struct {
 	metav1.TypeMeta   `json:",inline"`
 	metav1.ObjectMeta `json:"metadata,omitempty"`

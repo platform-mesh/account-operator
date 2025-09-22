@@ -102,7 +102,6 @@ func (te *Environment) Start() (*rest.Config, string, error) {
 	if te.Scheme == nil {
 		te.Scheme = scheme.Scheme
 		utilruntime.Must(kcptypes.AddToScheme(te.Scheme))
-		utilruntime.Must(kcptypes.AddToScheme(te.Scheme))
 	}
 	//// wait for default namespace to actually be created and seen as available to the apiserver
 	if err := te.waitForDefaultNamespace(); err != nil {

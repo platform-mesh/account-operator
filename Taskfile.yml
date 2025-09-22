@@ -42,7 +42,10 @@ tasks:
   manifests:
     deps: [setup:controller-gen,setup:kcp-api-gen]
     cmds:
-      - "{{.LOCAL_BIN}}/controller-gen rbac:roleName=manager-role crd paths=./... output:crd:artifacts:config={{.CRD_DIRECTORY}}"
+    - "# Generate RBAC from all controller code"
+    - "{{.LOCAL_BIN}}/controller-gen rbac:roleName=manager-role paths=./..."
+    - "# Generate CRDs only from versioned APIs; exclude internal shim types under pkg/types"
+    - "{{.LOCAL_BIN}}/controller-gen crd paths=./api/... output:crd:artifacts:config={{.CRD_DIRECTORY}}"
   generate:
     cmds:
       - task: manifests
