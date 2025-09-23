@@ -161,9 +161,6 @@ func (r *WorkspaceTypeSubroutine) createCustomOrgWorkspaceType(ctx context.Conte
 	customOrg := &kcptenancyv1alpha.WorkspaceType{ObjectMeta: metav1.ObjectMeta{Name: customOrgName}}
 
 	_, err := controllerutil.CreateOrUpdate(ctx, r.client, customOrg, func() error {
-		if baseOrg != nil {
-			customOrg.Spec = baseOrg.Spec
-		}
 		customOrg.Spec.Extend = kcptenancyv1alpha.WorkspaceTypeExtension{
 			With: []kcptenancyv1alpha.WorkspaceTypeReference{
 				createWorkspaceTypeReference("org", "root"),
