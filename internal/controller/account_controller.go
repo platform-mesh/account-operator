@@ -57,6 +57,21 @@ type AccountReconciler struct {
 	lifecycle *controllerruntime.LifecycleManager
 }
 
+// NewAccountReconciler creates an AccountReconciler wired with a lifecycle manager and the subroutines
+// enabled in cfg.
+//
+// If cfg.Subroutines.WorkspaceType.Enabled is true the function will attempt to construct a root-scoped
+// Kubernetes client. It uses cfg.Kcp.RootHost if provided; otherwise it derives a root host by stripping
+// virtual-workspace ("/services/") and cluster ("/clusters/") segments from mgr.GetConfig().Host and
+// appending "/clusters/root". If creating the derived root client succeeds it is passed to the
+// WorkspaceType subroutine; on failure the reconciler falls back to the manager's shared client.
+//
+// The function also wires the Workspace, AccountInfo, and FGA subroutines when their respective
+// cfg.Subroutines.*.Enabled flags are true. The FGA subroutine receives the provided OpenFGA client and
+// the configured CreatorRelation, ParentRelation, and ObjectType.
+//
+// It returns a new AccountReconciler whose lifecycle manager is initialized with the manager client and
+// the selected subroutines, with condition management enabled.
 func NewAccountReconciler(log *logger.Logger, mgr ctrl.Manager, cfg config.OperatorConfig, fgaClient openfgav1.OpenFGAServiceClient) *AccountReconciler {
 	var subs []subroutine.Subroutine
 	if cfg.Subroutines.WorkspaceType.Enabled {

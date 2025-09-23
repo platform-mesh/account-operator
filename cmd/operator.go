@@ -56,6 +56,7 @@ var (
 	enableHTTP2          bool
 )
 
+// or shutdown errors.
 func RunController(_ *cobra.Command, _ []string) { // coverage-ignore
 	var err error
 	ctrl.SetLogger(log.ComponentLogger("controller-runtime").Logr())

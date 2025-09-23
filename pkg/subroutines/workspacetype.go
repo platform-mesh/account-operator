@@ -33,10 +33,12 @@ type baseWorkspaceTypes struct {
 	acc *kcptenancyv1alpha.WorkspaceType
 }
 
+// client for both normal and root-scoped operations.
 func NewWorkspaceTypeSubroutine(c client.Client) *WorkspaceTypeSubroutine {
 	return &WorkspaceTypeSubroutine{client: c, rootClient: c}
 }
 
+// and root for cluster-root (provider/root) operations.
 func NewWorkspaceTypeSubroutineWithRootClient(c client.Client, root client.Client) *WorkspaceTypeSubroutine {
 	return &WorkspaceTypeSubroutine{client: c, rootClient: root}
 }
@@ -228,7 +230,8 @@ func (r *WorkspaceTypeSubroutine) updateBaseOrgWorkspaceType(ctx context.Context
 	return nil
 }
 
-// createWorkspaceTypeReference creates a workspace type reference
+// createWorkspaceTypeReference creates a WorkspaceTypeReference with the given workspace type name
+// and cluster path.
 func createWorkspaceTypeReference(name, path string) kcptenancyv1alpha.WorkspaceTypeReference {
 	return kcptenancyv1alpha.WorkspaceTypeReference{
 		Name: kcptenancyv1alpha.WorkspaceTypeName(name),
@@ -236,14 +239,16 @@ func createWorkspaceTypeReference(name, path string) kcptenancyv1alpha.Workspace
 	}
 }
 
-// createWorkspaceTypeSelector creates a workspace type selector with the given types
+// createWorkspaceTypeSelector creates a WorkspaceTypeSelector containing the given WorkspaceTypeReferences.
 func createWorkspaceTypeSelector(refs ...kcptenancyv1alpha.WorkspaceTypeReference) *kcptenancyv1alpha.WorkspaceTypeSelector {
 	return &kcptenancyv1alpha.WorkspaceTypeSelector{
 		Types: refs,
 	}
 }
 
-// getAuthConfigName generates a consistent name for the WorkspaceAuthenticationConfiguration
+// getAuthConfigName returns the name to use for a WorkspaceAuthenticationConfiguration for an organization.
+// The name is formed by taking the org workspace type name derived from the given account and cluster path
+// (via GetOrgWorkspaceTypeName) and appending the suffix `-auth` (i.e. `<orgWorkspaceTypeName>-auth`).
 func getAuthConfigName(accountName, currentPath string) string {
 	return fmt.Sprintf("%s-auth", GetOrgWorkspaceTypeName(accountName, currentPath))
 }
