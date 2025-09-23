@@ -150,12 +150,13 @@ func (r *WorkspaceSubroutine) Process(ctx context.Context, runtimeObj runtimeobj
 			if segs[i] == "orgs" {
 				// parent path where custom types are created: up to and including "orgs"
 				if i+1 < len(segs) && segs[i+1] != "" {
-					wtName = GetAccWorkspaceTypeName(instance.Name, origPath)
+					path := strings.Join(segs[:i+1], ":")
+					wtPath = path
+					wtName = GetAccWorkspaceTypeName(instance.Name, path)
 				} else {
 					ctrl.LoggerFrom(ctx).Info("invalid cluster path: missing org segment after 'orgs'", "path", origPath)
 					return ctrl.Result{RequeueAfter: 5 * time.Second}, nil
 				}
-				wtPath = strings.Join(segs[:i+1], ":")
 				break
 			}
 		}
