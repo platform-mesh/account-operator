@@ -61,28 +61,34 @@ func (r *WorkspaceTypeSubroutine) Process(ctx context.Context, ro runtimeobject.
 
 	cfg := commonconfig.LoadConfigFromContext(ctx).(operatorconfig.OperatorConfig)
 	currentPath := r.getCurrentClusterPath(ctx, cfg)
+	// Types should reside in the org workspace cluster when configured, else currentPath
+	typePath := currentPath
+	if cfg.Kcp.OrgWorkspaceCluster != "" {
+		typePath = cfg.Kcp.OrgWorkspaceCluster
+	}
+	ctxTypes := kontext.WithCluster(ctx, logicalcluster.Name(typePath))
 
 	baseTypes, err := r.fetchBaseWorkspaceTypes(ctx, cfg, log, acct.Name)
 	if err != nil {
 		return ctrl.Result{}, err
 	}
 
-	// Create custom workspace types
-	customOrgName := GetOrgWorkspaceTypeName(acct.Name, currentPath)
-	customAccName := GetAccWorkspaceTypeName(acct.Name, currentPath)
+	// Create custom workspace types (names remain derived from path used in workspace.go)
+	customOrgName := GetOrgWorkspaceTypeName(acct.Name, typePath)
+	customAccName := GetAccWorkspaceTypeName(acct.Name, typePath)
 
-	// Create custom account workspace type
-	if err := r.createCustomAccountWorkspaceType(ctx, acct.Name, currentPath, customOrgName, baseTypes.acc); err != nil {
+	// Create custom account workspace type in typePath
+	if err := r.createCustomAccountWorkspaceType(ctxTypes, acct.Name, typePath, customOrgName, baseTypes.acc); err != nil {
 		return ctrl.Result{}, errors.NewOperatorError(err, true, true)
 	}
 
-	// Create custom org workspace type
-	if err := r.createCustomOrgWorkspaceType(ctx, acct.Name, currentPath, baseTypes.org); err != nil {
+	// Create custom org workspace type in typePath
+	if err := r.createCustomOrgWorkspaceType(ctxTypes, acct.Name, typePath, baseTypes.org); err != nil {
 		return ctrl.Result{}, errors.NewOperatorError(err, true, true)
 	}
 
-	// Update base org type to allow custom org as child (optional)
-	if err := r.updateBaseOrgWorkspaceType(ctx, cfg, baseTypes.org, customOrgName, log); err != nil {
+	// Update base org type to allow custom org (at typePath) as child (optional)
+	if err := r.updateBaseOrgWorkspaceType(ctx, cfg, baseTypes.org, customOrgName, typePath, log); err != nil {
 		return ctrl.Result{}, err
 	}
 
@@ -185,7 +191,7 @@ func (r *WorkspaceTypeSubroutine) createCustomOrgWorkspaceType(ctx context.Conte
 }
 
 // updateBaseOrgWorkspaceType updates the base org workspace type to allow custom org as child
-func (r *WorkspaceTypeSubroutine) updateBaseOrgWorkspaceType(ctx context.Context, cfg operatorconfig.OperatorConfig, baseOrg *kcptenancyv1alpha.WorkspaceType, customOrgName string, log *logger.Logger) errors.OperatorError {
+func (r *WorkspaceTypeSubroutine) updateBaseOrgWorkspaceType(ctx context.Context, cfg operatorconfig.OperatorConfig, baseOrg *kcptenancyv1alpha.WorkspaceType, customOrgName string, typePath string, log *logger.Logger) errors.OperatorError {
 	if baseOrg == nil {
 		return nil
 	}
@@ -196,11 +202,8 @@ func (r *WorkspaceTypeSubroutine) updateBaseOrgWorkspaceType(ctx context.Context
 		baseOrg.Spec.LimitAllowedChildren = &kcptenancyv1alpha.WorkspaceTypeSelector{}
 	}
 
-	// Use the path where the custom org type will be created
-	customOrgPath := "root:orgs"
-	if cfg.Kcp.OrgWorkspaceCluster != "" {
-		customOrgPath = cfg.Kcp.OrgWorkspaceCluster
-	}
+	// Use the path where the custom org type will be created (typePath)
+	customOrgPath := typePath
 
 	// avoid duplicate entries to prevent reconcile churn
 	ref := createWorkspaceTypeReference(customOrgName, customOrgPath)
