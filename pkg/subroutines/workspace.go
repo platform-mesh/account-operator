@@ -150,8 +150,11 @@ func (r *WorkspaceSubroutine) Process(ctx context.Context, runtimeObj runtimeobj
 		for i := 0; i < len(segs); i++ {
 			if segs[i] == "orgs" {
 				// parent path where custom types are created: up to and including "orgs"
-				if i+1 < len(segs) {
+				if i+1 < len(segs) && segs[i+1] != "" {
 					wtName = GetAccWorkspaceTypeName(instance.Name, origPath)
+				} else {
+					ctrl.LoggerFrom(ctx).Info("invalid cluster path: missing org segment after 'orgs'", "path", origPath)
+					return ctrl.Result{RequeueAfter: 5 * time.Second}, nil
 				}
 				wtPath = strings.Join(segs[:i+1], ":")
 				break
@@ -190,8 +193,8 @@ func (r *WorkspaceSubroutine) Process(ctx context.Context, runtimeObj runtimeobj
 		// Handle forbidden errors gracefully - this can happen in test environments
 		// or when the virtual workspace path is not accessible
 		if kerrors.IsForbidden(err) {
-			ctrl.LoggerFrom(ctx).Info("workspace creation forbidden (virtual workspace path not accessible) - requeueing", "error", err.Error())
-			return ctrl.Result{RequeueAfter: 30 * time.Second}, nil
+			ctrl.LoggerFrom(ctx).Error(err, "workspace creation forbidden; check access to virtual workspace path")
+			return ctrl.Result{RequeueAfter: 10 * time.Second}, nil
 		}
 		return ctrl.Result{}, errors.NewOperatorError(err, true, true)
 	}

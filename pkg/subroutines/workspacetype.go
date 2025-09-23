@@ -50,7 +50,10 @@ func (r *WorkspaceTypeSubroutine) Finalize(ctx context.Context, ro runtimeobject
 }
 
 func (r *WorkspaceTypeSubroutine) Process(ctx context.Context, ro runtimeobject.RuntimeObject) (ctrl.Result, errors.OperatorError) {
-	acct := ro.(*corev1alpha1.Account)
+	acct, ok := ro.(*corev1alpha1.Account)
+	if !ok {
+		return ctrl.Result{}, nil
+	}
 	if acct.Spec.Type != corev1alpha1.AccountTypeOrg {
 		return ctrl.Result{}, nil
 	}
@@ -135,9 +138,10 @@ func (r *WorkspaceTypeSubroutine) createCustomAccountWorkspaceType(ctx context.C
 				createWorkspaceTypeReference("account", "root"),
 			},
 		}
-		// Allow creating this account type under only the custom org type (in current cluster)
+		// Allow creating this account type under the custom org type and itself (in current cluster)
 		customAcc.Spec.LimitAllowedParents = createWorkspaceTypeSelector(
 			createWorkspaceTypeReference(customOrgName, currentPath),
+			createWorkspaceTypeReference(customAccName, currentPath),
 		)
 		return nil
 	})
@@ -164,7 +168,7 @@ func (r *WorkspaceTypeSubroutine) createCustomOrgWorkspaceType(ctx context.Conte
 		customOrg.Spec.DefaultChildWorkspaceType = &defaultChild
 		// Allow creating this org type under appropriate parent type
 		customOrg.Spec.LimitAllowedParents = createWorkspaceTypeSelector(
-			createWorkspaceTypeReference("orgs", "root"),
+			createWorkspaceTypeReference("org", "root"),
 		)
 		// Explicitly allow custom account children under this custom org type
 		customOrg.Spec.LimitAllowedChildren = createWorkspaceTypeSelector(
@@ -186,7 +190,7 @@ func (r *WorkspaceTypeSubroutine) updateBaseOrgWorkspaceType(ctx context.Context
 		return nil
 	}
 
-	updateCtx := kontext.WithCluster(ctx, logicalcluster.Name("root"))
+	updateCtx := kontext.WithCluster(ctx, logicalcluster.Name(cfg.Kcp.ProviderWorkspace))
 
 	if baseOrg.Spec.LimitAllowedChildren == nil {
 		baseOrg.Spec.LimitAllowedChildren = &kcptenancyv1alpha.WorkspaceTypeSelector{}
@@ -198,12 +202,22 @@ func (r *WorkspaceTypeSubroutine) updateBaseOrgWorkspaceType(ctx context.Context
 		customOrgPath = cfg.Kcp.OrgWorkspaceCluster
 	}
 
-	baseOrg.Spec.LimitAllowedChildren.Types = append(
-		baseOrg.Spec.LimitAllowedChildren.Types,
-		createWorkspaceTypeReference(customOrgName, customOrgPath),
-	)
+	// avoid duplicate entries to prevent reconcile churn
+	ref := createWorkspaceTypeReference(customOrgName, customOrgPath)
+	exists := false
+	for _, t := range baseOrg.Spec.LimitAllowedChildren.Types {
+		if t.Name == ref.Name && t.Path == ref.Path {
+			exists = true
+			break
+		}
+	}
+	if !exists {
+		baseOrg.Spec.LimitAllowedChildren.Types = append(
+			baseOrg.Spec.LimitAllowedChildren.Types, ref,
+		)
+	}
 
-	if err := r.client.Update(updateCtx, baseOrg); err != nil {
+	if err := r.rootClient.Update(updateCtx, baseOrg); err != nil {
 		if kerrors.IsForbidden(err) {
 			log.Debug().Str("customOrgWorkspaceType", customOrgName).Err(err).Msg("custom workspace types ensured (base type update forbidden)")
 			return nil
