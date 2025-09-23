@@ -10,6 +10,7 @@ import (
 	commonconfig "github.com/platform-mesh/golang-commons/config"
 	"github.com/platform-mesh/golang-commons/controller/lifecycle/runtimeobject"
 	"github.com/platform-mesh/golang-commons/errors"
+	corev1 "k8s.io/api/core/v1"
 	kerrors "k8s.io/apimachinery/pkg/api/errors"
 	metav1 "k8s.io/apimachinery/pkg/apis/meta/v1"
 	"k8s.io/client-go/util/workqueue"
@@ -102,7 +103,7 @@ func (r *WorkspaceSubroutine) waitForWorkspaceType(ctx context.Context, name str
 	log.Info("workspace type found", "name", name, "conditions", wt.Status.Conditions)
 	// Check if the workspace type is Ready
 	for _, cond := range wt.Status.Conditions {
-		if cond.Type == "Ready" && cond.Status == "True" {
+		if cond.Type == "Ready" && cond.Status == corev1.ConditionTrue {
 			log.Info("workspace type is ready", "name", name)
 			return true, nil
 		}
