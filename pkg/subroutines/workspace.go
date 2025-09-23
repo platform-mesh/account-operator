@@ -108,7 +108,7 @@ func (r *WorkspaceSubroutine) Process(ctx context.Context, runtimeObj runtimeobj
 	cfg := commonconfig.LoadConfigFromContext(ctx).(config.OperatorConfig)
 
 	// Capture original cluster path (where custom WorkspaceTypes are created)
-	origPath := ""
+	origPath := cfg.Kcp.ProviderWorkspace
 	if cl, ok := kontext.ClusterFrom(ctx); ok {
 		origPath = cl.String()
 	}
