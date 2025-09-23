@@ -44,9 +44,16 @@ func (r *WorkspaceSubroutine) GetName() string {
 func (r *WorkspaceSubroutine) Finalize(ctx context.Context, ro runtimeobject.RuntimeObject) (ctrl.Result, errors.OperatorError) {
 	instance := ro.(*corev1alpha1.Account)
 	cn := MustGetClusteredName(ctx, ro)
+	cfg := commonconfig.LoadConfigFromContext(ctx).(config.OperatorConfig)
+
+	// Use the same cluster context as creation
+	ctxWS := ctx
+	if instance.Spec.Type == corev1alpha1.AccountTypeOrg && cfg.Kcp.OrgWorkspaceCluster != "" {
+		ctxWS = kontext.WithCluster(ctx, logicalcluster.Name(cfg.Kcp.OrgWorkspaceCluster))
+	}
 
 	ws := kcptenancyv1alpha.Workspace{}
-	err := r.client.Get(ctx, client.ObjectKey{Name: instance.Name}, &ws)
+	err := r.client.Get(ctxWS, client.ObjectKey{Name: instance.Name}, &ws)
 	if kerrors.IsNotFound(err) {
 		return ctrl.Result{}, nil
 	}
@@ -59,7 +66,7 @@ func (r *WorkspaceSubroutine) Finalize(ctx context.Context, ro runtimeobject.Run
 		return ctrl.Result{RequeueAfter: next}, nil
 	}
 
-	err = r.client.Delete(ctx, &ws)
+	err = r.client.Delete(ctxWS, &ws)
 	if err != nil {
 		return ctrl.Result{}, errors.NewOperatorError(err, true, true)
 	}
