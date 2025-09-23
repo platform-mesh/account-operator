@@ -70,7 +70,7 @@ func (r *WorkspaceSubroutine) Finalize(ctx context.Context, ro runtimeobject.Run
 }
 
 func (r *WorkspaceSubroutine) Finalizers() []string { // coverage-ignore
-	return []string{"account.core.platform-mesh.io/finalizer"}
+	return []string{WorkspaceSubroutineFinalizer}
 }
 
 // waitForWorkspaceType checks if the WorkspaceType exists and is Ready.
@@ -84,6 +84,10 @@ func (r *WorkspaceSubroutine) waitForWorkspaceType(ctx context.Context, name str
 	log.Info("checking workspace type", "name", name)
 	err := r.client.Get(ctx, key, wt)
 	if err != nil {
+		if kerrors.IsNotFound(err) {
+			log.Info("workspace type not found yet", "name", name)
+			return false, nil
+		}
 		log.Error(err, "failed to get workspace type", "name", name)
 		return false, errors.NewOperatorError(err, true, false)
 	}
@@ -167,9 +171,9 @@ func (r *WorkspaceSubroutine) Process(ctx context.Context, runtimeObj runtimeobj
 			}
 		}
 
-		wsCluster, _ := kontext.ClusterFrom(ctxWS)
-		instanceCluster, _ := kontext.ClusterFrom(ctx)
-		if wsCluster.String() == instanceCluster.String() {
+		wsCluster, wsOK := kontext.ClusterFrom(ctxWS)
+		instanceCluster, instOK := kontext.ClusterFrom(ctx)
+		if wsOK && instOK && wsCluster.String() == instanceCluster.String() {
 			return controllerutil.SetOwnerReference(instance, createdWorkspace, r.client.Scheme())
 		}
 
@@ -179,9 +183,8 @@ func (r *WorkspaceSubroutine) Process(ctx context.Context, runtimeObj runtimeobj
 		// Handle forbidden errors gracefully - this can happen in test environments
 		// or when the virtual workspace path is not accessible
 		if kerrors.IsForbidden(err) {
-			ctrl.LoggerFrom(ctx).Info("workspace creation forbidden (virtual workspace path not accessible)", "error", err.Error())
-			// Continue without error - workspace creation is not always possible in restricted environments
-			return ctrl.Result{}, nil
+			ctrl.LoggerFrom(ctx).Info("workspace creation forbidden (virtual workspace path not accessible) - requeueing", "error", err.Error())
+			return ctrl.Result{RequeueAfter: 30 * time.Second}, nil
 		}
 		return ctrl.Result{}, errors.NewOperatorError(err, true, true)
 	}
