@@ -160,15 +160,20 @@ func (r *WorkspaceSubroutine) Process(ctx context.Context, runtimeObj runtimeobj
 	createdWorkspace := &kcptenancyv1alpha.Workspace{ObjectMeta: metav1.ObjectMeta{Name: instance.Name}}
 	_, err := controllerutil.CreateOrUpdate(ctxWS, r.client, createdWorkspace, func() error {
 		// Only set the type on create; Workspace.spec.type.name is immutable.
-		if !createdWorkspace.CreationTimestamp.IsZero() {
+		if createdWorkspace.CreationTimestamp.IsZero() {
+			createdWorkspace.Spec.Type = &kcptenancyv1alpha.WorkspaceTypeReference{
+				Name: kcptenancyv1alpha.WorkspaceTypeName(wtName),
+				Path: wtPath,
+			}
+		}
+
+		wsCluster, _ := kontext.ClusterFrom(ctxWS)
+		instanceCluster, _ := kontext.ClusterFrom(ctx)
+		if wsCluster.String() == instanceCluster.String() {
 			return controllerutil.SetOwnerReference(instance, createdWorkspace, r.client.Scheme())
 		}
 
-		createdWorkspace.Spec.Type = &kcptenancyv1alpha.WorkspaceTypeReference{
-			Name: kcptenancyv1alpha.WorkspaceTypeName(wtName),
-			Path: wtPath,
-		}
-		return controllerutil.SetOwnerReference(instance, createdWorkspace, r.client.Scheme())
+		return nil
 	})
 	if err != nil {
 		// Handle forbidden errors gracefully - this can happen in test environments
