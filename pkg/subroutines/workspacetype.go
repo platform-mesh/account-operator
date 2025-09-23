@@ -131,8 +131,8 @@ func (r *WorkspaceTypeSubroutine) fetchBaseWorkspaceTypes(ctx context.Context, c
 }
 
 // createCustomAccountWorkspaceType creates the custom account workspace type
-func (r *WorkspaceTypeSubroutine) createCustomAccountWorkspaceType(ctx context.Context, accountName, currentPath, customOrgName string, baseAcc *kcptenancyv1alpha.WorkspaceType) error {
-	customAccName := GetAccWorkspaceTypeName(accountName, currentPath)
+func (r *WorkspaceTypeSubroutine) createCustomAccountWorkspaceType(ctx context.Context, accountName, typePath, customOrgName string, baseAcc *kcptenancyv1alpha.WorkspaceType) error {
+	customAccName := GetAccWorkspaceTypeName(accountName, typePath)
 	customAcc := &kcptenancyv1alpha.WorkspaceType{ObjectMeta: metav1.ObjectMeta{Name: customAccName}}
 
 	_, err := controllerutil.CreateOrUpdate(ctx, r.client, customAcc, func() error {
@@ -146,8 +146,8 @@ func (r *WorkspaceTypeSubroutine) createCustomAccountWorkspaceType(ctx context.C
 		}
 		// Allow creating this account type under the custom org type and itself (in current cluster)
 		customAcc.Spec.LimitAllowedParents = createWorkspaceTypeSelector(
-			createWorkspaceTypeReference(customOrgName, currentPath),
-			createWorkspaceTypeReference(customAccName, currentPath),
+			createWorkspaceTypeReference(customOrgName, typePath),
+			createWorkspaceTypeReference(customAccName, typePath),
 		)
 		return nil
 	})
