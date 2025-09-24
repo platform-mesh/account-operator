@@ -47,7 +47,12 @@ func (r *WorkspaceSubroutine) GetName() string {
 func (r *WorkspaceSubroutine) Finalize(ctx context.Context, ro runtimeobject.RuntimeObject) (ctrl.Result, errors.OperatorError) {
 	instance := ro.(*corev1alpha1.Account)
 	cn := MustGetClusteredName(ctx, ro)
-	cfg := commonconfig.LoadConfigFromContext(ctx).(config.OperatorConfig)
+	// Safely load operator config (tests may omit it)
+	cfgAny := commonconfig.LoadConfigFromContext(ctx)
+	var cfg config.OperatorConfig
+	if c, ok := cfgAny.(config.OperatorConfig); ok {
+		cfg = c
+	}
 
 	// Use the same cluster context as creation
 	ctxWS := ctx
@@ -57,7 +62,17 @@ func (r *WorkspaceSubroutine) Finalize(ctx context.Context, ro runtimeobject.Run
 
 	ws := kcptenancyv1alpha.Workspace{}
 	err := r.client.Get(ctxWS, client.ObjectKey{Name: instance.Name}, &ws)
+	// Fallback: if not found in configured org cluster (config drift), try reconcile cluster
+	if kerrors.IsNotFound(err) && instance.Spec.Type == corev1alpha1.AccountTypeOrg && cfg.Kcp.OrgWorkspaceCluster != "" {
+		if err2 := r.client.Get(ctx, client.ObjectKey{Name: instance.Name}, &ws); err2 == nil {
+			// Found in reconcile cluster; switch deletion context
+			ctxWS = ctx
+			err = nil
+		}
+	}
 	if kerrors.IsNotFound(err) {
+		// Successful observation that workspace no longer exists; reset rate limiter backoff.
+		r.limiter.Forget(cn)
 		return ctrl.Result{}, nil
 	}
 	if err != nil {
@@ -74,7 +89,7 @@ func (r *WorkspaceSubroutine) Finalize(ctx context.Context, ro runtimeobject.Run
 		return ctrl.Result{}, errors.NewOperatorError(err, true, true)
 	}
 
-	// requeue to check if the workspace was deleted
+	// Requeue to check if the workspace was deleted
 	next := r.limiter.When(cn)
 	return ctrl.Result{RequeueAfter: next}, nil
 }
@@ -115,7 +130,12 @@ func (r *WorkspaceSubroutine) waitForWorkspaceType(ctx context.Context, name str
 }
 func (r *WorkspaceSubroutine) Process(ctx context.Context, runtimeObj runtimeobject.RuntimeObject) (ctrl.Result, errors.OperatorError) {
 	instance := runtimeObj.(*corev1alpha1.Account)
-	cfg := commonconfig.LoadConfigFromContext(ctx).(config.OperatorConfig)
+	// Safely load operator config (tests may omit it)
+	cfgAny := commonconfig.LoadConfigFromContext(ctx)
+	var cfg config.OperatorConfig
+	if c, ok := cfgAny.(config.OperatorConfig); ok {
+		cfg = c
+	}
 
 	// Capture original cluster path (where custom WorkspaceTypes are created)
 	origPath := cfg.Kcp.ProviderWorkspace
@@ -151,18 +171,23 @@ func (r *WorkspaceSubroutine) Process(ctx context.Context, runtimeObj runtimeobj
 		// Parse cluster path robustly: find the "orgs" segment anywhere and derive org-scoped account WT name
 		segs := strings.Split(origPath, ":")
 		orgName := ""
+		foundOrgs := false
 		for i := 0; i < len(segs); i++ {
 			if segs[i] == "orgs" {
+				foundOrgs = true
 				if i+1 < len(segs) && segs[i+1] != "" {
 					orgName = segs[i+1]
 					wtPath = strings.Join(segs[:i+1], ":")
 					wtName = GetAccWorkspaceTypeName(orgName, wtPath)
 				} else {
 					ctrl.LoggerFrom(ctx).Info("invalid cluster path: missing org segment after 'orgs'", "path", origPath)
-					return ctrl.Result{RequeueAfter: 5 * time.Second}, nil
+					return ctrl.Result{RequeueAfter: workspaceTypeRequeueDelay}, nil
 				}
 				break
 			}
+		}
+		if !foundOrgs {
+			ctrl.LoggerFrom(ctx).Info("no 'orgs' segment in origPath; falling back to base account WorkspaceType", "origPath", origPath, "wtPath", wtPath, "wtName", wtName)
 		}
 		ctxWT = kontext.WithCluster(ctx, logicalcluster.Name(wtPath))
 		if ready, opErr := r.waitForWorkspaceType(ctxWT, wtName); opErr != nil {
@@ -173,11 +198,12 @@ func (r *WorkspaceSubroutine) Process(ctx context.Context, runtimeObj runtimeobj
 		}
 	}
 
-	// Test if namespace was already created based on status
+	// Prepare the Workspace object; set type on initial create only
 	createdWorkspace := &kcptenancyv1alpha.Workspace{ObjectMeta: metav1.ObjectMeta{Name: instance.Name}}
 	_, err := controllerutil.CreateOrUpdate(ctxWS, r.client, createdWorkspace, func() error {
-		// Only set the type on create; Workspace.spec.type.name is immutable.
-		if createdWorkspace.CreationTimestamp.IsZero() {
+		// Only set the type on create; Workspace.spec.type is immutable after creation.
+		// Detect create by empty ResourceVersion (set post-create by API server).
+		if createdWorkspace.ResourceVersion == "" {
 			createdWorkspace.Spec.Type = &kcptenancyv1alpha.WorkspaceTypeReference{
 				Name: kcptenancyv1alpha.WorkspaceTypeName(wtName),
 				Path: wtPath,

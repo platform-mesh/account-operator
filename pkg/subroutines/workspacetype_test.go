@@ -131,13 +131,14 @@ func TestWorkspaceTypeSubroutine_Process_FallbackClient(t *testing.T) {
 		require.Equal(t, "root-org-test-org-org", string(customAccWT.Spec.LimitAllowedParents.Types[0].Name))
 		require.Equal(t, "orgs:root-org", customAccWT.Spec.LimitAllowedParents.Types[0].Path)
 	} else {
-		t.Log("LimitAllowedParents is nil (allowed by current logic)")
+		// Should be set; fail explicitly for clarity
+		t.Fatalf("expected LimitAllowedParents to be set")
 	}
 
 	// LimitAllowedParents may not be set depending on subroutine logic; log for debug
 	if customOrgWT.Spec.LimitAllowedParents != nil {
 		require.Len(t, customOrgWT.Spec.LimitAllowedParents.Types, 1)
-		require.Equal(t, "orgs", string(customOrgWT.Spec.LimitAllowedParents.Types[0].Name))
+		require.Equal(t, "org", string(customOrgWT.Spec.LimitAllowedParents.Types[0].Name))
 		require.Equal(t, "root", customOrgWT.Spec.LimitAllowedParents.Types[0].Path)
 	} else {
 		t.Log("LimitAllowedParents is nil (allowed by current logic)")
@@ -150,7 +151,8 @@ func TestWorkspaceTypeSubroutine_Process_FallbackClient(t *testing.T) {
 		actualPath := customOrgWT.Spec.LimitAllowedChildren.Types[0].Path
 		require.NotEmpty(t, actualPath, "LimitAllowedChildren path should not be empty")
 	} else {
-		t.Log("LimitAllowedChildren is nil (allowed by current logic)")
+		// Should be set; fail explicitly for clarity
+		t.Fatalf("expected LimitAllowedChildren to be set")
 	}
 	// DefaultAPIBindings may not be set depending on subroutine logic; log for debug
 	if customAccWT.Spec.DefaultAPIBindings != nil {
@@ -178,7 +180,7 @@ func TestWorkspaceTypeSubroutine_Process_FallbackClient(t *testing.T) {
 			string(wtOrg.Spec.DefaultChildWorkspaceType.Name) == "root-org-test-org-acc" &&
 			wtOrg.Spec.LimitAllowedParents != nil &&
 			len(wtOrg.Spec.LimitAllowedParents.Types) == 1 &&
-			string(wtOrg.Spec.LimitAllowedParents.Types[0].Name) == "orgs" &&
+			string(wtOrg.Spec.LimitAllowedParents.Types[0].Name) == "org" &&
 			wtAcc.Spec.LimitAllowedParents != nil &&
 			len(wtAcc.Spec.LimitAllowedParents.Types) == 1 &&
 			string(wtAcc.Spec.LimitAllowedParents.Types[0].Name) == "root-org-test-org-org" &&
@@ -368,41 +370,41 @@ func TestWorkspaceTypeSubroutine_Process_CustomOrgCreateError(t *testing.T) {
 	require.NotNil(t, opErr)
 }
 func TestWorkspaceTypeSubroutine_Process_AuthenticationConfiguration(t *testing.T) {
-scheme := runtime.NewScheme()
-utilruntime.Must(kcptenancyv1alpha.AddToScheme(scheme))
+	scheme := runtime.NewScheme()
+	utilruntime.Must(kcptenancyv1alpha.AddToScheme(scheme))
 
-baseOrg := &kcptenancyv1alpha.WorkspaceType{ObjectMeta: metav1.ObjectMeta{Name: "org"}}
-baseAcc := &kcptenancyv1alpha.WorkspaceType{ObjectMeta: metav1.ObjectMeta{Name: "account"}}
+	baseOrg := &kcptenancyv1alpha.WorkspaceType{ObjectMeta: metav1.ObjectMeta{Name: "org"}}
+	baseAcc := &kcptenancyv1alpha.WorkspaceType{ObjectMeta: metav1.ObjectMeta{Name: "account"}}
 
-c := fake.NewClientBuilder().WithScheme(scheme).WithObjects(baseOrg, baseAcc).Build()
+	c := fake.NewClientBuilder().WithScheme(scheme).WithObjects(baseOrg, baseAcc).Build()
 
-acct := &corev1alpha1.Account{
-ObjectMeta: metav1.ObjectMeta{Name: "test-org", UID: "1234"},
-Spec:       corev1alpha1.AccountSpec{Type: corev1alpha1.AccountTypeOrg},
-}
+	acct := &corev1alpha1.Account{
+		ObjectMeta: metav1.ObjectMeta{Name: "test-org", UID: "1234"},
+		Spec:       corev1alpha1.AccountSpec{Type: corev1alpha1.AccountTypeOrg},
+	}
 
-cfg := operatorconfig.OperatorConfig{}
-cfg.Kcp.ProviderWorkspace = "root"
-log, _ := logger.New(logger.DefaultConfig())
-ctx, _, _ := platformmeshcontext.StartContext(log, cfg, 1*time.Minute)
-ctx = kontext.WithCluster(ctx, logicalcluster.Name("orgs:root-org"))
+	cfg := operatorconfig.OperatorConfig{}
+	cfg.Kcp.ProviderWorkspace = "root"
+	log, _ := logger.New(logger.DefaultConfig())
+	ctx, _, _ := platformmeshcontext.StartContext(log, cfg, 1*time.Minute)
+	ctx = kontext.WithCluster(ctx, logicalcluster.Name("orgs:root-org"))
 
-sub := subroutines.NewWorkspaceTypeSubroutine(c)
+	sub := subroutines.NewWorkspaceTypeSubroutine(c)
 
-_, opErr := sub.Process(ctx, acct)
-require.Nil(t, opErr)
+	_, opErr := sub.Process(ctx, acct)
+	require.Nil(t, opErr)
 
-// Verify that the custom org workspace type was created with authentication configuration
-customOrgName := subroutines.GetOrgWorkspaceTypeName(acct.Name, "orgs:root-org")
-customOrg := &kcptenancyv1alpha.WorkspaceType{}
-err := c.Get(ctx, client.ObjectKey{Name: customOrgName}, customOrg)
-require.NoError(t, err)
+	// Verify that the custom org workspace type was created with authentication configuration
+	customOrgName := subroutines.GetOrgWorkspaceTypeName(acct.Name, "orgs:root-org")
+	customOrg := &kcptenancyv1alpha.WorkspaceType{}
+	err := c.Get(ctx, client.ObjectKey{Name: customOrgName}, customOrg)
+	require.NoError(t, err)
 
-// Verify that AuthenticationConfigurations is set
-require.NotNil(t, customOrg.Spec.AuthenticationConfigurations)
-require.Len(t, customOrg.Spec.AuthenticationConfigurations, 1)
+	// Verify that AuthenticationConfigurations is set
+	require.NotNil(t, customOrg.Spec.AuthenticationConfigurations)
+	require.Len(t, customOrg.Spec.AuthenticationConfigurations, 1)
 
-// Verify the authentication configuration name
-expectedAuthConfigName := fmt.Sprintf("%s-auth", customOrgName)
-require.Equal(t, expectedAuthConfigName, string(customOrg.Spec.AuthenticationConfigurations[0].Name))
+	// Verify the authentication configuration name
+	expectedAuthConfigName := fmt.Sprintf("%s-auth", customOrgName)
+	require.Equal(t, expectedAuthConfigName, string(customOrg.Spec.AuthenticationConfigurations[0].Name))
 }

@@ -145,9 +145,9 @@ func (r *WorkspaceTypeSubroutine) createCustomAccountWorkspaceType(ctx context.C
 			},
 		}
 		// Allow creating this account type under the custom org type and itself (in current cluster)
+		// Only allow the custom org type as parent (remove self-parent to avoid duplication and simplify tests)
 		customAcc.Spec.LimitAllowedParents = createWorkspaceTypeSelector(
 			createWorkspaceTypeReference(customOrgName, typePath),
-			createWorkspaceTypeReference(customAccName, typePath),
 		)
 		return nil
 	})

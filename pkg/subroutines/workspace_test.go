@@ -61,6 +61,8 @@ func (suite *WorkspaceSubroutineTestSuite) SetupTest() {
 	suite.log, err = logger.New(logger.DefaultConfig())
 	suite.Require().NoError(err)
 	suite.context, _, _ = platformmeshcontext.StartContext(suite.log, cfg, 1*time.Minute)
+	// Generic Scheme expectation (CreateOrUpdate may call it multiple times)
+	suite.clientMock.On("Scheme").Return(scheme.Scheme).Maybe()
 }
 
 func (suite *WorkspaceSubroutineTestSuite) TestGetName_OK() {
@@ -127,8 +129,7 @@ func (suite *WorkspaceSubroutineTestSuite) TestFinalize_OK_Workspace_Existing() 
 	testAccount := &corev1alpha1.Account{}
 	mockGetWorkspaceByName(suite.clientMock, kcpcorev1alpha1.LogicalClusterPhaseReady, "https://example.com/")
 	mockDeleteWorkspaceCall(suite)
-	ctx := context.Background()
-	ctx = kontext.WithCluster(ctx, "some-cluster-id")
+	ctx := kontext.WithCluster(suite.context, "some-cluster-id")
 
 	// When
 	res, err := suite.testObj.Finalize(ctx, testAccount)
@@ -177,7 +178,7 @@ func (suite *WorkspaceSubroutineTestSuite) TestFinalize_Error_On_Get() {
 func (suite *WorkspaceSubroutineTestSuite) TestProcessing_OK() {
 	// Given
 	testAccount := &corev1alpha1.Account{}
-	suite.clientMock.On("Scheme").Return(scheme.Scheme)
+	suite.clientMock.On("Scheme").Return(scheme.Scheme).Maybe()
 	mockGetWorkspaceCallNotFound(suite)
 	mockNewWorkspaceCreateCall(suite, defaultExpectedTestNamespace)
 
@@ -208,7 +209,7 @@ func (suite *WorkspaceSubroutineTestSuite) TestProcessing_Error_On_Get() {
 func (suite *WorkspaceSubroutineTestSuite) TestProcessing_CreateError() {
 	// Given
 	testAccount := &corev1alpha1.Account{}
-	suite.clientMock.On("Scheme").Return(scheme.Scheme)
+	suite.clientMock.On("Scheme").Return(scheme.Scheme).Maybe()
 	mockGetWorkspaceCallNotFound(suite)
 	suite.clientMock.EXPECT().
 		Create(mock.Anything, mock.Anything).
@@ -243,10 +244,10 @@ func (suite *WorkspaceSubroutineTestSuite) TestProcessing_AccountType_MultiSegme
 	suite.clientMock.On("Scheme").Return(scheme.Scheme).Maybe() // Allow multiple calls
 
 	// 1. waitForWorkspaceType Get call - workspace type should be ready
-	suite.clientMock.On("Get", mock.Anything, types.NamespacedName{Name: "acme-test-account-acc"}, mock.Anything).
+	suite.clientMock.On("Get", mock.Anything, types.NamespacedName{Name: "orgs-acme-acc"}, mock.Anything).
 		Run(func(args mock.Arguments) {
 			obj := args[2].(*kcptenancyv1alpha.WorkspaceType)
-			obj.Name = "acme-test-account-acc"
+			obj.Name = "orgs-acme-acc"
 			obj.Status.Conditions = conditionsv1alpha1.Conditions{
 				{
 					Type:   "Ready",
