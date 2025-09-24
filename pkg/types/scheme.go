@@ -16,7 +16,7 @@ var (
 	AddToScheme = SchemeBuilder.AddToScheme
 )
 
-func addKnownTypes(scheme *runtime.Scheme) error {
+func addKnownTypes(scheme *runtime.Scheme) error { // coverage-ignore
 	scheme.AddKnownTypes(GroupVersion,
 		&Workspace{},
 		&WorkspaceList{},

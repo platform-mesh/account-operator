@@ -28,6 +28,7 @@ import (
 	"github.com/platform-mesh/account-operator/internal/config"
 	"github.com/platform-mesh/account-operator/internal/controller"
 	"github.com/platform-mesh/account-operator/pkg/subroutines/mocks"
+	kcptypes "github.com/platform-mesh/account-operator/pkg/types"
 )
 
 const (
@@ -71,6 +72,7 @@ func (suite *AccountTestSuite) SetupSuite() {
 	utilruntime.Must(v1alpha1.AddToScheme(suite.scheme))
 	utilruntime.Must(v1.AddToScheme(suite.scheme))
 	utilruntime.Must(scheme.AddToScheme(suite.scheme))
+	utilruntime.Must(kcptypes.AddToScheme(suite.scheme))
 
 	// Setup test environment - use existing cluster if available
 	useExistingCluster := false
