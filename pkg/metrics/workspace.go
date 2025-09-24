@@ -29,17 +29,22 @@ var (
 //	"orgs:root-org" -> "orgs"
 //	"" -> "unknown"
 func SanitizeClusterLabel(path string) string { // coverage-ignore
-	if path == "" {
+	p := strings.TrimSpace(path)
+	if p == "" {
 		return "unknown"
 	}
-	segs := strings.Split(path, ":")
+	segs := strings.Split(p, ":")
 	for i, s := range segs {
 		if s == "orgs" {
 			// Return everything up to and including 'orgs'
 			return strings.Join(segs[:i+1], ":")
 		}
 	}
-	return path
+	// For provider-root scoped paths like "root:<provider>:..." keep only "root:<provider>"
+	if len(segs) >= 2 && segs[0] == "root" {
+		return strings.Join(segs[:2], ":")
+	}
+	return p
 }
 
 func RegisterWorkspaceMetrics(reg prometheus.Registerer) { // coverage-ignore

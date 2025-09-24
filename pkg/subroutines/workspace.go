@@ -221,8 +221,8 @@ func (r *WorkspaceSubroutine) Process(ctx context.Context, runtimeObj runtimeobj
 	if err != nil {
 		// Enhanced forbidden handling: optional relaxed mode
 		if kerrors.IsForbidden(err) {
-			// Prefer WorkspaceType path for metric label to keep cardinality bounded
-			wsClusterStr := wtPath
+			// Prefer sanitized WorkspaceType path for metric label to keep cardinality bounded
+			wsClusterStr := metrics.SanitizeClusterLabel(wtPath)
 			wsClusterForLog := ""
 			if c, ok := kontext.ClusterFrom(ctxWS); ok {
 				wsClusterForLog = c.String()
