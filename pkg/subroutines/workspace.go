@@ -130,14 +130,15 @@ func (r *WorkspaceSubroutine) Process(ctx context.Context, runtimeObj runtimeobj
 	// Determine workspace type name and path
 	wtName := string(instance.Spec.Type)
 	wtPath := cfg.Kcp.ProviderWorkspace
+	var ctxWT context.Context
 	switch instance.Spec.Type {
 	case corev1alpha1.AccountTypeOrg:
 		if cfg.Kcp.OrgWorkspaceCluster != "" {
 			wtPath = cfg.Kcp.OrgWorkspaceCluster
 		}
 		wtName = GetOrgWorkspaceTypeName(instance.Name, wtPath)
-		// Wait for org workspace type readiness without error-based requeue
-		ctxWT := kontext.WithCluster(ctx, logicalcluster.Name(wtPath))
+		// Scope WT checks to the cluster hosting the type
+		ctxWT = kontext.WithCluster(ctx, logicalcluster.Name(wtPath))
 		if ready, opErr := r.waitForWorkspaceType(ctxWT, wtName); opErr != nil {
 			return ctrl.Result{}, opErr
 		} else if !ready {
@@ -145,15 +146,15 @@ func (r *WorkspaceSubroutine) Process(ctx context.Context, runtimeObj runtimeobj
 			return ctrl.Result{RequeueAfter: 5 * time.Second}, nil
 		}
 	case corev1alpha1.AccountTypeAccount:
-		// Parse cluster path robustly: find the "orgs" segment anywhere
+		// Parse cluster path robustly: find the "orgs" segment anywhere and derive org-scoped account WT name
 		segs := strings.Split(origPath, ":")
+		orgName := ""
 		for i := 0; i < len(segs); i++ {
 			if segs[i] == "orgs" {
-				// parent path where custom types are created: up to and including "orgs"
 				if i+1 < len(segs) && segs[i+1] != "" {
-					path := strings.Join(segs[:i+1], ":")
-					wtPath = path
-					wtName = GetAccWorkspaceTypeName(instance.Name, path)
+					orgName = segs[i+1]
+					wtPath = strings.Join(segs[:i+1], ":")
+					wtName = GetAccWorkspaceTypeName(orgName, wtPath)
 				} else {
 					ctrl.LoggerFrom(ctx).Info("invalid cluster path: missing org segment after 'orgs'", "path", origPath)
 					return ctrl.Result{RequeueAfter: 5 * time.Second}, nil
@@ -161,8 +162,7 @@ func (r *WorkspaceSubroutine) Process(ctx context.Context, runtimeObj runtimeobj
 				break
 			}
 		}
-		// Wait for account workspace type readiness without error-based requeue
-		ctxWT := kontext.WithCluster(ctx, logicalcluster.Name(wtPath))
+		ctxWT = kontext.WithCluster(ctx, logicalcluster.Name(wtPath))
 		if ready, opErr := r.waitForWorkspaceType(ctxWT, wtName); opErr != nil {
 			return ctrl.Result{}, opErr
 		} else if !ready {
