@@ -171,9 +171,12 @@ func (suite *WorkspaceSubroutineTestSuite) TestFinalize_Error_On_Get() {
 
 func (suite *WorkspaceSubroutineTestSuite) TestProcessing_OK() {
 	// Given
-	testAccount := &corev1alpha1.Account{}
+	testAccount := &corev1alpha1.Account{
+		ObjectMeta: metav1.ObjectMeta{
+			Name: defaultExpectedTestNamespace,
+		},
+	}
 	suite.clientMock.On("Scheme").Return(scheme.Scheme)
-	mockGetWorkspaceCallNotFound(suite)
 	mockNewWorkspaceCreateCall(suite, defaultExpectedTestNamespace)
 
 	// When
@@ -224,15 +227,18 @@ func TestWorkspaceSubroutineTestSuite(t *testing.T) {
 
 //nolint:golint,unparam
 func mockNewWorkspaceCreateCall(suite *WorkspaceSubroutineTestSuite, name string) {
+	// Mock Get call to return not found (so CreateOrUpdate will call Create)
+	suite.clientMock.On("Get", mock.Anything, mock.Anything, mock.AnythingOfType("*types.Workspace")).
+		Return(kerrors.NewNotFound(schema.GroupResource{}, ""))
+
+	// Mock the actual Create call that CreateOrUpdate will make
 	suite.clientMock.On("Create", mock.Anything, mock.MatchedBy(func(obj client.Object) bool {
 		if workspace, ok := obj.(*kcptypes.Workspace); ok {
 			return workspace.Name == name
 		}
 		return false
 	})).Return(nil)
-}
-
-//nolint:golint,unparam
+} //nolint:golint,unparam
 func mockGetWorkspaceCallNotFound(suite *WorkspaceSubroutineTestSuite) {
 	suite.clientMock.On("Get", mock.Anything, mock.Anything, mock.AnythingOfType("*types.Workspace")).
 		Return(kerrors.NewNotFound(schema.GroupResource{}, ""))

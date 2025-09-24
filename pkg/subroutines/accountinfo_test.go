@@ -490,7 +490,7 @@ func (suite *AccountInfoSubroutineTestSuite) TestFinalizeNoContext() {
 
 func (suite *AccountInfoSubroutineTestSuite) mockGetAccountInfoCallNotFound() {
 	suite.clientMock.On("Get", mock.Anything, mock.Anything, mock.AnythingOfType("*v1alpha1.AccountInfo")).
-		Return(kerrors.NewNotFound(schema.GroupResource{}, "")).Maybe()
+		Return(kerrors.NewNotFound(schema.GroupResource{}, ""))
 }
 
 func (suite *AccountInfoSubroutineTestSuite) mockGetAccountInfoCallFailed() {
@@ -499,6 +499,7 @@ func (suite *AccountInfoSubroutineTestSuite) mockGetAccountInfoCallFailed() {
 }
 
 func (suite *AccountInfoSubroutineTestSuite) mockCreateAccountInfoCall(info v1alpha1.AccountInfo) {
+	// Mock Create call for CreateOrUpdate
 	suite.clientMock.On("Create", mock.Anything, mock.Anything).
 		Run(func(args mock.Arguments) {
 			obj := args.Get(1).(client.Object)
@@ -508,7 +509,7 @@ func (suite *AccountInfoSubroutineTestSuite) mockCreateAccountInfoCall(info v1al
 			}
 			suite.Assert().Equal(info, *actual)
 		}).
-		Return(nil)
+		Return(nil).Maybe()
 
 	// Add Update mock for CreateOrUpdate pattern - but it may not be called
 	suite.clientMock.On("Update", mock.Anything, mock.Anything).
