@@ -32,5 +32,8 @@ type OperatorConfig struct {
 		ProviderWorkspace          string `mapstructure:"kcp-provider-workspace" default:"root"`
 		RootHost                   string `mapstructure:"kcp-root-host" default:""`
 		OrgWorkspaceCluster        string `mapstructure:"kcp-org-workspace-cluster" default:"root:orgs"`
+		// RelaxForbiddenWorkspaceCreation when true will requeue on Forbidden errors creating Workspaces
+		// instead of failing immediately (useful for eventually-consistent virtual workspace access setups).
+		RelaxForbiddenWorkspaceCreation bool `mapstructure:"kcp-relax-forbidden-workspace-creation" default:"false"`
 	} `mapstructure:",squash"`
 }

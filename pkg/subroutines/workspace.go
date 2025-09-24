@@ -10,7 +10,6 @@ import (
 	commonconfig "github.com/platform-mesh/golang-commons/config"
 	"github.com/platform-mesh/golang-commons/controller/lifecycle/runtimeobject"
 	"github.com/platform-mesh/golang-commons/errors"
-	corev1 "k8s.io/api/core/v1"
 	kerrors "k8s.io/apimachinery/pkg/api/errors"
 	metav1 "k8s.io/apimachinery/pkg/apis/meta/v1"
 	"k8s.io/client-go/util/workqueue"
@@ -21,11 +20,14 @@ import (
 
 	corev1alpha1 "github.com/platform-mesh/account-operator/api/v1alpha1"
 	"github.com/platform-mesh/account-operator/internal/config"
+	"github.com/platform-mesh/account-operator/pkg/metrics"
 )
 
 const (
 	WorkspaceSubroutineName      = "WorkspaceSubroutine"
 	WorkspaceSubroutineFinalizer = "account.core.platform-mesh.io/finalizer"
+	workspaceTypeRequeueDelay    = 5 * time.Second
+	forbiddenRequeueDelay        = 30 * time.Second
 )
 
 type WorkspaceSubroutine struct {
@@ -72,7 +74,7 @@ func (r *WorkspaceSubroutine) Finalize(ctx context.Context, ro runtimeobject.Run
 		return ctrl.Result{}, errors.NewOperatorError(err, true, true)
 	}
 
-	// we need to requeue to check if the namespace was deleted
+	// requeue to check if the workspace was deleted
 	next := r.limiter.When(cn)
 	return ctrl.Result{RequeueAfter: next}, nil
 }
@@ -103,7 +105,7 @@ func (r *WorkspaceSubroutine) waitForWorkspaceType(ctx context.Context, name str
 	log.Info("workspace type found", "name", name, "conditions", wt.Status.Conditions)
 	// Check if the workspace type is Ready
 	for _, cond := range wt.Status.Conditions {
-		if cond.Type == "Ready" && cond.Status == corev1.ConditionTrue {
+		if cond.Type == "Ready" && metav1.ConditionStatus(cond.Status) == metav1.ConditionTrue {
 			log.Info("workspace type is ready", "name", name)
 			return true, nil
 		}
@@ -143,7 +145,7 @@ func (r *WorkspaceSubroutine) Process(ctx context.Context, runtimeObj runtimeobj
 			return ctrl.Result{}, opErr
 		} else if !ready {
 			ctrl.LoggerFrom(ctx).Info("waiting for org workspace type to be ready", "name", wtName)
-			return ctrl.Result{RequeueAfter: 5 * time.Second}, nil
+			return ctrl.Result{RequeueAfter: workspaceTypeRequeueDelay}, nil
 		}
 	case corev1alpha1.AccountTypeAccount:
 		// Parse cluster path robustly: find the "orgs" segment anywhere and derive org-scoped account WT name
@@ -167,7 +169,7 @@ func (r *WorkspaceSubroutine) Process(ctx context.Context, runtimeObj runtimeobj
 			return ctrl.Result{}, opErr
 		} else if !ready {
 			ctrl.LoggerFrom(ctx).Info("waiting for account workspace type to be ready", "name", wtName)
-			return ctrl.Result{RequeueAfter: 5 * time.Second}, nil
+			return ctrl.Result{RequeueAfter: workspaceTypeRequeueDelay}, nil
 		}
 	}
 
@@ -191,11 +193,26 @@ func (r *WorkspaceSubroutine) Process(ctx context.Context, runtimeObj runtimeobj
 		return nil
 	})
 	if err != nil {
-		// Handle forbidden errors gracefully - this can happen in test environments
-		// or when the virtual workspace path is not accessible
+		// Enhanced forbidden handling: optional relaxed mode
 		if kerrors.IsForbidden(err) {
-			ctrl.LoggerFrom(ctx).Error(err, "workspace creation forbidden; check access to virtual workspace path")
-			return ctrl.Result{RequeueAfter: 10 * time.Second}, nil
+			wsClusterStr := ""
+			if c, ok := kontext.ClusterFrom(ctxWS); ok {
+				wsClusterStr = c.String()
+			}
+			log := ctrl.LoggerFrom(ctx).WithValues(
+				"workspaceCluster", wsClusterStr,
+				"workspaceTypeName", wtName,
+				"workspaceTypePath", wtPath,
+				"account", instance.Name,
+				"accountType", instance.Spec.Type,
+			)
+			if cfg.Kcp.RelaxForbiddenWorkspaceCreation {
+				metrics.WorkspaceForbiddenCreations.WithLabelValues(wsClusterStr, string(instance.Spec.Type)).Inc()
+				log.Info("workspace creation forbidden; relaxed mode enabled, will retry", "error", err.Error())
+				return ctrl.Result{RequeueAfter: forbiddenRequeueDelay}, nil
+			}
+			log.Error(err, "workspace creation forbidden; failing in strict mode")
+			return ctrl.Result{}, errors.NewOperatorError(err, true, true)
 		}
 		return ctrl.Result{}, errors.NewOperatorError(err, true, true)
 	}
