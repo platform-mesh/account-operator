@@ -68,6 +68,9 @@ func (r *WorkspaceSubroutine) Finalize(ctx context.Context, ro runtimeobject.Run
 			// Found in reconcile cluster; switch deletion context
 			ctxWS = ctx
 			err = nil
+		} else {
+			// Propagate real fallback error (including non-NotFound) to avoid masking issues
+			err = err2
 		}
 	}
 	if kerrors.IsNotFound(err) {
