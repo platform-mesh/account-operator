@@ -35,6 +35,7 @@ import (
 	ctrl "sigs.k8s.io/controller-runtime"
 	"sigs.k8s.io/controller-runtime/pkg/client"
 	"sigs.k8s.io/controller-runtime/pkg/healthz"
+	crmetrics "sigs.k8s.io/controller-runtime/pkg/metrics"
 	metricsserver "sigs.k8s.io/controller-runtime/pkg/metrics/server"
 	"sigs.k8s.io/controller-runtime/pkg/webhook"
 
@@ -42,6 +43,7 @@ import (
 
 	"github.com/platform-mesh/account-operator/api/v1alpha1"
 	"github.com/platform-mesh/account-operator/internal/controller"
+	opmetrics "github.com/platform-mesh/account-operator/pkg/metrics"
 )
 
 var operatorCmd = &cobra.Command{
@@ -141,6 +143,8 @@ func RunController(_ *cobra.Command, _ []string) { // coverage-ignore
 	if err != nil {
 		log.Fatal().Err(err).Msg("unable to start manager")
 	}
+	// Register custom workspace metrics with controller-runtime global registry (idempotent)
+	opmetrics.RegisterWorkspaceMetrics(crmetrics.Registry)
 
 	var fgaClient openfgav1.OpenFGAServiceClient
 	if operatorCfg.Subroutines.FGA.Enabled {
