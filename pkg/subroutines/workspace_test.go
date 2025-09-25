@@ -10,6 +10,7 @@ import (
 	kcptenancyv1alpha "github.com/kcp-dev/kcp/sdk/apis/tenancy/v1alpha1"
 	conditionsv1alpha1 "github.com/kcp-dev/kcp/sdk/apis/third_party/conditions/apis/conditions/v1alpha1"
 	"github.com/kcp-dev/logicalcluster/v3"
+	commonconfig "github.com/platform-mesh/golang-commons/config"
 	platformmeshcontext "github.com/platform-mesh/golang-commons/context"
 	"github.com/platform-mesh/golang-commons/logger"
 	"github.com/stretchr/testify/assert"
@@ -272,6 +273,156 @@ func (suite *WorkspaceSubroutineTestSuite) TestProcessing_AccountType_MultiSegme
 
 	// Then
 	suite.Nil(err)
+	suite.clientMock.AssertExpectations(suite.T())
+}
+
+func (suite *WorkspaceSubroutineTestSuite) TestProcessing_ForbiddenError_RelaxEnabled() {
+	// Given - Account with organization type
+	testAccount := &corev1alpha1.Account{
+		Spec: corev1alpha1.AccountSpec{
+			Type: corev1alpha1.AccountTypeOrg,
+		},
+	}
+	testAccount.Name = "test-org"
+
+	// Set up context with cluster path for organization
+	clusterPath := logicalcluster.Name("root:orgs:test-org")
+	ctx := kontext.WithCluster(suite.context, clusterPath)
+
+	// Create context with RelaxForbiddenWorkspaceCreation enabled and custom delay
+	configWithRelaxEnabled := config.OperatorConfig{}
+	configWithRelaxEnabled.Kcp.RelaxForbiddenWorkspaceCreation = true
+	configWithRelaxEnabled.Subroutines.Workspace.ForbiddenRequeueDelay = "45s" // Custom delay
+	ctxWithConfig := commonconfig.SetConfigInContext(ctx, configWithRelaxEnabled)
+
+	// Mock workspace type as ready
+	suite.clientMock.On("Get", mock.Anything, types.NamespacedName{Name: "test-org-org"}, mock.Anything).
+		Run(func(args mock.Arguments) {
+			obj := args[2].(*kcptenancyv1alpha.WorkspaceType)
+			obj.Name = "test-org-org"
+			obj.Status.Conditions = conditionsv1alpha1.Conditions{
+				{
+					Type:   "Ready",
+					Status: "True",
+				},
+			}
+		}).Return(nil)
+
+	// Mock workspace not found (will trigger creation)
+	mockGetWorkspaceCallNotFound(suite)
+
+	// Mock workspace creation returning Forbidden error
+	suite.clientMock.EXPECT().
+		Create(mock.Anything, mock.Anything).
+		Return(kerrors.NewForbidden(schema.GroupResource{}, "", fmt.Errorf("workspace creation forbidden")))
+
+	// When
+	result, err := suite.testObj.Process(ctxWithConfig, testAccount)
+
+	// Then
+	suite.Nil(err, "Should not return error when RelaxForbiddenWorkspaceCreation is enabled")
+	suite.False(result.Requeue, "Should not set Requeue=true")
+	suite.Equal(45*time.Second, result.RequeueAfter, "Should use configured ForbiddenRequeueDelay")
+	suite.clientMock.AssertExpectations(suite.T())
+}
+
+func (suite *WorkspaceSubroutineTestSuite) TestProcessing_ForbiddenError_RelaxDisabled() {
+	// Given - Account with organization type
+	testAccount := &corev1alpha1.Account{
+		Spec: corev1alpha1.AccountSpec{
+			Type: corev1alpha1.AccountTypeOrg,
+		},
+	}
+	testAccount.Name = "test-org"
+
+	// Set up context with cluster path for organization
+	clusterPath := logicalcluster.Name("root:orgs:test-org")
+	ctx := kontext.WithCluster(suite.context, clusterPath)
+
+	// Create context with RelaxForbiddenWorkspaceCreation disabled (default behavior)
+	configWithRelaxDisabled := config.OperatorConfig{}
+	configWithRelaxDisabled.Kcp.RelaxForbiddenWorkspaceCreation = false
+	ctxWithConfig := commonconfig.SetConfigInContext(ctx, configWithRelaxDisabled)
+
+	// Mock workspace type as ready
+	suite.clientMock.On("Get", mock.Anything, types.NamespacedName{Name: "test-org-org"}, mock.Anything).
+		Run(func(args mock.Arguments) {
+			obj := args[2].(*kcptenancyv1alpha.WorkspaceType)
+			obj.Name = "test-org-org"
+			obj.Status.Conditions = conditionsv1alpha1.Conditions{
+				{
+					Type:   "Ready",
+					Status: "True",
+				},
+			}
+		}).Return(nil)
+
+	// Mock workspace not found (will trigger creation)
+	mockGetWorkspaceCallNotFound(suite)
+
+	// Mock workspace creation returning Forbidden error
+	suite.clientMock.EXPECT().
+		Create(mock.Anything, mock.Anything).
+		Return(kerrors.NewForbidden(schema.GroupResource{}, "", fmt.Errorf("workspace creation forbidden")))
+
+	// When
+	result, err := suite.testObj.Process(ctxWithConfig, testAccount)
+
+	// Then
+	suite.NotNil(err, "Should return error when RelaxForbiddenWorkspaceCreation is disabled")
+	suite.True(err.Retry(), "Error should be retryable")
+	suite.False(result.Requeue, "Should not set Requeue=true when error is returned")
+	suite.Zero(result.RequeueAfter, "Should not set RequeueAfter when error is returned")
+	suite.clientMock.AssertExpectations(suite.T())
+}
+
+func (suite *WorkspaceSubroutineTestSuite) TestProcessing_ForbiddenError_DefaultDelay() {
+	// Given - Account with organization type
+	testAccount := &corev1alpha1.Account{
+		Spec: corev1alpha1.AccountSpec{
+			Type: corev1alpha1.AccountTypeOrg,
+		},
+	}
+	testAccount.Name = "test-org"
+
+	// Set up context with cluster path for organization
+	clusterPath := logicalcluster.Name("root:orgs:test-org")
+	ctx := kontext.WithCluster(suite.context, clusterPath)
+
+	// Create context with RelaxForbiddenWorkspaceCreation enabled but no custom delay
+	configWithDefaultDelay := config.OperatorConfig{}
+	configWithDefaultDelay.Kcp.RelaxForbiddenWorkspaceCreation = true
+	// ForbiddenRequeueDelay not set - should use default 30s
+	ctxWithConfig := commonconfig.SetConfigInContext(ctx, configWithDefaultDelay)
+
+	// Mock workspace type as ready
+	suite.clientMock.On("Get", mock.Anything, types.NamespacedName{Name: "test-org-org"}, mock.Anything).
+		Run(func(args mock.Arguments) {
+			obj := args[2].(*kcptenancyv1alpha.WorkspaceType)
+			obj.Name = "test-org-org"
+			obj.Status.Conditions = conditionsv1alpha1.Conditions{
+				{
+					Type:   "Ready",
+					Status: "True",
+				},
+			}
+		}).Return(nil)
+
+	// Mock workspace not found (will trigger creation)
+	mockGetWorkspaceCallNotFound(suite)
+
+	// Mock workspace creation returning Forbidden error
+	suite.clientMock.EXPECT().
+		Create(mock.Anything, mock.Anything).
+		Return(kerrors.NewForbidden(schema.GroupResource{}, "", fmt.Errorf("workspace creation forbidden")))
+
+	// When
+	result, err := suite.testObj.Process(ctxWithConfig, testAccount)
+
+	// Then
+	suite.Nil(err, "Should not return error when RelaxForbiddenWorkspaceCreation is enabled")
+	suite.False(result.Requeue, "Should not set Requeue=true")
+	suite.Equal(30*time.Second, result.RequeueAfter, "Should use default 30s delay")
 	suite.clientMock.AssertExpectations(suite.T())
 }
 
