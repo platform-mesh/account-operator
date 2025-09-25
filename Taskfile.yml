@@ -41,7 +41,13 @@ tasks:
     internal: true
     cmds:
       - mkdir -p {{.LOCAL_BIN}}
-      - test -s {{.LOCAL_BIN}}/gomplate || (curl -o {{.LOCAL_BIN}}/gomplate -sSL https://github.com/hairyhenderson/gomplate/releases/download/{{ .GOMPLATE_VERSION }}/gomplate_{{ .GOOS }}-{{ .GOARCH }} && chmod +x {{.LOCAL_BIN}}/gomplate) || echo "Failed to setup gomplate, skipping..."
+      - |
+        test -s {{.LOCAL_BIN}}/gomplate \
+          || (
+            set -e
+            curl -sSL -o {{.LOCAL_BIN}}/gomplate https://github.com/hairyhenderson/gomplate/releases/download/{{ .GOMPLATE_VERSION }}/gomplate_{{ .GOOS }}-{{ .GOARCH }}
+            chmod +x {{.LOCAL_BIN}}/gomplate
+          )
   setup:golangci-lint:
     internal: true
     cmds:
