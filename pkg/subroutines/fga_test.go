@@ -5,6 +5,7 @@ import (
 	"testing"
 
 	kcpcorev1alpha1 "github.com/kcp-dev/kcp/sdk/apis/core/v1alpha1"
+	pmconfig "github.com/platform-mesh/golang-commons/config"
 	"k8s.io/apimachinery/pkg/types"
 	"sigs.k8s.io/controller-runtime/pkg/client"
 	"sigs.k8s.io/controller-runtime/pkg/kontext"
@@ -18,6 +19,7 @@ import (
 	"k8s.io/utils/ptr"
 
 	"github.com/platform-mesh/account-operator/api/v1alpha1"
+	"github.com/platform-mesh/account-operator/internal/config"
 	"github.com/platform-mesh/account-operator/pkg/subroutines"
 	"github.com/platform-mesh/account-operator/pkg/subroutines/mocks"
 )
@@ -66,7 +68,7 @@ func TestFGASubroutine_Finalizers(t *testing.T) {
 
 func TestFGASubroutine_Process(t *testing.T) {
 	creator := "test-creator"
-
+	defaultContext := pmconfig.SetConfigInContext(context.Background(), config.OperatorConfig{})
 	testCases := []struct {
 		name          string
 		expectedError bool
@@ -77,7 +79,7 @@ func TestFGASubroutine_Process(t *testing.T) {
 	}{
 		{
 			name:          "should_fail_if_no_cluster_in_context",
-			ctx:           context.Background(),
+			ctx:           defaultContext,
 			expectedPanic: true,
 			account: &v1alpha1.Account{
 				Spec: v1alpha1.AccountSpec{
@@ -95,7 +97,7 @@ func TestFGASubroutine_Process(t *testing.T) {
 		},
 		{
 			name: "should_skip_processing_if_subroutine_ran_before",
-			ctx:  kontext.WithCluster(context.Background(), "some-cluster"),
+			ctx:  kontext.WithCluster(defaultContext, "some-cluster"),
 			account: &v1alpha1.Account{
 				Spec: v1alpha1.AccountSpec{
 					Type: v1alpha1.AccountTypeOrg,
@@ -144,7 +146,7 @@ func TestFGASubroutine_Process(t *testing.T) {
 		},
 		{
 			name:          "should_fail_if_get_store_id_fails",
-			ctx:           kontext.WithCluster(context.Background(), "some-cluster"),
+			ctx:           kontext.WithCluster(defaultContext, "some-cluster"),
 			expectedError: true,
 			account: &v1alpha1.Account{
 				ObjectMeta: metav1.ObjectMeta{
@@ -183,7 +185,7 @@ func TestFGASubroutine_Process(t *testing.T) {
 		},
 		{
 			name:          "should_fail_if_get_parent_account_fails",
-			ctx:           kontext.WithCluster(context.Background(), "some-cluster"),
+			ctx:           kontext.WithCluster(defaultContext, "some-cluster"),
 			expectedError: true,
 			account: &v1alpha1.Account{
 				ObjectMeta: metav1.ObjectMeta{
@@ -198,7 +200,7 @@ func TestFGASubroutine_Process(t *testing.T) {
 		},
 		{
 			name:          "should_fail_if_write_fails",
-			ctx:           kontext.WithCluster(context.Background(), "some-cluster"),
+			ctx:           kontext.WithCluster(defaultContext, "some-cluster"),
 			expectedError: true,
 			account: &v1alpha1.Account{
 				ObjectMeta: metav1.ObjectMeta{
@@ -249,7 +251,7 @@ func TestFGASubroutine_Process(t *testing.T) {
 		},
 		{
 			name: "should_ignore_error_if_duplicate_write_error",
-			ctx:  kontext.WithCluster(context.Background(), "some-cluster"),
+			ctx:  kontext.WithCluster(defaultContext, "some-cluster"),
 			account: &v1alpha1.Account{
 				ObjectMeta: metav1.ObjectMeta{
 					Name:      "test-account",
@@ -301,7 +303,7 @@ func TestFGASubroutine_Process(t *testing.T) {
 		},
 		{
 			name: "should_succeed",
-			ctx:  kontext.WithCluster(context.Background(), "some-cluster"),
+			ctx:  kontext.WithCluster(defaultContext, "some-cluster"),
 			account: &v1alpha1.Account{
 				ObjectMeta: metav1.ObjectMeta{
 					Name:      "test-account",
@@ -352,7 +354,7 @@ func TestFGASubroutine_Process(t *testing.T) {
 		},
 		{
 			name: "should_succeed_with_creator_for_sa",
-			ctx:  kontext.WithCluster(context.Background(), "some-cluster"),
+			ctx:  kontext.WithCluster(defaultContext, "some-cluster"),
 			account: &v1alpha1.Account{
 				ObjectMeta: metav1.ObjectMeta{
 					Name:      "test-account",
@@ -412,7 +414,7 @@ func TestFGASubroutine_Process(t *testing.T) {
 		},
 		{
 			name:          "should_fail_with_creator_in_sa_range",
-			ctx:           kontext.WithCluster(context.Background(), "some-cluster"),
+			ctx:           kontext.WithCluster(defaultContext, "some-cluster"),
 			expectedError: true,
 			account: &v1alpha1.Account{
 				ObjectMeta: metav1.ObjectMeta{
@@ -463,7 +465,7 @@ func TestFGASubroutine_Process(t *testing.T) {
 		},
 		{
 			name: "should_succeed_with_creator",
-			ctx:  kontext.WithCluster(context.Background(), "some-cluster"),
+			ctx:  kontext.WithCluster(defaultContext, "some-cluster"),
 			account: &v1alpha1.Account{
 				ObjectMeta: metav1.ObjectMeta{
 					Name:      "test-account",
@@ -804,7 +806,7 @@ func TestCreatorSubroutine_Finalize(t *testing.T) {
 			},
 		},
 	}
-
+	defaultContext := pmconfig.SetConfigInContext(context.Background(), config.OperatorConfig{})
 	for _, test := range testCases {
 		t.Run(test.name, func(t *testing.T) {
 
@@ -816,7 +818,7 @@ func TestCreatorSubroutine_Finalize(t *testing.T) {
 			}
 
 			routine := subroutines.NewFGASubroutine(k8sClient, openFGAClient, "owner", "parent", "account")
-			ctx := kontext.WithCluster(context.Background(), "abcdefghi")
+			ctx := kontext.WithCluster(defaultContext, "abcdefghi")
 			_, err := routine.Finalize(ctx, test.account)
 			if test.expectedError {
 				assert.NotNil(t, err)
