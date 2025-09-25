@@ -13,7 +13,9 @@ type OperatorConfig struct {
 			Enabled bool `mapstructure:"subroutines-workspacetype-enabled" default:"true"`
 		} `mapstructure:",squash"`
 		Workspace struct {
-			Enabled bool `mapstructure:"subroutines-workspace-enabled" default:"true"`
+			Enabled                   bool   `mapstructure:"subroutines-workspace-enabled" default:"true"`
+			WorkspaceTypeRequeueDelay string `mapstructure:"subroutines-workspace-workspacetype-requeue-delay" default:"5s"`
+			ForbiddenRequeueDelay     string `mapstructure:"subroutines-workspace-forbidden-requeue-delay" default:"30s"`
 		} `mapstructure:",squash"`
 		AccountInfo struct {
 			Enabled bool `mapstructure:"subroutines-account-info-enabled" default:"true"`

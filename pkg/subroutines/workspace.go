@@ -26,8 +26,9 @@ import (
 const (
 	WorkspaceSubroutineName      = "WorkspaceSubroutine"
 	WorkspaceSubroutineFinalizer = "account.core.platform-mesh.io/finalizer"
-	workspaceTypeRequeueDelay    = 5 * time.Second
-	forbiddenRequeueDelay        = 30 * time.Second
+	// Default requeue delays - can be overridden via config
+	defaultWorkspaceTypeRequeueDelay = 5 * time.Second
+	defaultForbiddenRequeueDelay     = 30 * time.Second
 )
 
 type WorkspaceSubroutine struct {
@@ -38,6 +39,26 @@ type WorkspaceSubroutine struct {
 func NewWorkspaceSubroutine(client client.Client) *WorkspaceSubroutine {
 	exp := workqueue.NewTypedItemExponentialFailureRateLimiter[ClusteredName](1*time.Second, 120*time.Second)
 	return &WorkspaceSubroutine{client: client, limiter: exp}
+}
+
+// getWorkspaceTypeRequeueDelay returns the configured workspace type requeue delay or default
+func (r *WorkspaceSubroutine) getWorkspaceTypeRequeueDelay(cfg config.OperatorConfig) time.Duration {
+	if cfg.Subroutines.Workspace.WorkspaceTypeRequeueDelay != "" {
+		if duration, err := time.ParseDuration(cfg.Subroutines.Workspace.WorkspaceTypeRequeueDelay); err == nil {
+			return duration
+		}
+	}
+	return defaultWorkspaceTypeRequeueDelay
+}
+
+// getForbiddenRequeueDelay returns the configured forbidden requeue delay or default
+func (r *WorkspaceSubroutine) getForbiddenRequeueDelay(cfg config.OperatorConfig) time.Duration {
+	if cfg.Subroutines.Workspace.ForbiddenRequeueDelay != "" {
+		if duration, err := time.ParseDuration(cfg.Subroutines.Workspace.ForbiddenRequeueDelay); err == nil {
+			return duration
+		}
+	}
+	return defaultForbiddenRequeueDelay
 }
 
 func (r *WorkspaceSubroutine) GetName() string {
@@ -89,6 +110,11 @@ func (r *WorkspaceSubroutine) Finalize(ctx context.Context, ro runtimeobject.Run
 
 	err = r.client.Delete(ctxWS, &ws)
 	if err != nil {
+		if kerrors.IsNotFound(err) {
+			// Already deleted; reset backoff and stop.
+			r.limiter.Forget(cn)
+			return ctrl.Result{}, nil
+		}
 		return ctrl.Result{}, errors.NewOperatorError(err, true, true)
 	}
 
@@ -168,7 +194,7 @@ func (r *WorkspaceSubroutine) Process(ctx context.Context, runtimeObj runtimeobj
 			return ctrl.Result{}, opErr
 		} else if !ready {
 			ctrl.LoggerFrom(ctx).Info("waiting for org workspace type to be ready", "name", wtName)
-			return ctrl.Result{RequeueAfter: workspaceTypeRequeueDelay}, nil
+			return ctrl.Result{RequeueAfter: r.getWorkspaceTypeRequeueDelay(cfg)}, nil
 		}
 	case corev1alpha1.AccountTypeAccount:
 		// Parse cluster path robustly: find the "orgs" segment anywhere and derive org-scoped account WT name
@@ -184,7 +210,7 @@ func (r *WorkspaceSubroutine) Process(ctx context.Context, runtimeObj runtimeobj
 					wtName = GetAccWorkspaceTypeName(orgName, wtPath)
 				} else {
 					ctrl.LoggerFrom(ctx).Info("invalid cluster path: missing org segment after 'orgs'", "path", origPath)
-					return ctrl.Result{RequeueAfter: workspaceTypeRequeueDelay}, nil
+					return ctrl.Result{RequeueAfter: r.getWorkspaceTypeRequeueDelay(cfg)}, nil
 				}
 				break
 			}
@@ -197,7 +223,7 @@ func (r *WorkspaceSubroutine) Process(ctx context.Context, runtimeObj runtimeobj
 			return ctrl.Result{}, opErr
 		} else if !ready {
 			ctrl.LoggerFrom(ctx).Info("waiting for account workspace type to be ready", "name", wtName)
-			return ctrl.Result{RequeueAfter: workspaceTypeRequeueDelay}, nil
+			return ctrl.Result{RequeueAfter: r.getWorkspaceTypeRequeueDelay(cfg)}, nil
 		}
 	}
 
@@ -240,7 +266,7 @@ func (r *WorkspaceSubroutine) Process(ctx context.Context, runtimeObj runtimeobj
 			if cfg.Kcp.RelaxForbiddenWorkspaceCreation {
 				metrics.WorkspaceForbiddenCreations.WithLabelValues(wsClusterStr, string(instance.Spec.Type)).Inc()
 				log.Info("workspace creation forbidden; relaxed mode enabled, will retry", "error", err.Error())
-				return ctrl.Result{RequeueAfter: forbiddenRequeueDelay}, nil
+				return ctrl.Result{RequeueAfter: r.getForbiddenRequeueDelay(cfg)}, nil
 			}
 			log.Error(err, "workspace creation forbidden; failing in strict mode")
 			return ctrl.Result{}, errors.NewOperatorError(err, true, true)
