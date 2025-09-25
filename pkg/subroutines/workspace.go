@@ -199,13 +199,12 @@ func (r *WorkspaceSubroutine) Process(ctx context.Context, runtimeObj runtimeobj
 	case corev1alpha1.AccountTypeAccount:
 		// Parse cluster path robustly: find the "orgs" segment anywhere and derive org-scoped account WT name
 		segs := strings.Split(origPath, ":")
-		orgName := ""
 		foundOrgs := false
 		for i := 0; i < len(segs); i++ {
 			if segs[i] == "orgs" {
 				foundOrgs = true
 				if i+1 < len(segs) && segs[i+1] != "" {
-					orgName = segs[i+1]
+					orgName := segs[i+1]
 					wtPath = strings.Join(segs[:i+1], ":")
 					wtName = GetAccWorkspaceTypeName(orgName, wtPath)
 				} else {
