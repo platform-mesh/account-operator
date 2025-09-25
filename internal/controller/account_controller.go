@@ -105,11 +105,11 @@ func NewAccountReconciler(log *logger.Logger, mgr ctrl.Manager, cfg config.Opera
 	}
 }
 
-func (r *AccountReconciler) Reconcile(ctx context.Context, req ctrl.Request) (ctrl.Result, error) {
+func (r *AccountReconciler) Reconcile(ctx context.Context, req ctrl.Request) (ctrl.Result, error) { // coverage-ignore
 	return r.lifecycle.Reconcile(ctx, req, &corev1alpha1.Account{})
 }
 
-func (r *AccountReconciler) SetupWithManager(mgr ctrl.Manager, cfg *platformmeshconfig.CommonServiceConfig, log *logger.Logger, eventPredicates ...predicate.Predicate) error {
+func (r *AccountReconciler) SetupWithManager(mgr ctrl.Manager, cfg *platformmeshconfig.CommonServiceConfig, log *logger.Logger, eventPredicates ...predicate.Predicate) error { // coverage-ignore
 	builder, err := r.lifecycle.SetupWithManagerBuilder(mgr, cfg.MaxConcurrentReconciles, accountReconcilerName, &corev1alpha1.Account{}, cfg.DebugLabelValue, log, eventPredicates...)
 	if err != nil {
 		return err

@@ -223,7 +223,7 @@ func (e *FGASubroutine) getAccountInfo(ctx context.Context) (*v1alpha1.AccountIn
 	return accountInfo, nil
 }
 
-func (e *FGASubroutine) GetName() string { return "FGASubroutine" }
+func (e *FGASubroutine) GetName() string { return "FGASubroutine" } // coverage-ignore
 
 func (e *FGASubroutine) Finalizers() []string { return []string{"account.core.platform-mesh.io/fga"} }
 

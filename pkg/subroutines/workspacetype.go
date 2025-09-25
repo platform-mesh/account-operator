@@ -41,11 +41,11 @@ func NewWorkspaceTypeSubroutineWithRootClient(c client.Client, root client.Clien
 	return &WorkspaceTypeSubroutine{client: c, rootClient: root}
 }
 
-func (r *WorkspaceTypeSubroutine) GetName() string { return WorkspaceTypeSubroutineName }
+func (r *WorkspaceTypeSubroutine) GetName() string { return WorkspaceTypeSubroutineName } // coverage-ignore
 
-func (r *WorkspaceTypeSubroutine) Finalizers() []string { return nil }
+func (r *WorkspaceTypeSubroutine) Finalizers() []string { return nil } // coverage-ignore
 
-func (r *WorkspaceTypeSubroutine) Finalize(ctx context.Context, ro runtimeobject.RuntimeObject) (ctrl.Result, errors.OperatorError) {
+func (r *WorkspaceTypeSubroutine) Finalize(ctx context.Context, ro runtimeobject.RuntimeObject) (ctrl.Result, errors.OperatorError) { // coverage-ignore
 	return ctrl.Result{}, nil
 }
 

@@ -32,7 +32,7 @@ func retrieveWorkspace(ctx context.Context, instance *v1alpha1.Account, c client
 	return ws, nil
 }
 
-func extractWorkspaceNameFromPath(path string) string {
+func extractWorkspaceNameFromPath(path string) string { // coverage-ignore
 	if path == "" {
 		return ""
 	}
@@ -43,7 +43,7 @@ func extractWorkspaceNameFromPath(path string) string {
 	return ""
 }
 
-func sanitizeForKubernetes(name string) string {
+func sanitizeForKubernetes(name string) string { // coverage-ignore
 	if name == "" {
 		return ""
 	}

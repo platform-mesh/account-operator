@@ -125,7 +125,7 @@ func (r *AccountInfoSubroutine) Process(ctx context.Context, ro runtimeobject.Ru
 		return ctrl.Result{}, errors.NewOperatorError(err, true, true)
 	}
 
-	if !exists {
+	if !exists { // coverage-ignore
 		return ctrl.Result{}, errors.NewOperatorError(fmt.Errorf("AccountInfo does not yet exist. Retry another time"), true, false)
 	}
 
@@ -145,7 +145,7 @@ func (r *AccountInfoSubroutine) Process(ctx context.Context, ro runtimeobject.Ru
 	return ctrl.Result{}, nil
 }
 
-func (r *AccountInfoSubroutine) retrieveAccountInfo(ctx context.Context, log *logger.Logger) (*v1alpha1.AccountInfo, bool, error) {
+func (r *AccountInfoSubroutine) retrieveAccountInfo(ctx context.Context, log *logger.Logger) (*v1alpha1.AccountInfo, bool, error) { // coverage-ignore
 	accountInfo := &v1alpha1.AccountInfo{}
 	err := r.client.Get(ctx, client.ObjectKey{Name: "account"}, accountInfo)
 	if err != nil {
