@@ -26,7 +26,17 @@ tasks:
     internal: true
     cmds:
       - mkdir -p {{.LOCAL_BIN}}
-      - test -s {{.LOCAL_BIN}}/kcp || (which kcp && cp $(which kcp) {{.LOCAL_BIN}}/kcp) || (echo "KCP binary not found, downloading..." && curl -L -o {{.LOCAL_BIN}}/kcp https://github.com/kcp-dev/kcp/releases/download/v{{.KCP_VERSION}}/kcp_{{.KCP_VERSION}}_{{.GOOS}}_{{.GOARCH}}.tar.gz && tar -xzf {{.LOCAL_BIN}}/kcp -C {{.LOCAL_BIN}} --strip-components=1 && chmod +x {{.LOCAL_BIN}}/kcp) || echo "Failed to setup KCP, skipping..."
+      - |
+        test -s {{.LOCAL_BIN}}/kcp \
+          || (which kcp && cp "$(which kcp)" {{.LOCAL_BIN}}/kcp) \
+          || (
+            set -e
+            echo "KCP binary not found, downloading..."
+            curl -sSL -o {{.LOCAL_BIN}}/kcp.tar.gz https://github.com/kcp-dev/kcp/releases/download/v{{.KCP_VERSION}}/kcp_{{.KCP_VERSION}}_{{.GOOS}}_{{.GOARCH}}.tar.gz
+            tar -xzf {{.LOCAL_BIN}}/kcp.tar.gz -C {{.LOCAL_BIN}} kcp
+            chmod +x {{.LOCAL_BIN}}/kcp
+            rm {{.LOCAL_BIN}}/kcp.tar.gz
+          )
   setup:gomplate:
     internal: true
     cmds:
