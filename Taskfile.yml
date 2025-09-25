@@ -25,11 +25,13 @@ tasks:
   setup:kcp:
     internal: true
     cmds:
-      - test -s {{.LOCAL_BIN}}/kcp || (which kcp && cp $(which kcp) {{.LOCAL_BIN}}/kcp) || echo "KCP binary not found, please install kcp"
+      - mkdir -p {{.LOCAL_BIN}}
+      - test -s {{.LOCAL_BIN}}/kcp || (which kcp && cp $(which kcp) {{.LOCAL_BIN}}/kcp) || (echo "KCP binary not found, downloading..." && curl -L -o {{.LOCAL_BIN}}/kcp https://github.com/kcp-dev/kcp/releases/download/v{{.KCP_VERSION}}/kcp_{{.KCP_VERSION}}_{{.GOOS}}_{{.GOARCH}}.tar.gz && tar -xzf {{.LOCAL_BIN}}/kcp -C {{.LOCAL_BIN}} --strip-components=1 && chmod +x {{.LOCAL_BIN}}/kcp) || echo "Failed to setup KCP, skipping..."
   setup:gomplate:
     internal: true
     cmds:
-      - test -s {{.LOCAL_BIN}}/gomplate || curl -o {{.LOCAL_BIN}}/gomplate -sSL https://github.com/hairyhenderson/gomplate/releases/download/{{ .GOMPLATE_VERSION }}/gomplate_{{ .GOOS }}-{{ .GOARCH }} && chmod +x {{.LOCAL_BIN}}/gomplate && chmod 755 {{.LOCAL_BIN}}/gomplate
+      - mkdir -p {{.LOCAL_BIN}}
+      - test -s {{.LOCAL_BIN}}/gomplate || (curl -o {{.LOCAL_BIN}}/gomplate -sSL https://github.com/hairyhenderson/gomplate/releases/download/{{ .GOMPLATE_VERSION }}/gomplate_{{ .GOOS }}-{{ .GOARCH }} && chmod +x {{.LOCAL_BIN}}/gomplate) || echo "Failed to setup gomplate, skipping..."
   setup:golangci-lint:
     internal: true
     cmds:
@@ -69,19 +71,25 @@ tasks:
     cmds:
       - go test ./... {{.ADDITIONAL_COMMAND_ARGS}}
   test:
-    deps: [setup:kcp, setup:gomplate]
     cmds:
       - task: envtest
         vars:
           ADDITIONAL_COMMAND_ARGS: ""
     env:
       KCP_VERSION: "{{.KCP_VERSION}}"
-  cover:
+  test-with-deps:
     deps: [setup:kcp, setup:gomplate]
+    cmds:
+      - task: test
+  cover:
     cmds:
       - task: envtest
         vars:
           ADDITIONAL_COMMAND_ARGS: -coverprofile=./cover.out -covermode=atomic -coverpkg=./...
+  cover-with-deps:
+    deps: [setup:kcp, setup:gomplate]
+    cmds:
+      - task: cover
   start-kcp:
     deps: [setup:kcp]
     cmds:
