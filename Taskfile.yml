@@ -10,6 +10,7 @@ vars:
   TEST_SETUP_DIRECTORY: test/setup/01-platform-mesh-system
   KCP_APIGEN_VERSION: v0.27.1
   KCP_VERSION: 0.27.1
+  KCP_TAG: v0.27.1
   GOMPLATE_VERSION: v4.3.0
   GOARCH:
     sh: go env GOARCH
@@ -28,11 +29,11 @@ tasks:
       - mkdir -p {{.LOCAL_BIN}}
       - |
         test -s {{.LOCAL_BIN}}/kcp \
-          || (which kcp && cp "$(which kcp)" {{.LOCAL_BIN}}/kcp) \
+          || (command -v kcp >/dev/null 2>&1 && cp "$(command -v kcp)" {{.LOCAL_BIN}}/kcp) \
           || (
             set -e
             echo "KCP binary not found, downloading..."
-            curl -sSL -o {{.LOCAL_BIN}}/kcp.tar.gz https://github.com/kcp-dev/kcp/releases/download/v{{.KCP_VERSION}}/kcp_{{.KCP_VERSION}}_{{.GOOS}}_{{.GOARCH}}.tar.gz
+            curl -fSL -o {{.LOCAL_BIN}}/kcp.tar.gz https://github.com/kcp-dev/kcp/releases/download/{{.KCP_TAG}}/kcp_{{.KCP_VERSION}}_{{.GOOS}}_{{.GOARCH}}.tar.gz
             tar -xzf {{.LOCAL_BIN}}/kcp.tar.gz -C {{.LOCAL_BIN}} kcp
             chmod +x {{.LOCAL_BIN}}/kcp
             rm {{.LOCAL_BIN}}/kcp.tar.gz
