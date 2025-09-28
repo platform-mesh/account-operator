@@ -196,5 +196,7 @@ func createOrganizationRestConfig(cfg *rest.Config) *rest.Config {
 	copyConfig := rest.CopyConfig(cfg)
 	protocolHost := fmt.Sprintf("%s://%s", parsedUrl.Scheme, parsedUrl.Host)
 	copyConfig.Host = fmt.Sprintf("%s/clusters/%s", protocolHost, orgsWorkspacePath)
+	// Remove cluster aware round tripper to avoid redirect issues
+	copyConfig.WrapTransport = nil
 	return copyConfig
 }
