@@ -5,7 +5,6 @@ import (
 	"time"
 
 	kcptenancyv1alpha "github.com/kcp-dev/kcp/sdk/apis/tenancy/v1alpha1"
-	commonconfig "github.com/platform-mesh/golang-commons/config"
 	"github.com/platform-mesh/golang-commons/controller/lifecycle/runtimeobject"
 	"github.com/platform-mesh/golang-commons/errors"
 	kerrors "k8s.io/apimachinery/pkg/api/errors"
@@ -16,7 +15,6 @@ import (
 	"sigs.k8s.io/controller-runtime/pkg/controller/controllerutil"
 
 	corev1alpha1 "github.com/platform-mesh/account-operator/api/v1alpha1"
-	"github.com/platform-mesh/account-operator/internal/config"
 )
 
 const (
@@ -72,16 +70,19 @@ func (r *WorkspaceSubroutine) Finalizers() []string { // coverage-ignore
 
 func (r *WorkspaceSubroutine) Process(ctx context.Context, runtimeObj runtimeobject.RuntimeObject) (ctrl.Result, errors.OperatorError) {
 	instance := runtimeObj.(*corev1alpha1.Account)
-	cfg := commonconfig.LoadConfigFromContext(ctx).(config.OperatorConfig)
 
 	// Test if namespace was already created based on status
+	workspaceTypeName := generateOrganizationWorkspaceTypeName(instance)
+	if instance.Spec.Type == corev1alpha1.AccountTypeAccount {
+		workspaceTypeName = generateAccountWorkspaceTypeName(instance)
+	}
+
 	createdWorkspace := &kcptenancyv1alpha.Workspace{ObjectMeta: metav1.ObjectMeta{Name: instance.Name}}
 	_, err := controllerutil.CreateOrUpdate(ctx, r.client, createdWorkspace, func() error {
 		createdWorkspace.Spec.Type = &kcptenancyv1alpha.WorkspaceTypeReference{
-			Name: kcptenancyv1alpha.WorkspaceTypeName(instance.Spec.Type),
-			Path: cfg.Kcp.ProviderWorkspace,
+			Name: kcptenancyv1alpha.WorkspaceTypeName(workspaceTypeName),
+			Path: orgsWorkspacePath,
 		}
-
 		return controllerutil.SetOwnerReference(instance, createdWorkspace, r.client.Scheme())
 	})
 	if err != nil {

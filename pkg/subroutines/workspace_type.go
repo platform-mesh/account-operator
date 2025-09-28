@@ -28,7 +28,6 @@ const (
 	rootAccountWorkspaceTypeName          = "account"
 	rootAccountWorkspaceTypeWorkspacePath = "root"
 	rootOrgsWorkspaceTypeName             = "orgs"
-	orgsWorkspacePath                     = "root:orgs"
 )
 
 var _ subroutine.Subroutine = &WorkspaceTypeSubroutine{}
@@ -64,14 +63,6 @@ func (w WorkspaceTypeSubroutine) Process(ctx context.Context, ro runtimeobject.R
 	}
 
 	return ctrl.Result{}, nil
-}
-
-func generateAccountWorkspaceTypeName(instance *v1alpha1.Account) string {
-	return fmt.Sprintf("%s-%s", instance.Name, "acc")
-}
-
-func generateOrganizationWorkspaceTypeName(instance *v1alpha1.Account) string {
-	return fmt.Sprintf("%s-%s", instance.Name, "org")
 }
 
 func (w WorkspaceTypeSubroutine) createOrUpdateWorkspaceType(ctx context.Context, desiredWst kcptenancyv1alpha.WorkspaceType) error {
@@ -120,7 +111,6 @@ func (w WorkspaceTypeSubroutine) Finalize(ctx context.Context, ro runtimeobject.
 
 func (w WorkspaceTypeSubroutine) GetName() string {
 	return workspaceTypeSubroutineName
-
 }
 
 func (w WorkspaceTypeSubroutine) Finalizers() []string {

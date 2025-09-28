@@ -2,6 +2,7 @@ package subroutines
 
 import (
 	"context"
+	"fmt"
 
 	kcptenancyv1alpha "github.com/kcp-dev/kcp/sdk/apis/tenancy/v1alpha1"
 	"github.com/platform-mesh/golang-commons/errors"
@@ -10,6 +11,18 @@ import (
 
 	"github.com/platform-mesh/account-operator/api/v1alpha1"
 )
+
+const (
+	orgsWorkspacePath = "root:orgs"
+)
+
+func generateAccountWorkspaceTypeName(instance *v1alpha1.Account) string {
+	return fmt.Sprintf("%s-%s", instance.Name, "acc")
+}
+
+func generateOrganizationWorkspaceTypeName(instance *v1alpha1.Account) string {
+	return fmt.Sprintf("%s-%s", instance.Name, "org")
+}
 
 func retrieveWorkspace(ctx context.Context, instance *v1alpha1.Account, c client.Client, log *logger.Logger) (*kcptenancyv1alpha.Workspace, error) {
 	ws := &kcptenancyv1alpha.Workspace{}
