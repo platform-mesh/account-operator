@@ -82,9 +82,18 @@ func (r *WorkspaceSubroutine) Process(ctx context.Context, runtimeObj runtimeobj
 	instance := runtimeObj.(*corev1alpha1.Account)
 
 	// Test if namespace was already created based on status
-	workspaceTypeName := generateOrganizationWorkspaceTypeName(instance)
+	workspaceTypeName := generateOrganizationWorkspaceTypeName(instance.Name)
 	if instance.Spec.Type == corev1alpha1.AccountTypeAccount {
-		workspaceTypeName = generateAccountWorkspaceTypeName(instance)
+		// Retrieve organization name
+		accountInfo := &corev1alpha1.AccountInfo{}
+		err := r.client.Get(ctx, client.ObjectKey{Name: DefaultAccountInfoName, Namespace: instance.Namespace}, accountInfo)
+		if err != nil {
+			if kerrors.IsNotFound(err) {
+				// AccountInfo not found, requeue
+				return ctrl.Result{RequeueAfter: 1 * time.Second}, nil
+			}
+		}
+		workspaceTypeName = generateAccountWorkspaceTypeName(accountInfo.Spec.Organization.Name)
 	}
 
 	// Test if workspaceType is ready

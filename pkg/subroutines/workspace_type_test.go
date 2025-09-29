@@ -345,12 +345,10 @@ func (suite *WorkspaceTypeSubroutineTestSuite) mockDeleteWorkspaceType(name stri
 
 func (suite *WorkspaceTypeSubroutineTestSuite) TestGenerateOrganizationWorkspaceTypeName() {
 	// Given
-	testAccount := &corev1alpha1.Account{
-		ObjectMeta: metav1.ObjectMeta{Name: "test-org"},
-	}
+	orgName := "test-org"
 
 	// When
-	result := generateOrganizationWorkspaceTypeName(testAccount)
+	result := generateOrganizationWorkspaceTypeName(orgName)
 
 	// Then
 	suite.Equal("test-org-org", result)
@@ -358,12 +356,10 @@ func (suite *WorkspaceTypeSubroutineTestSuite) TestGenerateOrganizationWorkspace
 
 func (suite *WorkspaceTypeSubroutineTestSuite) TestGenerateAccountWorkspaceTypeName() {
 	// Given
-	testAccount := &corev1alpha1.Account{
-		ObjectMeta: metav1.ObjectMeta{Name: "test-org"},
-	}
+	orgName := "test-org"
 
 	// When
-	result := generateAccountWorkspaceTypeName(testAccount)
+	result := generateAccountWorkspaceTypeName(orgName)
 
 	// Then
 	suite.Equal("test-org-acc", result)
@@ -417,8 +413,8 @@ func (suite *WorkspaceTypeSubroutineTestSuite) TestGenerateAccountWorkspaceType(
 
 	// Then
 	suite.Equal(accountWorkspaceTypeName, result.Name)
-	suite.Equal(kcptenancyv1alpha.WorkspaceTypeName("root"), result.Spec.Extend.With[0].Name)
-	suite.Equal("account", result.Spec.Extend.With[0].Path)
+	suite.Equal(kcptenancyv1alpha.WorkspaceTypeName("account"), result.Spec.Extend.With[0].Name)
+	suite.Equal("root", result.Spec.Extend.With[0].Path)
 	suite.Equal(kcptenancyv1alpha.WorkspaceTypeName(accountWorkspaceTypeName), result.Spec.DefaultChildWorkspaceType.Name)
 	suite.Equal("root:orgs", result.Spec.DefaultChildWorkspaceType.Path)
 

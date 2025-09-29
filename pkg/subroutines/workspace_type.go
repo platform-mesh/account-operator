@@ -42,8 +42,8 @@ func (w WorkspaceTypeSubroutine) Process(ctx context.Context, ro runtimeobject.R
 		return ctrl.Result{}, nil
 	}
 
-	orgWorkspaceTypeName := generateOrganizationWorkspaceTypeName(instance)
-	accountWorkspaceTypeName := generateAccountWorkspaceTypeName(instance)
+	orgWorkspaceTypeName := generateOrganizationWorkspaceTypeName(instance.Name)
+	accountWorkspaceTypeName := generateAccountWorkspaceTypeName(instance.Name)
 	orgWst := generateOrgWorkspaceType(instance, orgWorkspaceTypeName, accountWorkspaceTypeName)
 	accWst := generateAccountWorkspaceType(instance, orgWorkspaceTypeName, accountWorkspaceTypeName)
 
@@ -82,8 +82,8 @@ func (w WorkspaceTypeSubroutine) Finalize(ctx context.Context, ro runtimeobject.
 		return ctrl.Result{}, nil
 	}
 
-	orgWorkspaceTypeName := generateOrganizationWorkspaceTypeName(instance)
-	accountWorkspaceTypeName := generateAccountWorkspaceTypeName(instance)
+	orgWorkspaceTypeName := generateOrganizationWorkspaceTypeName(instance.Name)
+	accountWorkspaceTypeName := generateAccountWorkspaceTypeName(instance.Name)
 
 	err := w.orgsClient.Delete(ctx, &kcptenancyv1alpha.WorkspaceType{ObjectMeta: metav1.ObjectMeta{Name: orgWorkspaceTypeName}})
 	if err != nil {
@@ -157,7 +157,7 @@ func generateAccountWorkspaceType(instance *v1alpha1.Account, orgWorkspaceTypeNa
 		Spec: kcptenancyv1alpha.WorkspaceTypeSpec{
 			Extend: kcptenancyv1alpha.WorkspaceTypeExtension{
 				With: []kcptenancyv1alpha.WorkspaceTypeReference{
-					{Name: rootAccountWorkspaceTypeWorkspacePath, Path: rootAccountWorkspaceTypeName},
+					{Name: rootAccountWorkspaceTypeName, Path: rootAccountWorkspaceTypeWorkspacePath},
 				},
 			},
 			DefaultChildWorkspaceType: &kcptenancyv1alpha.WorkspaceTypeReference{

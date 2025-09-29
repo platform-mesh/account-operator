@@ -18,12 +18,12 @@ const (
 	orgsWorkspacePath = "root:orgs"
 )
 
-func generateAccountWorkspaceTypeName(instance *v1alpha1.Account) string {
-	return fmt.Sprintf("%s-%s", instance.Name, "acc")
+func generateAccountWorkspaceTypeName(organizationName string) string {
+	return fmt.Sprintf("%s-%s", organizationName, "acc")
 }
 
-func generateOrganizationWorkspaceTypeName(instance *v1alpha1.Account) string {
-	return fmt.Sprintf("%s-%s", instance.Name, "org")
+func generateOrganizationWorkspaceTypeName(organizationName string) string {
+	return fmt.Sprintf("%s-%s", organizationName, "org")
 }
 
 func retrieveWorkspace(ctx context.Context, instance *v1alpha1.Account, c client.Client, log *logger.Logger) (*kcptenancyv1alpha.Workspace, error) {
