@@ -87,3 +87,35 @@ func TestNewWorkspaceTypeSubroutineWithRootClient(t *testing.T) {
 	assert.Equal(t, client, subroutine.client)
 	assert.Equal(t, rootClient, subroutine.rootClient)
 }
+
+func TestWorkspaceTypeSubroutine_Process_WithOrgWorkspaceCluster_Logic(t *testing.T) {
+	// Simple test to cover the basic logic paths without complex mocking
+	subroutine := &WorkspaceTypeSubroutine{rootClient: &mocks.Client{}}
+
+	// Test non-org account (should return early)
+	account := &corev1alpha1.Account{
+		ObjectMeta: metav1.ObjectMeta{Name: "test-account"},
+		Spec:       corev1alpha1.AccountSpec{Type: corev1alpha1.AccountTypeAccount},
+	}
+
+	result, err := subroutine.Process(context.Background(), account)
+	assert.Equal(t, ctrl.Result{}, result)
+	assert.Nil(t, err)
+}
+
+func TestWorkspaceTypeSubroutine_getCurrentClusterPath_Logic(t *testing.T) {
+	// Test the cluster path logic without complex dependencies
+	subroutine := &WorkspaceTypeSubroutine{}
+	cfg := config.OperatorConfig{}
+
+	ctx := kontext.WithCluster(context.Background(), logicalcluster.Name("root:current"))
+
+	// Test without OrgWorkspaceCluster
+	path := subroutine.getCurrentClusterPath(ctx, cfg)
+	assert.Equal(t, "root:current", path)
+
+	// Test with OrgWorkspaceCluster
+	cfg.Kcp.OrgWorkspaceCluster = "root:org-cluster"
+	path = subroutine.getCurrentClusterPath(ctx, cfg)
+	assert.Equal(t, "root:current", path) // Should still return current cluster
+}

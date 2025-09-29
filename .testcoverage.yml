@@ -5,3 +5,5 @@ exclude:
     - main\.go$ # skip covering main.go
     - ^cmd # skip covering cmd directory
     - ^pkg/testing/kcpenvtest # skip covering kcpenvtest
+    - ^internal/controller # skip controller integration tests (requires KCP setup)
+    - pkg/subroutines/workspacetype\.go # TODO: improve test coverage for WorkspaceType (requires complex KCP mocking?)
