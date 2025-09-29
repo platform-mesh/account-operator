@@ -112,6 +112,10 @@ func (r *WorkspaceSubroutine) Process(ctx context.Context, runtimeObj runtimeobj
 			}
 			return ctrl.Result{}, errors.NewOperatorError(err, true, true)
 		}
+		if accountInfo.Spec.Organization.Name == "" {
+			// Requeue briefly; upstream controller may still be populating AccountInfo
+			return ctrl.Result{RequeueAfter: 1 * time.Second}, nil
+		}
 		workspaceTypeName = generateAccountWorkspaceTypeName(accountInfo.Spec.Organization.Name)
 	}
 
