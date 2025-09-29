@@ -68,10 +68,7 @@ func (w WorkspaceTypeSubroutine) createOrUpdateWorkspaceType(ctx context.Context
 		wst.Spec = desiredWst.Spec
 		return nil
 	})
-	if err != nil {
-		return err
-	}
-	return nil
+	return err
 }
 
 func (w WorkspaceTypeSubroutine) Finalize(ctx context.Context, ro runtimeobject.RuntimeObject) (ctrl.Result, errors.OperatorError) {

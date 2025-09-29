@@ -9,8 +9,6 @@ done
 SCRIPT_DIR="$(cd -P "$(dirname "$SOURCE")" >/dev/null 2>&1 && pwd)"
 echo "$SCRIPT_DIR"
 
-
-IMAGE="ghcr.io/kcp-dev/kcp:main"
 LOCAL_BIN="$SCRIPT_DIR/../bin/kcp"          # destination path
 BUILD_DIR="$SCRIPT_DIR/../bin/build"          # destination path
 
