@@ -77,7 +77,7 @@ func (r *WorkspaceSubroutine) Process(ctx context.Context, runtimeObj runtimeobj
 	// Test if namespace was already created based on status
 	createdWorkspace := &kcptenancyv1alpha.Workspace{ObjectMeta: metav1.ObjectMeta{Name: instance.Name}}
 	_, err := controllerutil.CreateOrUpdate(ctx, r.client, createdWorkspace, func() error {
-		createdWorkspace.Spec.Type = kcptenancyv1alpha.WorkspaceTypeReference{
+		createdWorkspace.Spec.Type = &kcptenancyv1alpha.WorkspaceTypeReference{
 			Name: kcptenancyv1alpha.WorkspaceTypeName(instance.Spec.Type),
 			Path: cfg.Kcp.ProviderWorkspace,
 		}

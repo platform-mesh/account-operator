@@ -9,6 +9,9 @@ type OperatorConfig struct {
 		DenyList string `mapstructure:"webhooks-deny-list"`
 	} `mapstructure:",squash"`
 	Subroutines struct {
+		WorkspaceType struct {
+			Enabled bool `mapstructure:"subroutines-workspacetype-enabled" default:"true"`
+		} `mapstructure:",squash"`
 		Workspace struct {
 			Enabled bool `mapstructure:"subroutines-workspace-enabled" default:"true"`
 		} `mapstructure:",squash"`
@@ -27,5 +30,7 @@ type OperatorConfig struct {
 	Kcp struct {
 		ApiExportEndpointSliceName string `mapstructure:"kcp-api-export-endpoint-slice-name"`
 		ProviderWorkspace          string `mapstructure:"kcp-provider-workspace" default:"root"`
+		RootHost                   string `mapstructure:"kcp-root-host" default:""`
+		OrgWorkspaceCluster        string `mapstructure:"kcp-org-workspace-cluster" default:""`
 	} `mapstructure:",squash"`
 }
