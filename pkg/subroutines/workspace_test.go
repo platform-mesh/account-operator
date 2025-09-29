@@ -3,8 +3,10 @@ package subroutines_test
 import (
 	"context"
 	"fmt"
+	"reflect"
 	"testing"
 	"time"
+	"unsafe"
 
 	kcpcorev1alpha1 "github.com/kcp-dev/kcp/sdk/apis/core/v1alpha1"
 	kcptenancyv1alpha "github.com/kcp-dev/kcp/sdk/apis/tenancy/v1alpha1"
@@ -20,6 +22,7 @@ import (
 	"k8s.io/apimachinery/pkg/types"
 	utilruntime "k8s.io/apimachinery/pkg/util/runtime"
 	"k8s.io/client-go/kubernetes/scheme"
+	"k8s.io/client-go/util/workqueue"
 	"sigs.k8s.io/controller-runtime/pkg/client"
 	"sigs.k8s.io/controller-runtime/pkg/kontext"
 
@@ -47,9 +50,35 @@ type WorkspaceSubroutineTestSuite struct {
 func (suite *WorkspaceSubroutineTestSuite) SetupTest() {
 	// Setup Mocks
 	suite.clientMock = new(mocks.Client)
+	orgClientMock := new(mocks.Client)
 
-	// Initialize Tested Object(s)
-	suite.testObj = subroutines.NewWorkspaceSubroutine(suite.clientMock)
+	// Initialize Tested Object(s) with proper field injection using unsafe
+	suite.testObj = &subroutines.WorkspaceSubroutine{}
+
+	// Use unsafe to set private fields
+	v := reflect.ValueOf(suite.testObj).Elem()
+
+	// Set client field
+	clientField := v.FieldByName("client")
+	if clientField.IsValid() {
+		clientPtr := (*client.Client)(unsafe.Pointer(clientField.UnsafeAddr()))
+		*clientPtr = suite.clientMock
+	}
+
+	// Set organizationsClient field
+	orgClientField := v.FieldByName("organizationsClient")
+	if orgClientField.IsValid() {
+		orgClientPtr := (*client.Client)(unsafe.Pointer(orgClientField.UnsafeAddr()))
+		*orgClientPtr = orgClientMock
+	}
+
+	// Set limiter field to prevent nil pointer issues
+	limiterField := v.FieldByName("limiter")
+	if limiterField.IsValid() {
+		exp := workqueue.NewTypedItemExponentialFailureRateLimiter[subroutines.ClusteredName](1*time.Second, 120*time.Second)
+		limiterPtr := (*workqueue.TypedRateLimiter[subroutines.ClusteredName])(unsafe.Pointer(limiterField.UnsafeAddr()))
+		*limiterPtr = exp
+	}
 
 	utilruntime.Must(corev1alpha1.AddToScheme(scheme.Scheme))
 	utilruntime.Must(corev1.AddToScheme(scheme.Scheme))
@@ -123,7 +152,7 @@ func (suite *WorkspaceSubroutineTestSuite) TestFinalize_OK_Workspace_ExistingBut
 func (suite *WorkspaceSubroutineTestSuite) TestFinalize_OK_Workspace_Existing() {
 	// Given
 	testAccount := &corev1alpha1.Account{}
-	mockGetWorkspaceByName(suite.clientMock, kcpcorev1alpha1.LogicalClusterPhaseReady, "https://example.com/")
+	mockGetWorkspaceByName(suite.clientMock, kcpcorev1alpha1.LogicalClusterPhaseReady, "example.com/")
 	mockDeleteWorkspaceCall(suite)
 	ctx := context.Background()
 	ctx = kontext.WithCluster(ctx, "some-cluster-id")
@@ -140,7 +169,7 @@ func (suite *WorkspaceSubroutineTestSuite) TestFinalize_OK_Workspace_Existing() 
 func (suite *WorkspaceSubroutineTestSuite) TestFinalize_Error_On_Deletion() {
 	// Given
 	testAccount := &corev1alpha1.Account{}
-	mockGetWorkspaceByName(suite.clientMock, kcpcorev1alpha1.LogicalClusterPhaseReady, "https://example.com/")
+	mockGetWorkspaceByName(suite.clientMock, kcpcorev1alpha1.LogicalClusterPhaseReady, "example.com/")
 	mockDeleteWorkspaceCallFailed(suite)
 	ctx := kontext.WithCluster(suite.context, "some-cluster-id")
 	// When

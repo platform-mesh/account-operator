@@ -5,8 +5,11 @@ import (
 	"time"
 
 	kcptenancyv1alpha "github.com/kcp-dev/kcp/sdk/apis/tenancy/v1alpha1"
+	conditionsapi "github.com/kcp-dev/kcp/sdk/apis/third_party/conditions/apis/conditions/v1alpha1"
+	conditionshelper "github.com/kcp-dev/kcp/sdk/apis/third_party/conditions/util/conditions"
 	"github.com/platform-mesh/golang-commons/controller/lifecycle/runtimeobject"
 	"github.com/platform-mesh/golang-commons/errors"
+	corev1 "k8s.io/api/core/v1"
 	kerrors "k8s.io/apimachinery/pkg/api/errors"
 	metav1 "k8s.io/apimachinery/pkg/apis/meta/v1"
 	"k8s.io/client-go/util/workqueue"
@@ -23,13 +26,20 @@ const (
 )
 
 type WorkspaceSubroutine struct {
-	client  client.Client
-	limiter workqueue.TypedRateLimiter[ClusteredName]
+	client              client.Client
+	limiter             workqueue.TypedRateLimiter[ClusteredName]
+	organizationsClient client.Client
 }
 
-func NewWorkspaceSubroutine(client client.Client) *WorkspaceSubroutine {
+func NewWorkspaceSubroutine(mgr ctrl.Manager) *WorkspaceSubroutine {
 	exp := workqueue.NewTypedItemExponentialFailureRateLimiter[ClusteredName](1*time.Second, 120*time.Second)
-	return &WorkspaceSubroutine{client: client, limiter: exp}
+	organizationsClient, err := client.New(createOrganizationRestConfig(mgr.GetConfig()), client.Options{
+		Scheme: mgr.GetScheme(),
+	})
+	if err != nil {
+		panic(err)
+	}
+	return &WorkspaceSubroutine{client: mgr.GetClient(), organizationsClient: organizationsClient, limiter: exp}
 }
 
 func (r *WorkspaceSubroutine) GetName() string {
@@ -77,8 +87,17 @@ func (r *WorkspaceSubroutine) Process(ctx context.Context, runtimeObj runtimeobj
 		workspaceTypeName = generateAccountWorkspaceTypeName(instance)
 	}
 
+	// Test if workspaceType is ready
+	ready, err := r.checkWorkspaceTypeReady(ctx, workspaceTypeName)
+	if !ready {
+		return ctrl.Result{RequeueAfter: 1 * time.Second}, nil
+	}
+	if err != nil {
+		return ctrl.Result{}, errors.NewOperatorError(err, true, true)
+	}
+
 	createdWorkspace := &kcptenancyv1alpha.Workspace{ObjectMeta: metav1.ObjectMeta{Name: instance.Name}}
-	_, err := controllerutil.CreateOrUpdate(ctx, r.client, createdWorkspace, func() error {
+	_, err = controllerutil.CreateOrUpdate(ctx, r.client, createdWorkspace, func() error {
 		createdWorkspace.Spec.Type = &kcptenancyv1alpha.WorkspaceTypeReference{
 			Name: kcptenancyv1alpha.WorkspaceTypeName(workspaceTypeName),
 			Path: orgsWorkspacePath,
@@ -89,4 +108,20 @@ func (r *WorkspaceSubroutine) Process(ctx context.Context, runtimeObj runtimeobj
 		return ctrl.Result{}, errors.NewOperatorError(err, true, true)
 	}
 	return ctrl.Result{}, nil
+}
+
+func (r *WorkspaceSubroutine) checkWorkspaceTypeReady(ctx context.Context, workspaceTypeName string) (bool, error) {
+	wst := &kcptenancyv1alpha.WorkspaceType{}
+	err := r.organizationsClient.Get(ctx, client.ObjectKey{Name: workspaceTypeName}, wst)
+	if err != nil {
+		if kerrors.IsNotFound(err) {
+			return false, nil
+		}
+		return false, err
+	}
+	readyCondition := conditionshelper.Get(wst, conditionsapi.ReadyCondition)
+	if readyCondition == nil || readyCondition.Status == corev1.ConditionFalse {
+		return false, nil
+	}
+	return true, nil
 }

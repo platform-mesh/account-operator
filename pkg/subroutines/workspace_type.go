@@ -2,8 +2,6 @@ package subroutines
 
 import (
 	"context"
-	"fmt"
-	"net/url"
 
 	kcptenancyv1alpha "github.com/kcp-dev/kcp/sdk/apis/tenancy/v1alpha1"
 	"github.com/platform-mesh/golang-commons/controller/lifecycle/runtimeobject"
@@ -12,7 +10,6 @@ import (
 	"github.com/platform-mesh/golang-commons/logger"
 	kerrors "k8s.io/apimachinery/pkg/api/errors"
 	metav1 "k8s.io/apimachinery/pkg/apis/meta/v1"
-	"k8s.io/client-go/rest"
 	ctrl "sigs.k8s.io/controller-runtime"
 	"sigs.k8s.io/controller-runtime/pkg/client"
 	"sigs.k8s.io/controller-runtime/pkg/controller/controllerutil"
@@ -66,7 +63,6 @@ func (w WorkspaceTypeSubroutine) Process(ctx context.Context, ro runtimeobject.R
 }
 
 func (w WorkspaceTypeSubroutine) createOrUpdateWorkspaceType(ctx context.Context, desiredWst kcptenancyv1alpha.WorkspaceType) error {
-	log := logger.LoadLoggerFromContext(ctx)
 	wst := &kcptenancyv1alpha.WorkspaceType{ObjectMeta: metav1.ObjectMeta{Name: desiredWst.Name}}
 	_, err := controllerutil.CreateOrUpdate(ctx, w.orgsClient, wst, func() error {
 		desiredWst.Spec.AuthenticationConfigurations = wst.Spec.AuthenticationConfigurations
@@ -74,7 +70,6 @@ func (w WorkspaceTypeSubroutine) createOrUpdateWorkspaceType(ctx context.Context
 		return nil
 	})
 	if err != nil {
-		log.Error().Err(err).Str("name", desiredWst.Name).Msg("failed to create or update org workspace type")
 		return err
 	}
 	return nil
@@ -176,17 +171,4 @@ func generateAccountWorkspaceType(orgWorkspaceTypeName, accountWorkspaceTypeName
 			},
 		},
 	}
-}
-
-func createOrganizationRestConfig(cfg *rest.Config) *rest.Config {
-	parsedUrl, err := url.Parse(cfg.Host)
-	if err != nil {
-		panic(err)
-	}
-	copyConfig := rest.CopyConfig(cfg)
-	protocolHost := fmt.Sprintf("%s://%s", parsedUrl.Scheme, parsedUrl.Host)
-	copyConfig.Host = fmt.Sprintf("%s/clusters/%s", protocolHost, orgsWorkspacePath)
-	// Remove cluster aware round tripper to avoid redirect issues
-	copyConfig.WrapTransport = nil
-	return copyConfig
 }
