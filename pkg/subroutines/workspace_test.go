@@ -190,9 +190,10 @@ func (suite *WorkspaceSubroutineTestSuite) TestProcessing_OK() {
 	mockGetWorkspaceCallNotFound(suite)
 	mockGetWorkspaceTypeReady(suite.orgClientMock)
 	mockNewWorkspaceCreateCall(suite, defaultExpectedTestNamespace)
+	ctx := kontext.WithCluster(suite.context, "some-cluster-id")
 
 	// When
-	_, err := suite.testObj.Process(suite.context, testAccount)
+	_, err := suite.testObj.Process(ctx, testAccount)
 
 	// Then
 	suite.Nil(err)
@@ -207,9 +208,10 @@ func (suite *WorkspaceSubroutineTestSuite) TestProcessing_Error_On_Get() {
 	mockGetWorkspaceTypeReady(suite.orgClientMock)
 	// Then CreateOrUpdate internally does a Get which fails
 	mockGetWorkspaceFailed(suite)
+	ctx := kontext.WithCluster(suite.context, "some-cluster-id")
 
 	// When
-	_, err := suite.testObj.Process(suite.context, testAccount)
+	_, err := suite.testObj.Process(ctx, testAccount)
 
 	// Then
 	suite.Require().NotNil(err)
@@ -229,9 +231,10 @@ func (suite *WorkspaceSubroutineTestSuite) TestProcessing_CreateError() {
 	suite.clientMock.EXPECT().
 		Create(mock.Anything, mock.Anything).
 		Return(kerrors.NewBadRequest(""))
+	ctx := kontext.WithCluster(suite.context, "some-cluster-id")
 
 	// When
-	_, err := suite.testObj.Process(suite.context, testAccount)
+	_, err := suite.testObj.Process(ctx, testAccount)
 
 	// Then
 	suite.NotNil(err)
@@ -252,9 +255,10 @@ func (suite *WorkspaceSubroutineTestSuite) TestProcessing_Account_Type_AccountIn
 	suite.clientMock.EXPECT().
 		Get(mock.Anything, client.ObjectKey{Name: DefaultAccountInfoName, Namespace: "test-namespace"}, mock.AnythingOfType("*v1alpha1.AccountInfo")).
 		Return(kerrors.NewNotFound(schema.GroupResource{}, "account-info"))
+	ctx := kontext.WithCluster(suite.context, "some-cluster-id")
 
 	// When
-	res, err := suite.testObj.Process(suite.context, testAccount)
+	res, err := suite.testObj.Process(ctx, testAccount)
 
 	// Then
 	suite.Nil(err)
@@ -273,9 +277,10 @@ func (suite *WorkspaceSubroutineTestSuite) TestProcessing_WorkspaceType_NotFound
 	suite.orgClientMock.EXPECT().
 		Get(mock.Anything, mock.Anything, mock.AnythingOfType("*v1alpha1.WorkspaceType")).
 		Return(kerrors.NewNotFound(schema.GroupResource{}, "workspace-type"))
+	ctx := kontext.WithCluster(suite.context, "some-cluster-id")
 
 	// When
-	res, err := suite.testObj.Process(suite.context, testAccount)
+	res, err := suite.testObj.Process(ctx, testAccount)
 
 	// Then
 	suite.Nil(err)
@@ -295,9 +300,10 @@ func (suite *WorkspaceSubroutineTestSuite) TestProcessing_WorkspaceType_GetError
 	suite.orgClientMock.EXPECT().
 		Get(mock.Anything, mock.Anything, mock.AnythingOfType("*v1alpha1.WorkspaceType")).
 		Return(kerrors.NewInternalError(fmt.Errorf("get error")))
+	ctx := kontext.WithCluster(suite.context, "some-cluster-id")
 
 	// When
-	_, err := suite.testObj.Process(suite.context, testAccount)
+	_, err := suite.testObj.Process(ctx, testAccount)
 
 	// Then - Due to the implementation, this returns a requeue, not an error
 	suite.Error(err.Err())
@@ -322,9 +328,10 @@ func (suite *WorkspaceSubroutineTestSuite) TestProcessing_WorkspaceType_NotReady
 			// No condition set - should be treated as not ready
 		}).
 		Return(nil)
+	ctx := kontext.WithCluster(suite.context, "some-cluster-id")
 
 	// When
-	res, err := suite.testObj.Process(suite.context, testAccount)
+	res, err := suite.testObj.Process(ctx, testAccount)
 
 	// Then
 	suite.Nil(err)
@@ -351,9 +358,10 @@ func (suite *WorkspaceSubroutineTestSuite) TestProcessing_WorkspaceType_NotReady
 			})
 		}).
 		Return(nil)
+	ctx := kontext.WithCluster(suite.context, "some-cluster-id")
 
 	// When
-	res, err := suite.testObj.Process(suite.context, testAccount)
+	res, err := suite.testObj.Process(ctx, testAccount)
 
 	// Then
 	suite.Nil(err)
@@ -385,9 +393,10 @@ func (suite *WorkspaceSubroutineTestSuite) TestProcessing_Workspace_Update_Succe
 	suite.clientMock.EXPECT().
 		Update(mock.Anything, mock.AnythingOfType("*v1alpha1.Workspace")).
 		Return(nil)
+	ctx := kontext.WithCluster(suite.context, "some-cluster-id")
 
 	// When
-	_, err := suite.testObj.Process(suite.context, testAccount)
+	_, err := suite.testObj.Process(ctx, testAccount)
 
 	// Then
 	suite.Nil(err)

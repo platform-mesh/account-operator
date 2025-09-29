@@ -87,7 +87,7 @@ func (r *WorkspaceSubroutine) Finalize(ctx context.Context, ro runtimeobject.Run
 		return ctrl.Result{}, errors.NewOperatorError(err, true, true)
 	}
 
-	// we need to requeue to check if the namespace was deleted
+	// we need to requeue to check if the workspace was deleted
 	next := r.limiter.When(cn)
 	return ctrl.Result{RequeueAfter: next}, nil
 }
@@ -96,8 +96,9 @@ func (r *WorkspaceSubroutine) Finalizers() []string { // coverage-ignore
 	return []string{"account.core.platform-mesh.io/finalizer"}
 }
 
-func (r *WorkspaceSubroutine) Process(ctx context.Context, runtimeObj runtimeobject.RuntimeObject) (ctrl.Result, errors.OperatorError) {
-	instance := runtimeObj.(*corev1alpha1.Account)
+func (r *WorkspaceSubroutine) Process(ctx context.Context, ro runtimeobject.RuntimeObject) (ctrl.Result, errors.OperatorError) {
+	instance := ro.(*corev1alpha1.Account)
+	cn := MustGetClusteredName(ctx, ro)
 
 	// Test if namespace was already created based on status
 	workspaceTypeName := generateOrganizationWorkspaceTypeName(instance.Name)
@@ -108,13 +109,13 @@ func (r *WorkspaceSubroutine) Process(ctx context.Context, runtimeObj runtimeobj
 		if err != nil {
 			if kerrors.IsNotFound(err) {
 				// AccountInfo not found, requeue
-				return ctrl.Result{RequeueAfter: 1 * time.Second}, nil
+				return ctrl.Result{RequeueAfter: r.limiter.When(cn)}, nil
 			}
 			return ctrl.Result{}, errors.NewOperatorError(err, true, true)
 		}
 		if accountInfo.Spec.Organization.Name == "" {
 			// Requeue briefly; upstream controller may still be populating AccountInfo
-			return ctrl.Result{RequeueAfter: 1 * time.Second}, nil
+			return ctrl.Result{RequeueAfter: r.limiter.When(cn)}, nil
 		}
 		workspaceTypeName = generateAccountWorkspaceTypeName(accountInfo.Spec.Organization.Name)
 	}
@@ -125,7 +126,7 @@ func (r *WorkspaceSubroutine) Process(ctx context.Context, runtimeObj runtimeobj
 		return ctrl.Result{}, errors.NewOperatorError(err, true, true)
 	}
 	if !ready {
-		return ctrl.Result{RequeueAfter: 1 * time.Second}, nil
+		return ctrl.Result{RequeueAfter: r.limiter.When(cn)}, nil
 	}
 
 	createdWorkspace := &kcptenancyv1alpha.Workspace{ObjectMeta: metav1.ObjectMeta{Name: instance.Name}}
@@ -151,9 +152,9 @@ func (r *WorkspaceSubroutine) checkWorkspaceTypeReady(ctx context.Context, works
 		}
 		return false, err
 	}
-    readyCondition := conditionshelper.Get(wst, conditionsapi.ReadyCondition)
-   if readyCondition == nil || readyCondition.Status != corev1.ConditionTrue {
-        return false, nil
-    }
-    return true, nil
+	readyCondition := conditionshelper.Get(wst, conditionsapi.ReadyCondition)
+	if readyCondition == nil || readyCondition.Status != corev1.ConditionTrue {
+		return false, nil
+	}
+	return true, nil
 }
