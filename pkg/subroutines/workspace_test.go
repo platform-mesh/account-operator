@@ -297,11 +297,12 @@ func (suite *WorkspaceSubroutineTestSuite) TestProcessing_WorkspaceType_GetError
 		Return(kerrors.NewInternalError(fmt.Errorf("get error")))
 
 	// When
-	res, err := suite.testObj.Process(suite.context, testAccount)
+	_, err := suite.testObj.Process(suite.context, testAccount)
 
 	// Then - Due to the implementation, this returns a requeue, not an error
-	suite.Nil(err)
-	suite.Equal(1*time.Second, res.RequeueAfter)
+	suite.Error(err.Err())
+	suite.True(err.Sentry())
+	suite.True(err.Retry())
 	suite.orgClientMock.AssertExpectations(suite.T())
 }
 
