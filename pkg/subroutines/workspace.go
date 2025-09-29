@@ -147,9 +147,9 @@ func (r *WorkspaceSubroutine) checkWorkspaceTypeReady(ctx context.Context, works
 		}
 		return false, err
 	}
-	readyCondition := conditionshelper.Get(wst, conditionsapi.ReadyCondition)
-	if readyCondition == nil || readyCondition.Status == corev1.ConditionFalse {
-		return false, nil
-	}
-	return true, nil
+    readyCondition := conditionshelper.Get(wst, conditionsapi.ReadyCondition)
+   if readyCondition == nil || readyCondition.Status != corev1.ConditionTrue {
+        return false, nil
+    }
+    return true, nil
 }
