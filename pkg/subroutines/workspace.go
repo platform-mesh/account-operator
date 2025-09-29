@@ -33,7 +33,11 @@ type WorkspaceSubroutine struct {
 
 func NewWorkspaceSubroutine(mgr ctrl.Manager) *WorkspaceSubroutine {
 	exp := workqueue.NewTypedItemExponentialFailureRateLimiter[ClusteredName](1*time.Second, 120*time.Second)
-	organizationsClient, err := client.New(createOrganizationRestConfig(mgr.GetConfig()), client.Options{
+	clientCfg, err := createOrganizationRestConfig(mgr.GetConfig())
+	if err != nil {
+		panic(err)
+	}
+	organizationsClient, err := client.New(clientCfg, client.Options{
 		Scheme: mgr.GetScheme(),
 	})
 	if err != nil {
@@ -92,6 +96,7 @@ func (r *WorkspaceSubroutine) Process(ctx context.Context, runtimeObj runtimeobj
 				// AccountInfo not found, requeue
 				return ctrl.Result{RequeueAfter: 1 * time.Second}, nil
 			}
+			return ctrl.Result{}, errors.NewOperatorError(err, true, true)
 		}
 		workspaceTypeName = generateAccountWorkspaceTypeName(accountInfo.Spec.Organization.Name)
 	}

@@ -37,15 +37,15 @@ func retrieveWorkspace(ctx context.Context, instance *v1alpha1.Account, c client
 	return ws, nil
 }
 
-func createOrganizationRestConfig(cfg *rest.Config) *rest.Config {
+func createOrganizationRestConfig(cfg *rest.Config) (*rest.Config, error) {
 	parsedUrl, err := url.Parse(cfg.Host)
 	if err != nil {
-		panic(err)
+		return nil, err
 	}
 	copyConfig := rest.CopyConfig(cfg)
 	protocolHost := fmt.Sprintf("%s://%s", parsedUrl.Scheme, parsedUrl.Host)
 	copyConfig.Host = fmt.Sprintf("%s/clusters/%s", protocolHost, orgsWorkspacePath)
 	// Remove cluster aware round tripper to avoid redirect issues
 	copyConfig.WrapTransport = nil
-	return copyConfig
+	return copyConfig, nil
 }

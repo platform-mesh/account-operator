@@ -55,7 +55,7 @@ func (w WorkspaceTypeSubroutine) Process(ctx context.Context, ro runtimeobject.R
 
 	err = w.createOrUpdateWorkspaceType(ctx, accWst)
 	if err != nil {
-		log.Error().Err(err).Str("name", accWst.Name).Msg("failed to create or update org workspace type")
+		log.Error().Err(err).Str("name", accWst.Name).Msg("failed to create or update account workspace type")
 		return ctrl.Result{}, errors.NewOperatorError(err, true, true)
 	}
 
@@ -95,7 +95,7 @@ func (w WorkspaceTypeSubroutine) Finalize(ctx context.Context, ro runtimeobject.
 	err = w.orgsClient.Delete(ctx, &kcptenancyv1alpha.WorkspaceType{ObjectMeta: metav1.ObjectMeta{Name: accountWorkspaceTypeName}})
 	if err != nil {
 		if !kerrors.IsNotFound(err) {
-			log.Error().Err(err).Str("name", orgWorkspaceTypeName).Msg("failed to delete acc workspace")
+			log.Error().Err(err).Str("name", accountWorkspaceTypeName).Msg("failed to delete acc workspace")
 			return ctrl.Result{}, errors.NewOperatorError(err, true, true)
 		}
 	}
@@ -112,7 +112,11 @@ func (w WorkspaceTypeSubroutine) Finalizers() []string {
 }
 
 func NewWorkspaceTypeSubroutine(mgr ctrl.Manager) *WorkspaceTypeSubroutine {
-	orgsClient, err := client.New(createOrganizationRestConfig(mgr.GetConfig()), client.Options{
+	clientCfg, err := createOrganizationRestConfig(mgr.GetConfig())
+	if err != nil {
+		panic(err)
+	}
+	orgsClient, err := client.New(clientCfg, client.Options{
 		Scheme: mgr.GetScheme(),
 	})
 	if err != nil {

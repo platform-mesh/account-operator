@@ -231,9 +231,10 @@ func TestCreateOrganizationRestConfig(t *testing.T) {
 			}
 
 			// When
-			result := createOrganizationRestConfig(originalConfig)
+			result, err := createOrganizationRestConfig(originalConfig)
 
 			// Then
+			assert.NoError(t, err)
 			assert.Equal(t, tt.expectedHost, result.Host)
 			assert.Equal(t, originalConfig.BearerToken, result.BearerToken)
 			assert.Equal(t, originalConfig.TLSClientConfig, result.TLSClientConfig)
@@ -251,10 +252,12 @@ func TestCreateOrganizationRestConfig_InvalidURL(t *testing.T) {
 		Host: "://invalid-url",
 	}
 
-	// When/Then
-	assert.Panics(t, func() {
-		createOrganizationRestConfig(invalidConfig)
-	}, "Should panic on invalid URL")
+	// When
+	result, err := createOrganizationRestConfig(invalidConfig)
+
+	// Then
+	assert.Error(t, err)
+	assert.Nil(t, result)
 }
 
 // Mock helper functions (existing)
