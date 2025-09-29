@@ -79,12 +79,34 @@ func (r *WorkspaceSubroutine) Process(ctx context.Context, runtimeObj runtimeobj
 	instance := runtimeObj.(*corev1alpha1.Account)
 	cfg := commonconfig.LoadConfigFromContext(ctx).(config.OperatorConfig)
 
-	// Test if namespace was already created based on status
+	// Determine workspace type name and path based on account type
+	var wtName, wtPath string
+	if instance.Spec.Type == corev1alpha1.AccountTypeOrg {
+		// For organizations, use custom workspace type if WorkspaceType subroutine is enabled
+		if cfg.Subroutines.WorkspaceType.Enabled {
+			wtName = GetOrgWorkspaceTypeName(instance.Name, cfg.Kcp.ProviderWorkspace)
+			wtPath = cfg.Kcp.ProviderWorkspace
+		} else {
+			// Fallback to base org type
+			wtName = string(instance.Spec.Type)
+			wtPath = cfg.Kcp.ProviderWorkspace
+		}
+	} else {
+		// For regular accounts, check if we should use custom workspace types based on context
+		// For now, use the base account type (can be enhanced when cluster context is available)
+		wtName = string(instance.Spec.Type)
+		wtPath = cfg.Kcp.ProviderWorkspace
+
+		// TODO: When cluster context is available, detect if we're in an org context
+		// and use GetAccWorkspaceTypeName accordingly
+	}
+
+	// Create the workspace with the determined workspace type
 	createdWorkspace := &kcptypes.Workspace{ObjectMeta: metav1.ObjectMeta{Name: instance.Name}}
 	_, err := controllerutil.CreateOrUpdate(ctx, r.client, createdWorkspace, func() error {
 		createdWorkspace.Spec.Type = &kcptypes.WorkspaceTypeReference{
-			Name: string(instance.Spec.Type),
-			Path: cfg.Kcp.ProviderWorkspace,
+			Name: wtName,
+			Path: wtPath,
 		}
 
 		return controllerutil.SetOwnerReference(instance, createdWorkspace, r.client.Scheme())
