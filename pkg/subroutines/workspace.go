@@ -46,6 +46,20 @@ func NewWorkspaceSubroutine(mgr ctrl.Manager) *WorkspaceSubroutine {
 	return &WorkspaceSubroutine{client: mgr.GetClient(), organizationsClient: organizationsClient, limiter: exp}
 }
 
+// NewWorkspaceSubroutineForTesting creates a new WorkspaceSubroutine for testing purposes
+// with the provided dependencies. This constructor is intended for testing only.
+func NewWorkspaceSubroutineForTesting(
+	client client.Client,
+	organizationsClient client.Client,
+	limiter workqueue.TypedRateLimiter[ClusteredName],
+) *WorkspaceSubroutine {
+	return &WorkspaceSubroutine{
+		client:              client,
+		organizationsClient: organizationsClient,
+		limiter:             limiter,
+	}
+}
+
 func (r *WorkspaceSubroutine) GetName() string {
 	return WorkspaceSubroutineName
 }

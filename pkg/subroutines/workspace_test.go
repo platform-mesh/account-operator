@@ -3,10 +3,8 @@ package subroutines
 import (
 	"context"
 	"fmt"
-	"reflect"
 	"testing"
 	"time"
-	"unsafe"
 
 	kcpcorev1alpha1 "github.com/kcp-dev/kcp/sdk/apis/core/v1alpha1"
 	kcptenancyv1alpha "github.com/kcp-dev/kcp/sdk/apis/tenancy/v1alpha1"
@@ -54,33 +52,15 @@ func (suite *WorkspaceSubroutineTestSuite) SetupTest() {
 	suite.clientMock = new(mocks.Client)
 	suite.orgClientMock = new(mocks.Client)
 
-	// Initialize Tested Object(s) with proper field injection using unsafe
-	suite.testObj = &WorkspaceSubroutine{}
+	// Create rate limiter for testing
+	limiter := workqueue.NewTypedItemExponentialFailureRateLimiter[ClusteredName](1*time.Second, 120*time.Second)
 
-	// Use unsafe to set private fields
-	v := reflect.ValueOf(suite.testObj).Elem()
-
-	// Set client field
-	clientField := v.FieldByName("client")
-	if clientField.IsValid() {
-		clientPtr := (*client.Client)(unsafe.Pointer(clientField.UnsafeAddr()))
-		*clientPtr = suite.clientMock
-	}
-
-	// Set organizationsClient field
-	orgClientField := v.FieldByName("organizationsClient")
-	if orgClientField.IsValid() {
-		orgClientPtr := (*client.Client)(unsafe.Pointer(orgClientField.UnsafeAddr()))
-		*orgClientPtr = suite.orgClientMock
-	}
-
-	// Set limiter field to prevent nil pointer issues
-	limiterField := v.FieldByName("limiter")
-	if limiterField.IsValid() {
-		exp := workqueue.NewTypedItemExponentialFailureRateLimiter[ClusteredName](1*time.Second, 120*time.Second)
-		limiterPtr := (*workqueue.TypedRateLimiter[ClusteredName])(unsafe.Pointer(limiterField.UnsafeAddr()))
-		*limiterPtr = exp
-	}
+	// Initialize Tested Object using the test constructor
+	suite.testObj = NewWorkspaceSubroutineForTesting(
+		suite.clientMock,
+		suite.orgClientMock,
+		limiter,
+	)
 
 	utilruntime.Must(corev1alpha1.AddToScheme(scheme.Scheme))
 	utilruntime.Must(corev1.AddToScheme(scheme.Scheme))
