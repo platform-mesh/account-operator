@@ -371,11 +371,18 @@ func (suite *WorkspaceTypeSubroutineTestSuite) TestGenerateAccountWorkspaceTypeN
 
 func (suite *WorkspaceTypeSubroutineTestSuite) TestGenerateOrgWorkspaceType() {
 	// Given
+	testAccount := &corev1alpha1.Account{
+		ObjectMeta: metav1.ObjectMeta{Name: "test-org"},
+		Spec: corev1alpha1.AccountSpec{
+			Type:        corev1alpha1.AccountTypeOrg,
+			DisplayName: "Test Organization",
+		},
+	}
 	orgWorkspaceTypeName := "test-org-org"
 	accountWorkspaceTypeName := "test-org-acc"
 
 	// When
-	result := generateOrgWorkspaceType(orgWorkspaceTypeName, accountWorkspaceTypeName)
+	result := generateOrgWorkspaceType(testAccount, orgWorkspaceTypeName, accountWorkspaceTypeName)
 
 	// Then
 	suite.Equal(orgWorkspaceTypeName, result.Name)
@@ -395,11 +402,18 @@ func (suite *WorkspaceTypeSubroutineTestSuite) TestGenerateOrgWorkspaceType() {
 
 func (suite *WorkspaceTypeSubroutineTestSuite) TestGenerateAccountWorkspaceType() {
 	// Given
+	testAccount := &corev1alpha1.Account{
+		ObjectMeta: metav1.ObjectMeta{Name: "test-org"},
+		Spec: corev1alpha1.AccountSpec{
+			Type:        corev1alpha1.AccountTypeOrg,
+			DisplayName: "Test Organization",
+		},
+	}
 	orgWorkspaceTypeName := "test-org-org"
 	accountWorkspaceTypeName := "test-org-acc"
 
 	// When
-	result := generateAccountWorkspaceType(orgWorkspaceTypeName, accountWorkspaceTypeName)
+	result := generateAccountWorkspaceType(testAccount, orgWorkspaceTypeName, accountWorkspaceTypeName)
 
 	// Then
 	suite.Equal(accountWorkspaceTypeName, result.Name)

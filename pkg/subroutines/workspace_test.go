@@ -329,15 +329,3 @@ func mockGetWorkspaceTypeReady(clientMock *mocks.Client) *mocks.Client_Get_Call 
 		}).
 		Return(nil)
 }
-
-func mockGetWorkspaceTypeNotFound(clientMock *mocks.Client) *mocks.Client_Get_Call {
-	return clientMock.EXPECT().
-		Get(mock.Anything, mock.Anything, mock.AnythingOfType("*v1alpha1.WorkspaceType")).
-		Return(kerrors.NewNotFound(schema.GroupResource{Group: "tenancy.kcp.io", Resource: "workspacetypes"}, ""))
-}
-
-func mockGetWorkspaceTypeFailed(clientMock *mocks.Client) *mocks.Client_Get_Call {
-	return clientMock.EXPECT().
-		Get(mock.Anything, mock.Anything, mock.AnythingOfType("*v1alpha1.WorkspaceType")).
-		Return(kerrors.NewInternalError(fmt.Errorf("failed")))
-}
