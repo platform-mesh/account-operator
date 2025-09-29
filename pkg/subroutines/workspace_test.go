@@ -262,6 +262,159 @@ func (suite *WorkspaceSubroutineTestSuite) TestProcessing_CreateError() {
 	suite.orgClientMock.AssertExpectations(suite.T())
 }
 
+func (suite *WorkspaceSubroutineTestSuite) TestProcessing_Account_Type_AccountInfo_NotFound() {
+	// Given
+	testAccount := &corev1alpha1.Account{
+		ObjectMeta: metav1.ObjectMeta{Name: "test-account", Namespace: "test-namespace"},
+		Spec:       corev1alpha1.AccountSpec{Type: corev1alpha1.AccountTypeAccount},
+	}
+
+	// Mock AccountInfo not found
+	suite.clientMock.EXPECT().
+		Get(mock.Anything, client.ObjectKey{Name: subroutines.DefaultAccountInfoName, Namespace: "test-namespace"}, mock.AnythingOfType("*v1alpha1.AccountInfo")).
+		Return(kerrors.NewNotFound(schema.GroupResource{}, "account-info"))
+
+	// When
+	res, err := suite.testObj.Process(suite.context, testAccount)
+
+	// Then
+	suite.Nil(err)
+	suite.Equal(1*time.Second, res.RequeueAfter)
+	suite.clientMock.AssertExpectations(suite.T())
+}
+
+func (suite *WorkspaceSubroutineTestSuite) TestProcessing_WorkspaceType_NotFound() {
+	// Given
+	testAccount := &corev1alpha1.Account{
+		ObjectMeta: metav1.ObjectMeta{Name: "test-org"},
+		Spec:       corev1alpha1.AccountSpec{Type: corev1alpha1.AccountTypeOrg},
+	}
+
+	// Mock workspace type not found
+	suite.orgClientMock.EXPECT().
+		Get(mock.Anything, mock.Anything, mock.AnythingOfType("*v1alpha1.WorkspaceType")).
+		Return(kerrors.NewNotFound(schema.GroupResource{}, "workspace-type"))
+
+	// When
+	res, err := suite.testObj.Process(suite.context, testAccount)
+
+	// Then
+	suite.Nil(err)
+	suite.Equal(1*time.Second, res.RequeueAfter)
+	suite.orgClientMock.AssertExpectations(suite.T())
+}
+
+func (suite *WorkspaceSubroutineTestSuite) TestProcessing_WorkspaceType_GetError() {
+	// Given
+	testAccount := &corev1alpha1.Account{
+		ObjectMeta: metav1.ObjectMeta{Name: "test-org"},
+		Spec:       corev1alpha1.AccountSpec{Type: corev1alpha1.AccountTypeOrg},
+	}
+
+	// Mock workspace type get error - this will return (false, error)
+	// But the code checks !ready first, so it returns early with a requeue
+	suite.orgClientMock.EXPECT().
+		Get(mock.Anything, mock.Anything, mock.AnythingOfType("*v1alpha1.WorkspaceType")).
+		Return(kerrors.NewInternalError(fmt.Errorf("get error")))
+
+	// When
+	res, err := suite.testObj.Process(suite.context, testAccount)
+
+	// Then - Due to the implementation, this returns a requeue, not an error
+	suite.Nil(err)
+	suite.Equal(1*time.Second, res.RequeueAfter)
+	suite.orgClientMock.AssertExpectations(suite.T())
+}
+
+func (suite *WorkspaceSubroutineTestSuite) TestProcessing_WorkspaceType_NotReady_NoCondition() {
+	// Given
+	testAccount := &corev1alpha1.Account{
+		ObjectMeta: metav1.ObjectMeta{Name: "test-org"},
+		Spec:       corev1alpha1.AccountSpec{Type: corev1alpha1.AccountTypeOrg},
+	}
+
+	// Mock workspace type not ready (no condition)
+	suite.orgClientMock.EXPECT().
+		Get(mock.Anything, mock.Anything, mock.AnythingOfType("*v1alpha1.WorkspaceType")).
+		Run(func(ctx context.Context, key types.NamespacedName, obj client.Object, opts ...client.GetOption) {
+			workspaceType := obj.(*kcptenancyv1alpha.WorkspaceType)
+			workspaceType.Name = key.Name
+			// No condition set - should be treated as not ready
+		}).
+		Return(nil)
+
+	// When
+	res, err := suite.testObj.Process(suite.context, testAccount)
+
+	// Then
+	suite.Nil(err)
+	suite.Equal(1*time.Second, res.RequeueAfter)
+	suite.orgClientMock.AssertExpectations(suite.T())
+}
+
+func (suite *WorkspaceSubroutineTestSuite) TestProcessing_WorkspaceType_NotReady_FalseCondition() {
+	// Given
+	testAccount := &corev1alpha1.Account{
+		ObjectMeta: metav1.ObjectMeta{Name: "test-org"},
+		Spec:       corev1alpha1.AccountSpec{Type: corev1alpha1.AccountTypeOrg},
+	}
+
+	// Mock workspace type not ready (false condition)
+	suite.orgClientMock.EXPECT().
+		Get(mock.Anything, mock.Anything, mock.AnythingOfType("*v1alpha1.WorkspaceType")).
+		Run(func(ctx context.Context, key types.NamespacedName, obj client.Object, opts ...client.GetOption) {
+			workspaceType := obj.(*kcptenancyv1alpha.WorkspaceType)
+			workspaceType.Name = key.Name
+			conditionshelper.Set(workspaceType, &conditionsapi.Condition{
+				Type:   conditionsapi.ReadyCondition,
+				Status: corev1.ConditionFalse,
+			})
+		}).
+		Return(nil)
+
+	// When
+	res, err := suite.testObj.Process(suite.context, testAccount)
+
+	// Then
+	suite.Nil(err)
+	suite.Equal(1*time.Second, res.RequeueAfter)
+	suite.orgClientMock.AssertExpectations(suite.T())
+}
+
+func (suite *WorkspaceSubroutineTestSuite) TestProcessing_Workspace_Update_Success() {
+	// Given
+	testAccount := &corev1alpha1.Account{
+		ObjectMeta: metav1.ObjectMeta{Name: "test-org"},
+		Spec:       corev1alpha1.AccountSpec{Type: corev1alpha1.AccountTypeOrg},
+	}
+
+	// Mock workspace type ready
+	mockGetWorkspaceTypeReady(suite.orgClientMock)
+
+	// Mock existing workspace (Get succeeds)
+	suite.clientMock.EXPECT().
+		Get(mock.Anything, client.ObjectKey{Name: "test-org"}, mock.AnythingOfType("*v1alpha1.Workspace")).
+		Run(func(ctx context.Context, key client.ObjectKey, obj client.Object, opts ...client.GetOption) {
+			workspace := obj.(*kcptenancyv1alpha.Workspace)
+			workspace.Name = key.Name
+		}).
+		Return(nil)
+
+	// Mock scheme and update call
+	suite.clientMock.On("Scheme").Return(scheme.Scheme)
+	suite.clientMock.EXPECT().
+		Update(mock.Anything, mock.AnythingOfType("*v1alpha1.Workspace")).
+		Return(nil)
+
+	// When
+	_, err := suite.testObj.Process(suite.context, testAccount)
+
+	// Then
+	suite.Nil(err)
+	suite.clientMock.AssertExpectations(suite.T())
+	suite.orgClientMock.AssertExpectations(suite.T())
+}
+
 func TestWorkspaceSubroutineTestSuite(t *testing.T) {
 	suite.Run(t, new(WorkspaceSubroutineTestSuite))
 }
