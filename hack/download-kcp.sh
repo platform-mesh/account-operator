@@ -16,7 +16,7 @@ BUILD_DIR="$SCRIPT_DIR/../bin/build"          # destination path
 
 rm -rf "$BUILD_DIR"
 
-git clone git@github.com:kcp-dev/kcp.git $BUILD_DIR
+git clone --depth=1 git@github.com:kcp-dev/kcp.git $BUILD_DIR
 cd "$BUILD_DIR"
 make build
 
