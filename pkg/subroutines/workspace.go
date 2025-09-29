@@ -117,11 +117,11 @@ func (r *WorkspaceSubroutine) Process(ctx context.Context, runtimeObj runtimeobj
 
 	// Test if workspaceType is ready
 	ready, err := r.checkWorkspaceTypeReady(ctx, workspaceTypeName)
-	if !ready {
-		return ctrl.Result{RequeueAfter: 1 * time.Second}, nil
-	}
 	if err != nil {
 		return ctrl.Result{}, errors.NewOperatorError(err, true, true)
+	}
+	if !ready {
+		return ctrl.Result{RequeueAfter: 1 * time.Second}, nil
 	}
 
 	createdWorkspace := &kcptenancyv1alpha.Workspace{ObjectMeta: metav1.ObjectMeta{Name: instance.Name}}
