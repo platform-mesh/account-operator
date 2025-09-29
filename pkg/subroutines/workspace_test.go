@@ -10,6 +10,8 @@ import (
 
 	kcpcorev1alpha1 "github.com/kcp-dev/kcp/sdk/apis/core/v1alpha1"
 	kcptenancyv1alpha "github.com/kcp-dev/kcp/sdk/apis/tenancy/v1alpha1"
+	conditionsapi "github.com/kcp-dev/kcp/sdk/apis/third_party/conditions/apis/conditions/v1alpha1"
+	conditionshelper "github.com/kcp-dev/kcp/sdk/apis/third_party/conditions/util/conditions"
 	platformmeshcontext "github.com/platform-mesh/golang-commons/context"
 	"github.com/platform-mesh/golang-commons/logger"
 	"github.com/stretchr/testify/assert"
@@ -41,7 +43,8 @@ type WorkspaceSubroutineTestSuite struct {
 	testObj *subroutines.WorkspaceSubroutine
 
 	// Mocks
-	clientMock *mocks.Client
+	clientMock    *mocks.Client
+	orgClientMock *mocks.Client
 
 	context context.Context
 	log     *logger.Logger
@@ -50,7 +53,7 @@ type WorkspaceSubroutineTestSuite struct {
 func (suite *WorkspaceSubroutineTestSuite) SetupTest() {
 	// Setup Mocks
 	suite.clientMock = new(mocks.Client)
-	orgClientMock := new(mocks.Client)
+	suite.orgClientMock = new(mocks.Client)
 
 	// Initialize Tested Object(s) with proper field injection using unsafe
 	suite.testObj = &subroutines.WorkspaceSubroutine{}
@@ -69,7 +72,7 @@ func (suite *WorkspaceSubroutineTestSuite) SetupTest() {
 	orgClientField := v.FieldByName("organizationsClient")
 	if orgClientField.IsValid() {
 		orgClientPtr := (*client.Client)(unsafe.Pointer(orgClientField.UnsafeAddr()))
-		*orgClientPtr = orgClientMock
+		*orgClientPtr = suite.orgClientMock
 	}
 
 	// Set limiter field to prevent nil pointer issues
@@ -206,6 +209,7 @@ func (suite *WorkspaceSubroutineTestSuite) TestProcessing_OK() {
 	testAccount := &corev1alpha1.Account{}
 	suite.clientMock.On("Scheme").Return(scheme.Scheme)
 	mockGetWorkspaceCallNotFound(suite)
+	mockGetWorkspaceTypeReady(suite.orgClientMock)
 	mockNewWorkspaceCreateCall(suite, defaultExpectedTestNamespace)
 
 	// When
@@ -214,11 +218,15 @@ func (suite *WorkspaceSubroutineTestSuite) TestProcessing_OK() {
 	// Then
 	suite.Nil(err)
 	suite.clientMock.AssertExpectations(suite.T())
+	suite.orgClientMock.AssertExpectations(suite.T())
 }
 
 func (suite *WorkspaceSubroutineTestSuite) TestProcessing_Error_On_Get() {
 	// Given
 	testAccount := &corev1alpha1.Account{}
+	// First the workspace type check happens and succeeds
+	mockGetWorkspaceTypeReady(suite.orgClientMock)
+	// Then CreateOrUpdate internally does a Get which fails
 	mockGetWorkspaceFailed(suite)
 
 	// When
@@ -230,6 +238,7 @@ func (suite *WorkspaceSubroutineTestSuite) TestProcessing_Error_On_Get() {
 	suite.True(err.Sentry())
 	suite.True(err.Retry())
 	suite.clientMock.AssertExpectations(suite.T())
+	suite.orgClientMock.AssertExpectations(suite.T())
 }
 
 func (suite *WorkspaceSubroutineTestSuite) TestProcessing_CreateError() {
@@ -237,6 +246,7 @@ func (suite *WorkspaceSubroutineTestSuite) TestProcessing_CreateError() {
 	testAccount := &corev1alpha1.Account{}
 	suite.clientMock.On("Scheme").Return(scheme.Scheme)
 	mockGetWorkspaceCallNotFound(suite)
+	mockGetWorkspaceTypeReady(suite.orgClientMock)
 	suite.clientMock.EXPECT().
 		Create(mock.Anything, mock.Anything).
 		Return(kerrors.NewBadRequest(""))
@@ -249,6 +259,7 @@ func (suite *WorkspaceSubroutineTestSuite) TestProcessing_CreateError() {
 	suite.True(err.Retry())
 	suite.True(err.Sentry())
 	suite.clientMock.AssertExpectations(suite.T())
+	suite.orgClientMock.AssertExpectations(suite.T())
 }
 
 func TestWorkspaceSubroutineTestSuite(t *testing.T) {
@@ -275,7 +286,7 @@ func mockGetWorkspaceCallNotFound(suite *WorkspaceSubroutineTestSuite) *mocks.Cl
 
 func mockGetWorkspaceFailed(suite *WorkspaceSubroutineTestSuite) *mocks.Client_Get_Call {
 	return suite.clientMock.EXPECT().
-		Get(mock.Anything, types.NamespacedName{}, mock.Anything).
+		Get(mock.Anything, mock.Anything, mock.Anything).
 		Return(kerrors.NewInternalError(fmt.Errorf("failed")))
 }
 
@@ -300,5 +311,33 @@ func mockDeleteWorkspaceCall(suite *WorkspaceSubroutineTestSuite) *mocks.Client_
 func mockDeleteWorkspaceCallFailed(suite *WorkspaceSubroutineTestSuite) *mocks.Client_Delete_Call {
 	return suite.clientMock.EXPECT().
 		Delete(mock.Anything, mock.Anything).
+		Return(kerrors.NewInternalError(fmt.Errorf("failed")))
+}
+
+// WorkspaceType mock helpers
+func mockGetWorkspaceTypeReady(clientMock *mocks.Client) *mocks.Client_Get_Call {
+	return clientMock.EXPECT().
+		Get(mock.Anything, mock.Anything, mock.AnythingOfType("*v1alpha1.WorkspaceType")).
+		Run(func(ctx context.Context, key types.NamespacedName, obj client.Object, opts ...client.GetOption) {
+			workspaceType, _ := obj.(*kcptenancyv1alpha.WorkspaceType)
+			workspaceType.Name = key.Name
+			// Set up ready condition - the code checks for conditionsapi.ReadyCondition
+			conditionshelper.Set(workspaceType, &conditionsapi.Condition{
+				Type:   conditionsapi.ReadyCondition,
+				Status: corev1.ConditionTrue,
+			})
+		}).
+		Return(nil)
+}
+
+func mockGetWorkspaceTypeNotFound(clientMock *mocks.Client) *mocks.Client_Get_Call {
+	return clientMock.EXPECT().
+		Get(mock.Anything, mock.Anything, mock.AnythingOfType("*v1alpha1.WorkspaceType")).
+		Return(kerrors.NewNotFound(schema.GroupResource{Group: "tenancy.kcp.io", Resource: "workspacetypes"}, ""))
+}
+
+func mockGetWorkspaceTypeFailed(clientMock *mocks.Client) *mocks.Client_Get_Call {
+	return clientMock.EXPECT().
+		Get(mock.Anything, mock.Anything, mock.AnythingOfType("*v1alpha1.WorkspaceType")).
 		Return(kerrors.NewInternalError(fmt.Errorf("failed")))
 }

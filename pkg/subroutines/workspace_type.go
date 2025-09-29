@@ -44,8 +44,8 @@ func (w WorkspaceTypeSubroutine) Process(ctx context.Context, ro runtimeobject.R
 
 	orgWorkspaceTypeName := generateOrganizationWorkspaceTypeName(instance)
 	accountWorkspaceTypeName := generateAccountWorkspaceTypeName(instance)
-	orgWst := generateOrgWorkspaceType(orgWorkspaceTypeName, accountWorkspaceTypeName)
-	accWst := generateAccountWorkspaceType(orgWorkspaceTypeName, accountWorkspaceTypeName)
+	orgWst := generateOrgWorkspaceType(instance, orgWorkspaceTypeName, accountWorkspaceTypeName)
+	accWst := generateAccountWorkspaceType(instance, orgWorkspaceTypeName, accountWorkspaceTypeName)
 
 	err := w.createOrUpdateWorkspaceType(ctx, orgWst)
 	if err != nil {
@@ -65,7 +65,6 @@ func (w WorkspaceTypeSubroutine) Process(ctx context.Context, ro runtimeobject.R
 func (w WorkspaceTypeSubroutine) createOrUpdateWorkspaceType(ctx context.Context, desiredWst kcptenancyv1alpha.WorkspaceType) error {
 	wst := &kcptenancyv1alpha.WorkspaceType{ObjectMeta: metav1.ObjectMeta{Name: desiredWst.Name}}
 	_, err := controllerutil.CreateOrUpdate(ctx, w.orgsClient, wst, func() error {
-		desiredWst.Spec.AuthenticationConfigurations = wst.Spec.AuthenticationConfigurations
 		wst.Spec = desiredWst.Spec
 		return nil
 	})
@@ -122,7 +121,7 @@ func NewWorkspaceTypeSubroutine(mgr ctrl.Manager) *WorkspaceTypeSubroutine {
 	return &WorkspaceTypeSubroutine{orgsClient: orgsClient}
 }
 
-func generateOrgWorkspaceType(orgWorkspaceTypeName, accountWorkspaceTypeName string) kcptenancyv1alpha.WorkspaceType {
+func generateOrgWorkspaceType(instance *v1alpha1.Account, orgWorkspaceTypeName, accountWorkspaceTypeName string) kcptenancyv1alpha.WorkspaceType {
 	return kcptenancyv1alpha.WorkspaceType{
 		ObjectMeta: metav1.ObjectMeta{Name: orgWorkspaceTypeName},
 		Spec: kcptenancyv1alpha.WorkspaceTypeSpec{
@@ -143,11 +142,16 @@ func generateOrgWorkspaceType(orgWorkspaceTypeName, accountWorkspaceTypeName str
 					{Name: kcptenancyv1alpha.WorkspaceTypeName(accountWorkspaceTypeName), Path: orgsWorkspacePath},
 				},
 			},
+			AuthenticationConfigurations: []kcptenancyv1alpha.AuthenticationConfigurationReference{
+				{
+					Name: instance.Name,
+				},
+			},
 		},
 	}
 }
 
-func generateAccountWorkspaceType(orgWorkspaceTypeName, accountWorkspaceTypeName string) kcptenancyv1alpha.WorkspaceType {
+func generateAccountWorkspaceType(instance *v1alpha1.Account, orgWorkspaceTypeName, accountWorkspaceTypeName string) kcptenancyv1alpha.WorkspaceType {
 	return kcptenancyv1alpha.WorkspaceType{
 		ObjectMeta: metav1.ObjectMeta{Name: accountWorkspaceTypeName},
 		Spec: kcptenancyv1alpha.WorkspaceTypeSpec{
@@ -167,6 +171,11 @@ func generateAccountWorkspaceType(orgWorkspaceTypeName, accountWorkspaceTypeName
 			LimitAllowedChildren: &kcptenancyv1alpha.WorkspaceTypeSelector{
 				Types: []kcptenancyv1alpha.WorkspaceTypeReference{
 					{Name: kcptenancyv1alpha.WorkspaceTypeName(accountWorkspaceTypeName), Path: orgsWorkspacePath},
+				},
+			},
+			AuthenticationConfigurations: []kcptenancyv1alpha.AuthenticationConfigurationReference{
+				{
+					Name: instance.Name,
 				},
 			},
 		},
