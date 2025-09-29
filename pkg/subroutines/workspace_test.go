@@ -1,4 +1,4 @@
-package subroutines_test
+package subroutines
 
 import (
 	"context"
@@ -30,7 +30,6 @@ import (
 
 	corev1alpha1 "github.com/platform-mesh/account-operator/api/v1alpha1"
 	"github.com/platform-mesh/account-operator/internal/config"
-	"github.com/platform-mesh/account-operator/pkg/subroutines"
 	"github.com/platform-mesh/account-operator/pkg/subroutines/mocks"
 )
 
@@ -40,7 +39,7 @@ type WorkspaceSubroutineTestSuite struct {
 	suite.Suite
 
 	// Tested Object(s)
-	testObj *subroutines.WorkspaceSubroutine
+	testObj *WorkspaceSubroutine
 
 	// Mocks
 	clientMock    *mocks.Client
@@ -56,7 +55,7 @@ func (suite *WorkspaceSubroutineTestSuite) SetupTest() {
 	suite.orgClientMock = new(mocks.Client)
 
 	// Initialize Tested Object(s) with proper field injection using unsafe
-	suite.testObj = &subroutines.WorkspaceSubroutine{}
+	suite.testObj = &WorkspaceSubroutine{}
 
 	// Use unsafe to set private fields
 	v := reflect.ValueOf(suite.testObj).Elem()
@@ -78,8 +77,8 @@ func (suite *WorkspaceSubroutineTestSuite) SetupTest() {
 	// Set limiter field to prevent nil pointer issues
 	limiterField := v.FieldByName("limiter")
 	if limiterField.IsValid() {
-		exp := workqueue.NewTypedItemExponentialFailureRateLimiter[subroutines.ClusteredName](1*time.Second, 120*time.Second)
-		limiterPtr := (*workqueue.TypedRateLimiter[subroutines.ClusteredName])(unsafe.Pointer(limiterField.UnsafeAddr()))
+		exp := workqueue.NewTypedItemExponentialFailureRateLimiter[ClusteredName](1*time.Second, 120*time.Second)
+		limiterPtr := (*workqueue.TypedRateLimiter[ClusteredName])(unsafe.Pointer(limiterField.UnsafeAddr()))
 		*limiterPtr = exp
 	}
 
@@ -98,7 +97,7 @@ func (suite *WorkspaceSubroutineTestSuite) TestGetName_OK() {
 	result := suite.testObj.GetName()
 
 	// Then
-	suite.Equal(subroutines.WorkspaceSubroutineName, result)
+	suite.Equal(WorkspaceSubroutineName, result)
 }
 
 func (suite *WorkspaceSubroutineTestSuite) TestGetFinalizerName() {
@@ -106,7 +105,7 @@ func (suite *WorkspaceSubroutineTestSuite) TestGetFinalizerName() {
 	finalizers := suite.testObj.Finalizers()
 
 	// Then
-	suite.Contains(finalizers, subroutines.WorkspaceSubroutineFinalizer)
+	suite.Contains(finalizers, WorkspaceSubroutineFinalizer)
 }
 
 func (suite *WorkspaceSubroutineTestSuite) TestFinalize_OK_Workspace_NotExisting() {
@@ -271,7 +270,7 @@ func (suite *WorkspaceSubroutineTestSuite) TestProcessing_Account_Type_AccountIn
 
 	// Mock AccountInfo not found
 	suite.clientMock.EXPECT().
-		Get(mock.Anything, client.ObjectKey{Name: subroutines.DefaultAccountInfoName, Namespace: "test-namespace"}, mock.AnythingOfType("*v1alpha1.AccountInfo")).
+		Get(mock.Anything, client.ObjectKey{Name: DefaultAccountInfoName, Namespace: "test-namespace"}, mock.AnythingOfType("*v1alpha1.AccountInfo")).
 		Return(kerrors.NewNotFound(schema.GroupResource{}, "account-info"))
 
 	// When
