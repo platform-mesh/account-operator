@@ -9,7 +9,6 @@ import (
 	conditionshelper "github.com/kcp-dev/kcp/sdk/apis/third_party/conditions/util/conditions"
 	"github.com/platform-mesh/golang-commons/controller/lifecycle/runtimeobject"
 	"github.com/platform-mesh/golang-commons/errors"
-	corev1 "k8s.io/api/core/v1"
 	kerrors "k8s.io/apimachinery/pkg/api/errors"
 	metav1 "k8s.io/apimachinery/pkg/apis/meta/v1"
 	"k8s.io/client-go/util/workqueue"
@@ -152,9 +151,5 @@ func (r *WorkspaceSubroutine) checkWorkspaceTypeReady(ctx context.Context, works
 		}
 		return false, err
 	}
-	readyCondition := conditionshelper.Get(wst, conditionsapi.ReadyCondition)
-	if readyCondition == nil || readyCondition.Status != corev1.ConditionTrue {
-		return false, nil
-	}
-	return true, nil
+	return conditionshelper.IsTrue(wst, conditionsapi.ReadyCondition), nil
 }
