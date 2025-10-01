@@ -22,7 +22,6 @@ import (
 	"net/http"
 	"strings"
 
-	apisv1alpha1 "github.com/kcp-dev/kcp/sdk/apis/apis/v1alpha1"
 	openfgav1 "github.com/openfga/api/proto/openfga/v1"
 	platformmeshcontext "github.com/platform-mesh/golang-commons/context"
 	"github.com/platform-mesh/golang-commons/traces"
@@ -31,12 +30,13 @@ import (
 	"google.golang.org/grpc"
 	"google.golang.org/grpc/credentials/insecure"
 	_ "k8s.io/client-go/plugin/pkg/client/auth"
-	"k8s.io/client-go/rest"
 	ctrl "sigs.k8s.io/controller-runtime"
-	"sigs.k8s.io/controller-runtime/pkg/client"
 	"sigs.k8s.io/controller-runtime/pkg/healthz"
 	metricsserver "sigs.k8s.io/controller-runtime/pkg/metrics/server"
 	"sigs.k8s.io/controller-runtime/pkg/webhook"
+
+	kcpprovider "github.com/platform-mesh/account-operator/pkg/provider/kcp"
+	mcmanager "sigs.k8s.io/multicluster-runtime/pkg/manager"
 
 	"go.opentelemetry.io/contrib/instrumentation/net/http/otelhttp"
 
@@ -102,28 +102,13 @@ func RunController(_ *cobra.Command, _ []string) { // coverage-ignore
 		return otelhttp.NewTransport(rt)
 	})
 
-	mgrConfig := rest.CopyConfig(restCfg)
-	if len(operatorCfg.Kcp.ApiExportEndpointSliceName) > 0 {
-		// Lookup API Endpointslice for KCP multi-cluster setup
-		kclient, err := client.New(restCfg, client.Options{
-			Scheme: scheme,
-		})
-		if err != nil {
-			log.Fatal().Err(err).Msg("unable to create client")
-		}
-		es := &apisv1alpha1.APIExportEndpointSlice{}
-		err = kclient.Get(ctx, client.ObjectKey{Name: operatorCfg.Kcp.ApiExportEndpointSliceName}, es)
-		if err != nil {
-			log.Fatal().Err(err).Msg("unable to get APIExportEndpointSlice")
-		}
-		if len(es.Status.APIExportEndpoints) == 0 {
-			log.Fatal().Msg("no APIExportEndpoints found")
-		}
-		log.Info().Str("host", es.Status.APIExportEndpoints[0].URL).Msg("using KCP API Export endpoint for multi-cluster access")
-		mgrConfig.Host = es.Status.APIExportEndpoints[0].URL
-	}
+	// Create KCP provider for multi-cluster support
+	kcpProvider := kcpprovider.New(restCfg, kcpprovider.Options{
+		APIExportEndpointSliceName: operatorCfg.Kcp.ApiExportEndpointSliceName,
+	})
 
-	opts := ctrl.Options{
+	// Create multicluster manager with KCP provider
+	mcOpts := mcmanager.Options{
 		Scheme: scheme,
 		Metrics: metricsserver.Options{
 			BindAddress:   defaultCfg.Metrics.BindAddress,
@@ -138,7 +123,7 @@ func RunController(_ *cobra.Command, _ []string) { // coverage-ignore
 		LeaderElectionConfig:          restCfg,
 		LeaderElectionReleaseOnCancel: true,
 	}
-	mgr, err := ctrl.NewManager(mgrConfig, opts)
+	mgr, err := mcmanager.New(restCfg, kcpProvider, mcOpts)
 	if err != nil {
 		log.Fatal().Err(err).Msg("unable to start manager")
 	}
@@ -158,8 +143,8 @@ func RunController(_ *cobra.Command, _ []string) { // coverage-ignore
 		fgaClient = openfgav1.NewOpenFGAServiceClient(conn)
 	}
 
-	accountReconciler := controller.NewAccountReconciler(log, mgr, operatorCfg, fgaClient)
-	if err := accountReconciler.SetupWithManager(mgr, defaultCfg, log); err != nil {
+	accountReconciler := controller.NewAccountReconciler(log, mgr.GetLocalManager(), operatorCfg, fgaClient)
+	if err := accountReconciler.SetupWithManager(mgr.GetLocalManager(), defaultCfg, log); err != nil {
 		log.Fatal().Err(err).Str("controller", "Account").Msg("unable to create controller")
 	}
 
@@ -172,7 +157,7 @@ func RunController(_ *cobra.Command, _ []string) { // coverage-ignore
 			}
 		}
 		log.Info().Strs("deniedNames", denyList).Msg("webhooks are enabled")
-		if err := v1alpha1.SetupAccountWebhookWithManager(mgr, denyList); err != nil {
+		if err := v1alpha1.SetupAccountWebhookWithManager(mgr.GetLocalManager(), denyList); err != nil {
 			log.Fatal().Err(err).Str("webhook", "Account").Msg("unable to create webhook")
 		}
 	}
@@ -183,6 +168,14 @@ func RunController(_ *cobra.Command, _ []string) { // coverage-ignore
 	if err := mgr.AddReadyzCheck("readyz", healthz.Ping); err != nil {
 		log.Fatal().Err(err).Msg("unable to set up ready check")
 	}
+
+	// Start KCP provider in background goroutine (critical for proper multi-cluster runtime)
+	log.Info().Msg("starting KCP provider")
+	go func() {
+		if err := kcpProvider.Run(ctx, mgr); err != nil {
+			log.Fatal().Err(err).Msg("problem running KCP provider")
+		}
+	}()
 
 	log.Info().Msg("starting manager")
 	if err := mgr.Start(ctrl.SetupSignalHandler()); err != nil {
