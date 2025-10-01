@@ -8,7 +8,6 @@ import (
 
 	kcpcorev1alpha "github.com/kcp-dev/kcp/sdk/apis/core/v1alpha1"
 	kcptenancyv1alpha "github.com/kcp-dev/kcp/sdk/apis/tenancy/v1alpha1"
-	"github.com/kcp-dev/logicalcluster/v3"
 	"github.com/platform-mesh/golang-commons/controller/lifecycle/runtimeobject"
 	"github.com/platform-mesh/golang-commons/controller/lifecycle/subroutine"
 	"github.com/platform-mesh/golang-commons/errors"
@@ -19,7 +18,6 @@ import (
 	ctrl "sigs.k8s.io/controller-runtime"
 	"sigs.k8s.io/controller-runtime/pkg/client"
 	"sigs.k8s.io/controller-runtime/pkg/controller/controllerutil"
-	"sigs.k8s.io/controller-runtime/pkg/kontext"
 
 	"github.com/platform-mesh/account-operator/api/v1alpha1"
 )
@@ -80,8 +78,8 @@ func (r *AccountInfoSubroutine) Process(ctx context.Context, ro runtimeobject.Ru
 		return ctrl.Result{RequeueAfter: delay}, nil
 	}
 
-	// Prepare context to work in workspace
-	wsCtx := kontext.WithCluster(ctx, logicalcluster.Name(accountWorkspace.Spec.Cluster))
+	// Prepare context to work in workspace (single cluster mode)
+	wsCtx := ctx
 
 	// Retrieve logical cluster
 	currentWorkspacePath, currentWorkspaceUrl, err := r.retrieveCurrentWorkspacePath(accountWorkspace)

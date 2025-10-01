@@ -35,7 +35,6 @@ import (
 	ctrl "sigs.k8s.io/controller-runtime"
 	"sigs.k8s.io/controller-runtime/pkg/client"
 	"sigs.k8s.io/controller-runtime/pkg/healthz"
-	"sigs.k8s.io/controller-runtime/pkg/kcp"
 	metricsserver "sigs.k8s.io/controller-runtime/pkg/metrics/server"
 	"sigs.k8s.io/controller-runtime/pkg/webhook"
 
@@ -102,6 +101,28 @@ func RunController(_ *cobra.Command, _ []string) { // coverage-ignore
 	restCfg.Wrap(func(rt http.RoundTripper) http.RoundTripper {
 		return otelhttp.NewTransport(rt)
 	})
+
+	mgrConfig := rest.CopyConfig(restCfg)
+	if len(operatorCfg.Kcp.ApiExportEndpointSliceName) > 0 {
+		// Lookup API Endpointslice for KCP multi-cluster setup
+		kclient, err := client.New(restCfg, client.Options{
+			Scheme: scheme,
+		})
+		if err != nil {
+			log.Fatal().Err(err).Msg("unable to create client")
+		}
+		es := &apisv1alpha1.APIExportEndpointSlice{}
+		err = kclient.Get(ctx, client.ObjectKey{Name: operatorCfg.Kcp.ApiExportEndpointSliceName}, es)
+		if err != nil {
+			log.Fatal().Err(err).Msg("unable to get APIExportEndpointSlice")
+		}
+		if len(es.Status.APIExportEndpoints) == 0 {
+			log.Fatal().Msg("no APIExportEndpoints found")
+		}
+		log.Info().Str("host", es.Status.APIExportEndpoints[0].URL).Msg("using KCP API Export endpoint for multi-cluster access")
+		mgrConfig.Host = es.Status.APIExportEndpoints[0].URL
+	}
+
 	opts := ctrl.Options{
 		Scheme: scheme,
 		Metrics: metricsserver.Options{
@@ -117,28 +138,7 @@ func RunController(_ *cobra.Command, _ []string) { // coverage-ignore
 		LeaderElectionConfig:          restCfg,
 		LeaderElectionReleaseOnCancel: true,
 	}
-	var mgr ctrl.Manager
-	mgrConfig := rest.CopyConfig(restCfg)
-	if len(operatorCfg.Kcp.ApiExportEndpointSliceName) > 0 {
-		// Lookup API Endpointslice
-		kclient, err := client.New(restCfg, client.Options{
-			Scheme: scheme,
-		})
-		if err != nil {
-			log.Fatal().Err(err).Msg("unable to create client")
-		}
-		es := &apisv1alpha1.APIExportEndpointSlice{}
-		err = kclient.Get(ctx, client.ObjectKey{Name: operatorCfg.Kcp.ApiExportEndpointSliceName}, es)
-		if err != nil {
-			log.Fatal().Err(err).Msg("unable to create client")
-		}
-		if len(es.Status.APIExportEndpoints) == 0 {
-			log.Fatal().Msg("no APIExportEndpoints found")
-		}
-		log.Info().Str("host", es.Status.APIExportEndpoints[0].URL).Msg("using host")
-		mgrConfig.Host = es.Status.APIExportEndpoints[0].URL
-	}
-	mgr, err = kcp.NewClusterAwareManager(mgrConfig, opts)
+	mgr, err := ctrl.NewManager(mgrConfig, opts)
 	if err != nil {
 		log.Fatal().Err(err).Msg("unable to start manager")
 	}
@@ -151,7 +151,6 @@ func RunController(_ *cobra.Command, _ []string) { // coverage-ignore
 			grpc.WithStatsHandler(otelgrpc.NewClientHandler()),
 		)
 		if err != nil {
-
 			log.Fatal().Err(err).Msg("error when creating the grpc client")
 		}
 		log.Debug().Msg("FGA client created")
