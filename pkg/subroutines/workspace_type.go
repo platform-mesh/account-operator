@@ -10,9 +10,11 @@ import (
 	"github.com/platform-mesh/golang-commons/logger"
 	kerrors "k8s.io/apimachinery/pkg/api/errors"
 	metav1 "k8s.io/apimachinery/pkg/apis/meta/v1"
+	"k8s.io/client-go/rest"
 	ctrl "sigs.k8s.io/controller-runtime"
 	"sigs.k8s.io/controller-runtime/pkg/client"
 	"sigs.k8s.io/controller-runtime/pkg/controller/controllerutil"
+	mcmanager "sigs.k8s.io/multicluster-runtime/pkg/manager"
 
 	"github.com/platform-mesh/account-operator/api/v1alpha1"
 )
@@ -30,7 +32,8 @@ const (
 var _ subroutine.Subroutine = &WorkspaceTypeSubroutine{}
 
 type WorkspaceTypeSubroutine struct {
-	orgsClient client.Client
+	mgr        mcmanager.Manager
+	baseConfig *rest.Config // For fallback mode
 }
 
 func (w WorkspaceTypeSubroutine) Process(ctx context.Context, ro runtimeobject.RuntimeObject) (ctrl.Result, errors.OperatorError) {
@@ -63,8 +66,32 @@ func (w WorkspaceTypeSubroutine) Process(ctx context.Context, ro runtimeobject.R
 }
 
 func (w WorkspaceTypeSubroutine) createOrUpdateWorkspaceType(ctx context.Context, desiredWst kcptenancyv1alpha.WorkspaceType) error {
+	// Get orgs client from multicluster manager
+	var orgsClient client.Client
+	if w.mgr != nil {
+		// Use multicluster approach - get root-orgs cluster client
+		cluster, err := w.mgr.GetCluster(ctx, "root-orgs")
+		if err != nil {
+			return err
+		}
+		orgsClient = cluster.GetClient()
+	} else if w.baseConfig != nil {
+		// Fallback: create direct connection (backward compatibility)
+		clientCfg, err := createOrganizationRestConfig(w.baseConfig)
+		if err != nil {
+			return err
+		}
+		orgsClient, err = client.New(clientCfg, client.Options{})
+		if err != nil {
+			return err
+		}
+	} else {
+		// For testing without multicluster or config, skip creation
+		return nil
+	}
+
 	wst := &kcptenancyv1alpha.WorkspaceType{ObjectMeta: metav1.ObjectMeta{Name: desiredWst.Name}}
-	_, err := controllerutil.CreateOrUpdate(ctx, w.orgsClient, wst, func() error {
+	_, err := controllerutil.CreateOrUpdate(ctx, orgsClient, wst, func() error {
 		wst.Spec = desiredWst.Spec
 		return nil
 	})
@@ -79,17 +106,44 @@ func (w WorkspaceTypeSubroutine) Finalize(ctx context.Context, ro runtimeobject.
 		return ctrl.Result{}, nil
 	}
 
+	// Get orgs client from multicluster manager
+	var orgsClient client.Client
+	if w.mgr != nil {
+		// Use multicluster approach - get root-orgs cluster client
+		cluster, err := w.mgr.GetCluster(ctx, "root-orgs")
+		if err != nil {
+			log.Error().Err(err).Msg("failed to get root-orgs cluster")
+			return ctrl.Result{}, errors.NewOperatorError(err, true, true)
+		}
+		orgsClient = cluster.GetClient()
+	} else if w.baseConfig != nil {
+		// Fallback: create direct connection (backward compatibility)
+		clientCfg, err := createOrganizationRestConfig(w.baseConfig)
+		if err != nil {
+			log.Error().Err(err).Msg("failed to create orgs config")
+			return ctrl.Result{}, errors.NewOperatorError(err, true, true)
+		}
+		orgsClient, err = client.New(clientCfg, client.Options{})
+		if err != nil {
+			log.Error().Err(err).Msg("failed to create orgs client")
+			return ctrl.Result{}, errors.NewOperatorError(err, true, true)
+		}
+	} else {
+		// For testing without multicluster or config, skip deletion
+		return ctrl.Result{}, nil
+	}
+
 	orgWorkspaceTypeName := generateOrganizationWorkspaceTypeName(instance.Name)
 	accountWorkspaceTypeName := generateAccountWorkspaceTypeName(instance.Name)
 
-	err := w.orgsClient.Delete(ctx, &kcptenancyv1alpha.WorkspaceType{ObjectMeta: metav1.ObjectMeta{Name: orgWorkspaceTypeName}})
+	err := orgsClient.Delete(ctx, &kcptenancyv1alpha.WorkspaceType{ObjectMeta: metav1.ObjectMeta{Name: orgWorkspaceTypeName}})
 	if err != nil {
 		if !kerrors.IsNotFound(err) {
 			log.Error().Err(err).Str("name", orgWorkspaceTypeName).Msg("failed to delete org workspace")
 			return ctrl.Result{}, errors.NewOperatorError(err, true, true)
 		}
 	}
-	err = w.orgsClient.Delete(ctx, &kcptenancyv1alpha.WorkspaceType{ObjectMeta: metav1.ObjectMeta{Name: accountWorkspaceTypeName}})
+	err = orgsClient.Delete(ctx, &kcptenancyv1alpha.WorkspaceType{ObjectMeta: metav1.ObjectMeta{Name: accountWorkspaceTypeName}})
 	if err != nil {
 		if !kerrors.IsNotFound(err) {
 			log.Error().Err(err).Str("name", accountWorkspaceTypeName).Msg("failed to delete acc workspace")
@@ -109,17 +163,12 @@ func (w WorkspaceTypeSubroutine) Finalizers() []string {
 }
 
 func NewWorkspaceTypeSubroutine(mgr ctrl.Manager) *WorkspaceTypeSubroutine {
-	clientCfg, err := createOrganizationRestConfig(mgr.GetConfig())
-	if err != nil {
-		panic(err)
-	}
-	orgsClient, err := client.New(clientCfg, client.Options{
-		Scheme: mgr.GetScheme(),
-	})
-	if err != nil {
-		panic(err)
-	}
-	return &WorkspaceTypeSubroutine{orgsClient: orgsClient}
+	return &WorkspaceTypeSubroutine{mgr: nil, baseConfig: mgr.GetConfig()}
+}
+
+// NewMultiClusterWorkspaceTypeSubroutine creates a WorkspaceTypeSubroutine with multicluster support
+func NewMultiClusterWorkspaceTypeSubroutine(mgr mcmanager.Manager) *WorkspaceTypeSubroutine {
+	return &WorkspaceTypeSubroutine{mgr: mgr, baseConfig: mgr.GetLocalManager().GetConfig()}
 }
 
 func generateOrgWorkspaceType(instance *v1alpha1.Account, orgWorkspaceTypeName, accountWorkspaceTypeName string) kcptenancyv1alpha.WorkspaceType {

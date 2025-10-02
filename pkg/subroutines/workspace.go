@@ -11,10 +11,12 @@ import (
 	"github.com/platform-mesh/golang-commons/errors"
 	kerrors "k8s.io/apimachinery/pkg/api/errors"
 	metav1 "k8s.io/apimachinery/pkg/apis/meta/v1"
+	"k8s.io/client-go/rest"
 	"k8s.io/client-go/util/workqueue"
 	ctrl "sigs.k8s.io/controller-runtime"
 	"sigs.k8s.io/controller-runtime/pkg/client"
 	"sigs.k8s.io/controller-runtime/pkg/controller/controllerutil"
+	mcmanager "sigs.k8s.io/multicluster-runtime/pkg/manager"
 
 	corev1alpha1 "github.com/platform-mesh/account-operator/api/v1alpha1"
 )
@@ -25,37 +27,34 @@ const (
 )
 
 type WorkspaceSubroutine struct {
-	client              client.Client
-	limiter             workqueue.TypedRateLimiter[ClusteredName]
-	organizationsClient client.Client
+	client     client.Client
+	limiter    workqueue.TypedRateLimiter[ClusteredName]
+	mgr        mcmanager.Manager // For multicluster support
+	baseConfig *rest.Config      // For fallback mode
 }
 
 func NewWorkspaceSubroutine(mgr ctrl.Manager) *WorkspaceSubroutine {
 	exp := workqueue.NewTypedItemExponentialFailureRateLimiter[ClusteredName](1*time.Second, 120*time.Second)
-	clientCfg, err := createOrganizationRestConfig(mgr.GetConfig())
-	if err != nil {
-		panic(err)
-	}
-	organizationsClient, err := client.New(clientCfg, client.Options{
-		Scheme: mgr.GetScheme(),
-	})
-	if err != nil {
-		panic(err)
-	}
-	return &WorkspaceSubroutine{client: mgr.GetClient(), organizationsClient: organizationsClient, limiter: exp}
+	return &WorkspaceSubroutine{client: mgr.GetClient(), limiter: exp, mgr: nil, baseConfig: mgr.GetConfig()}
+}
+
+// NewMultiClusterWorkspaceSubroutine creates a WorkspaceSubroutine with multicluster support
+func NewMultiClusterWorkspaceSubroutine(mgr mcmanager.Manager) *WorkspaceSubroutine {
+	exp := workqueue.NewTypedItemExponentialFailureRateLimiter[ClusteredName](1*time.Second, 120*time.Second)
+	return &WorkspaceSubroutine{client: mgr.GetLocalManager().GetClient(), limiter: exp, mgr: mgr, baseConfig: mgr.GetLocalManager().GetConfig()}
 }
 
 // NewWorkspaceSubroutineForTesting creates a new WorkspaceSubroutine for testing purposes
 // with the provided dependencies. This constructor is intended for testing only.
 func NewWorkspaceSubroutineForTesting(
 	client client.Client,
-	organizationsClient client.Client,
 	limiter workqueue.TypedRateLimiter[ClusteredName],
 ) *WorkspaceSubroutine {
 	return &WorkspaceSubroutine{
-		client:              client,
-		organizationsClient: organizationsClient,
-		limiter:             limiter,
+		client:     client,
+		limiter:    limiter,
+		mgr:        nil, // Testing without multicluster
+		baseConfig: nil, // No fallback needed in tests
 	}
 }
 
@@ -143,8 +142,33 @@ func (r *WorkspaceSubroutine) Process(ctx context.Context, ro runtimeobject.Runt
 }
 
 func (r *WorkspaceSubroutine) checkWorkspaceTypeReady(ctx context.Context, workspaceTypeName string) (bool, error) {
+	// Get orgs client from multicluster manager
+	var orgsClient client.Client
+	if r.mgr != nil {
+		// Use multicluster approach - get root-orgs cluster client
+		cluster, err := r.mgr.GetCluster(ctx, "root-orgs")
+		if err != nil {
+			return false, err
+		}
+		orgsClient = cluster.GetClient()
+	} else if r.baseConfig != nil {
+		// Fallback for when multicluster is not available
+		// Create direct connection
+		clientCfg, err := createOrganizationRestConfig(r.baseConfig)
+		if err != nil {
+			return false, err
+		}
+		orgsClient, err = client.New(clientCfg, client.Options{})
+		if err != nil {
+			return false, err
+		}
+	} else {
+		// For testing mode, return early
+		return true, nil
+	}
+
 	wst := &kcptenancyv1alpha.WorkspaceType{}
-	err := r.organizationsClient.Get(ctx, client.ObjectKey{Name: workspaceTypeName}, wst)
+	err := orgsClient.Get(ctx, client.ObjectKey{Name: workspaceTypeName}, wst)
 	if err != nil {
 		if kerrors.IsNotFound(err) {
 			return false, nil

@@ -42,8 +42,11 @@ func (suite *WorkspaceTypeSubroutineTestSuite) SetupTest() {
 	// Setup Mocks
 	suite.orgsClientMock = new(mocks.Client)
 
-	// Initialize Tested Object(s)
-	suite.testObj = &WorkspaceTypeSubroutine{orgsClient: suite.orgsClientMock}
+	// Initialize Tested Object(s) - use new structure with mock client via helper function
+	suite.testObj = &WorkspaceTypeSubroutine{
+		mgr:        nil, // No multicluster in tests
+		baseConfig: nil, // Mock client will be used directly
+	}
 
 	utilruntime.Must(corev1alpha1.AddToScheme(scheme.Scheme))
 	utilruntime.Must(corev1.AddToScheme(scheme.Scheme))

@@ -46,12 +46,11 @@ type MultiClusterAccountReconciler struct {
 func NewMultiClusterAccountReconciler(log *logger.Logger, mgr mcmanager.Manager, cfg config.OperatorConfig, fgaClient openfgav1.OpenFGAServiceClient) *MultiClusterAccountReconciler {
 	var subs []subroutine.Subroutine
 	if cfg.Subroutines.WorkspaceType.Enabled {
-		// Note: For multi-cluster, we need to update subroutines to accept cluster-specific clients
-		// For now, use the local manager for backward compatibility
-		subs = append(subs, subroutines.NewWorkspaceTypeSubroutine(mgr.GetLocalManager()))
+		// Use new multicluster-aware subroutines
+		subs = append(subs, subroutines.NewMultiClusterWorkspaceTypeSubroutine(mgr))
 	}
 	if cfg.Subroutines.Workspace.Enabled {
-		subs = append(subs, subroutines.NewWorkspaceSubroutine(mgr.GetLocalManager()))
+		subs = append(subs, subroutines.NewMultiClusterWorkspaceSubroutine(mgr))
 	}
 
 	return &MultiClusterAccountReconciler{
