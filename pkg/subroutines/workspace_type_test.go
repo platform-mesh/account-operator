@@ -128,3 +128,13 @@ func (suite *WorkspaceTypeSubroutineTestSuite) TestFinalizeReturnsErrorWhenClien
 	suite.NotNil(opErr)
 	suite.True(opErr.Retry())
 }
+
+func (suite *WorkspaceTypeSubroutineTestSuite) TestFinalizeSkipsForNonOrg() {
+	subroutine, _ := suite.newSubroutine()
+	account := &corev1alpha1.Account{ObjectMeta: metav1.ObjectMeta{Name: "test-nonorg"}, Spec: corev1alpha1.AccountSpec{Type: corev1alpha1.AccountTypeAccount}}
+	res, opErr := subroutine.Finalize(suite.ctx, account)
+	suite.Nil(opErr)
+	suite.Zero(res.RequeueAfter)
+}
+
+// (intentionally skipped error injection test; covered in separate error suite)
