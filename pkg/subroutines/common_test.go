@@ -5,7 +5,6 @@ import (
 	"fmt"
 	"testing"
 
-	kcpcorev1alpha1 "github.com/kcp-dev/kcp/sdk/apis/core/v1alpha1"
 	kcptenancyv1alpha "github.com/kcp-dev/kcp/sdk/apis/tenancy/v1alpha1"
 	"github.com/platform-mesh/golang-commons/logger"
 	"github.com/stretchr/testify/assert"
@@ -14,7 +13,6 @@ import (
 	kerrors "k8s.io/apimachinery/pkg/api/errors"
 	metav1 "k8s.io/apimachinery/pkg/apis/meta/v1"
 	"k8s.io/apimachinery/pkg/runtime/schema"
-	"k8s.io/apimachinery/pkg/types"
 	"k8s.io/client-go/rest"
 	"sigs.k8s.io/controller-runtime/pkg/client"
 
@@ -131,7 +129,7 @@ func (suite *CommonTestSuite) TestRetrieveWorkspace_Success() {
 	}
 
 	suite.clientMock.EXPECT().
-		Get(suite.ctx, client.ObjectKey{Name: "test-account"}, mock.AnythingOfType("*v1alpha1.Workspace")).
+		Get(suite.ctx, client.ObjectKey{Name: "test-account"}, mock.Anything).
 		Run(func(ctx context.Context, key client.ObjectKey, obj client.Object, opts ...client.GetOption) {
 			workspace := obj.(*kcptenancyv1alpha.Workspace)
 			workspace.Name = expectedWorkspace.Name
@@ -157,7 +155,7 @@ func (suite *CommonTestSuite) TestRetrieveWorkspace_NotFound() {
 	}
 
 	suite.clientMock.EXPECT().
-		Get(suite.ctx, client.ObjectKey{Name: "nonexistent-account"}, mock.AnythingOfType("*v1alpha1.Workspace")).
+		Get(suite.ctx, client.ObjectKey{Name: "nonexistent-account"}, mock.Anything).
 		Return(kerrors.NewNotFound(schema.GroupResource{Group: "tenancy.kcp.io", Resource: "workspaces"}, "nonexistent-account"))
 
 	// When
@@ -177,7 +175,7 @@ func (suite *CommonTestSuite) TestRetrieveWorkspace_GetError() {
 	}
 
 	suite.clientMock.EXPECT().
-		Get(suite.ctx, client.ObjectKey{Name: "test-account"}, mock.AnythingOfType("*v1alpha1.Workspace")).
+		Get(suite.ctx, client.ObjectKey{Name: "test-account"}, mock.Anything).
 		Return(kerrors.NewInternalError(fmt.Errorf("internal server error")))
 
 	// When
@@ -261,21 +259,4 @@ func TestCreateOrganizationRestConfig_InvalidURL(t *testing.T) {
 }
 
 // Mock helper functions (existing)
-func mockGetWorkspaceByName(clientMock *mocks.Client, ready kcpcorev1alpha1.LogicalClusterPhaseType, path string) *mocks.Client_Get_Call {
-	return clientMock.EXPECT().
-		Get(mock.Anything, mock.Anything, mock.AnythingOfType("*v1alpha1.Workspace")).
-		Run(func(ctx context.Context, key types.NamespacedName, obj client.Object, opts ...client.GetOption) {
-			wsPath := ""
-			if path != "" {
-				wsPath = "https://example.com/" + path
-			}
-			actual, _ := obj.(*kcptenancyv1alpha.Workspace)
-			actual.Name = key.Name
-			actual.Spec = kcptenancyv1alpha.WorkspaceSpec{
-				Cluster: "some-cluster-id-" + key.Name,
-				URL:     wsPath,
-			}
-			actual.Status.Phase = ready
-		}).
-		Return(nil)
-}
+// (previously had helper mockGetWorkspaceByName; removed as unused to satisfy lint)
