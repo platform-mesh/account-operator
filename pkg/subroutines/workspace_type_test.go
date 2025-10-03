@@ -59,7 +59,7 @@ func (suite *WorkspaceTypeSubroutineTestSuite) TestProcessCreatesWorkspaceTypesF
 	res, opErr := subroutine.Process(suite.ctx, account)
 
 	suite.Nil(opErr)
-	suite.False(res.Requeue)
+	suite.Zero(res.RequeueAfter)
 
 	orgType := &kcptenancyv1alpha.WorkspaceType{}
 	suite.NoError(cl.Get(suite.ctx, client.ObjectKey{Name: "test-org-org"}, orgType))
@@ -75,7 +75,7 @@ func (suite *WorkspaceTypeSubroutineTestSuite) TestProcessSkipsAccounts() {
 	res, opErr := subroutine.Process(suite.ctx, account)
 
 	suite.Nil(opErr)
-	suite.False(res.Requeue)
+	suite.Zero(res.RequeueAfter)
 
 	suite.True(kerrors.IsNotFound(cl.Get(suite.ctx, client.ObjectKey{Name: "test-account-org"}, &kcptenancyv1alpha.WorkspaceType{})))
 }
@@ -102,7 +102,7 @@ func (suite *WorkspaceTypeSubroutineTestSuite) TestFinalizeDeletesWorkspaceTypes
 	res, opErr := subroutine.Finalize(suite.ctx, account)
 
 	suite.Nil(opErr)
-	suite.False(res.Requeue)
+	suite.Zero(res.RequeueAfter)
 
 	suite.True(kerrors.IsNotFound(cl.Get(suite.ctx, client.ObjectKey{Name: "test-org-org"}, &kcptenancyv1alpha.WorkspaceType{})))
 	suite.True(kerrors.IsNotFound(cl.Get(suite.ctx, client.ObjectKey{Name: "test-org-acc"}, &kcptenancyv1alpha.WorkspaceType{})))
@@ -115,7 +115,7 @@ func (suite *WorkspaceTypeSubroutineTestSuite) TestFinalizeSkipsAccounts() {
 
 	res, opErr := subroutine.Finalize(suite.ctx, account)
 	suite.Nil(opErr)
-	suite.False(res.Requeue)
+	suite.Zero(res.RequeueAfter)
 
 	suite.True(kerrors.IsNotFound(cl.Get(suite.ctx, client.ObjectKey{Name: "test-account-org"}, &kcptenancyv1alpha.WorkspaceType{})))
 }
