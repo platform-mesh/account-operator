@@ -6,6 +6,7 @@ import (
 	"github.com/kcp-dev/logicalcluster/v3"
 	"github.com/platform-mesh/golang-commons/controller/lifecycle/runtimeobject"
 	"k8s.io/apimachinery/pkg/types"
+	mccontext "sigs.k8s.io/multicluster-runtime/pkg/context"
 )
 
 type ClusteredName struct {
@@ -13,27 +14,21 @@ type ClusteredName struct {
 	ClusterID logicalcluster.Name
 }
 
-// GetClusteredName creates a ClusteredName without cluster context (single cluster mode)
 func GetClusteredName(ctx context.Context, instance runtimeobject.RuntimeObject) (ClusteredName, bool) {
-	// In single cluster mode, we use an empty cluster ID
+	clusterName, ok := mccontext.ClusterFrom(ctx)
 	cn := ClusteredName{
 		NamespacedName: types.NamespacedName{
-			Name:      instance.GetName(), 
+			Name:      instance.GetName(),
 			Namespace: instance.GetNamespace(),
-		}, 
-		ClusterID: "",
+		},
 	}
-	return cn, true
+	if ok {
+		cn.ClusterID = logicalcluster.Name(clusterName)
+	}
+	return cn, ok
 }
 
-// MustGetClusteredName creates a ClusteredName without cluster context (single cluster mode)
 func MustGetClusteredName(ctx context.Context, instance runtimeobject.RuntimeObject) ClusteredName {
-	cn := ClusteredName{
-		NamespacedName: types.NamespacedName{
-			Name:      instance.GetName(), 
-			Namespace: instance.GetNamespace(),
-		}, 
-		ClusterID: "",
-	}
+	cn, _ := GetClusteredName(ctx, instance)
 	return cn
 }

@@ -131,7 +131,7 @@ func (suite *CommonTestSuite) TestRetrieveWorkspace_Success() {
 	}
 
 	suite.clientMock.EXPECT().
-		Get(suite.ctx, client.ObjectKey{Name: "test-account"}, mock.AnythingOfType("*v1alpha1.Workspace")).
+		Get(suite.ctx, client.ObjectKey{Name: "test-account"}, mock.Anything).
 		Run(func(ctx context.Context, key client.ObjectKey, obj client.Object, opts ...client.GetOption) {
 			workspace := obj.(*kcptenancyv1alpha.Workspace)
 			workspace.Name = expectedWorkspace.Name
@@ -157,7 +157,7 @@ func (suite *CommonTestSuite) TestRetrieveWorkspace_NotFound() {
 	}
 
 	suite.clientMock.EXPECT().
-		Get(suite.ctx, client.ObjectKey{Name: "nonexistent-account"}, mock.AnythingOfType("*v1alpha1.Workspace")).
+		Get(suite.ctx, client.ObjectKey{Name: "nonexistent-account"}, mock.Anything).
 		Return(kerrors.NewNotFound(schema.GroupResource{Group: "tenancy.kcp.io", Resource: "workspaces"}, "nonexistent-account"))
 
 	// When
@@ -177,7 +177,7 @@ func (suite *CommonTestSuite) TestRetrieveWorkspace_GetError() {
 	}
 
 	suite.clientMock.EXPECT().
-		Get(suite.ctx, client.ObjectKey{Name: "test-account"}, mock.AnythingOfType("*v1alpha1.Workspace")).
+		Get(suite.ctx, client.ObjectKey{Name: "test-account"}, mock.Anything).
 		Return(kerrors.NewInternalError(fmt.Errorf("internal server error")))
 
 	// When
