@@ -45,15 +45,26 @@ func (r *AccountInfoSubroutine) GetName() string {
 }
 
 func (r *AccountInfoSubroutine) Finalize(ctx context.Context, ro runtimeobject.RuntimeObject) (ctrl.Result, errors.OperatorError) {
+	// defensive: avoid nil deref if runtimeobject is not provided
+	if ro == nil {
+		return ctrl.Result{}, errors.NewOperatorError(fmt.Errorf("runtimeobject is nil"), true, true)
+	}
+
 	cn := MustGetClusteredName(ctx, ro)
 
 	// The account info object is relevant input for other finalizers, removing the accountinfo finalizer at last
 	if len(ro.GetFinalizers()) > 1 {
-		delay := r.limiter.When(cn)
-		return ctrl.Result{RequeueAfter: delay}, nil
+		// guard nil limiter
+		if r.limiter != nil {
+			delay := r.limiter.When(cn)
+			return ctrl.Result{RequeueAfter: delay}, nil
+		}
+		return ctrl.Result{RequeueAfter: 1 * time.Second}, nil
 	}
 
-	r.limiter.Forget(cn)
+	if r.limiter != nil {
+		r.limiter.Forget(cn)
+	}
 	return ctrl.Result{}, nil
 }
 
@@ -71,11 +82,17 @@ func (r *AccountInfoSubroutine) Process(ctx context.Context, ro runtimeobject.Ru
 	if err != nil {
 		return ctrl.Result{}, errors.NewOperatorError(err, true, true)
 	}
+	if accountWorkspace == nil {
+		return ctrl.Result{}, errors.NewOperatorError(fmt.Errorf("workspace is nil"), true, true)
+	}
 
 	if accountWorkspace.Status.Phase != kcpcorev1alpha.LogicalClusterPhaseReady {
 		log.Info().Msg("workspace is not ready yet, retry")
-		delay := r.limiter.When(cn)
-		return ctrl.Result{RequeueAfter: delay}, nil
+		if r.limiter != nil {
+			delay := r.limiter.When(cn)
+			return ctrl.Result{RequeueAfter: delay}, nil
+		}
+		return ctrl.Result{RequeueAfter: 1 * time.Second}, nil
 	}
 
 	// Prepare context to work in workspace (single cluster mode)
@@ -114,7 +131,9 @@ func (r *AccountInfoSubroutine) Process(ctx context.Context, ro runtimeobject.Ru
 			return ctrl.Result{}, errors.NewOperatorError(err, true, true)
 		}
 
-		r.limiter.Forget(cn)
+		if r.limiter != nil {
+			r.limiter.Forget(cn)
+		}
 		return ctrl.Result{}, nil
 	}
 
@@ -139,7 +158,9 @@ func (r *AccountInfoSubroutine) Process(ctx context.Context, ro runtimeobject.Ru
 	if err != nil {
 		return ctrl.Result{}, errors.NewOperatorError(err, true, true)
 	}
-	r.limiter.Forget(cn)
+	if r.limiter != nil {
+		r.limiter.Forget(cn)
+	}
 	return ctrl.Result{}, nil
 }
 
