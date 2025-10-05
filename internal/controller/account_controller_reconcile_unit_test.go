@@ -172,7 +172,7 @@ func TestReconcile_HappyPath_UsesCachedLifecycle(t *testing.T) {
 	if err != nil {
 		t.Fatalf("unexpected error: %v", err)
 	}
-	if res.Requeue || res.RequeueAfter != 0 {
-		t.Fatalf("expected no requeue, got %+v", res)
+	if res != (ctrl.Result{}) {
+		t.Fatalf("expected zero result, got %+v", res)
 	}
 }
