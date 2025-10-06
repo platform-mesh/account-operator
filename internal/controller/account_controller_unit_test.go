@@ -20,10 +20,7 @@ import (
 	"slices"
 	"testing"
 
-	kcpcorev1alpha "github.com/kcp-dev/kcp/sdk/apis/core/v1alpha1"
-	kcptenancyv1alpha "github.com/kcp-dev/kcp/sdk/apis/tenancy/v1alpha1"
 	lifecyclesubroutine "github.com/platform-mesh/golang-commons/controller/lifecycle/subroutine"
-	"github.com/platform-mesh/golang-commons/logger"
 	corev1 "k8s.io/api/core/v1"
 	metav1 "k8s.io/apimachinery/pkg/apis/meta/v1"
 	"k8s.io/apimachinery/pkg/runtime"
@@ -35,32 +32,7 @@ import (
 	"github.com/platform-mesh/account-operator/internal/config"
 )
 
-// buildTestReconciler constructs a reconciler with provided operator config without needing a multicluster manager.
-func buildTestReconciler(t *testing.T, cfg config.OperatorConfig) *AccountReconciler {
-	t.Helper()
-	scheme := runtime.NewScheme()
-	utilruntime.Must(corev1.AddToScheme(scheme))
-	utilruntime.Must(corev1alpha1.AddToScheme(scheme))
-	utilruntime.Must(kcpcorev1alpha.AddToScheme(scheme))
-	utilruntime.Must(kcptenancyv1alpha.AddToScheme(scheme))
-
-	restCfg := &rest.Config{}
-	log, err := logger.New(logger.DefaultConfig())
-	if err != nil {
-		t.Fatalf("logger init: %v", err)
-	}
-
-	fakeClient := fake.NewClientBuilder().WithScheme(scheme).Build()
-	// Manually instantiate without calling NewAccountReconciler to avoid needing a full mc manager.
-	return &AccountReconciler{
-		log:         log,
-		cfg:         cfg,
-		baseConfig:  restCfg,
-		scheme:      scheme,
-		serverCA:    "",
-		subroutines: buildAccountSubroutines(cfg, nil, fakeClient, restCfg, scheme, "", nil),
-	}
-}
+// (removed unused buildTestReconciler helper)
 
 func names(subs []lifecyclesubroutine.Subroutine) []string {
 	out := make([]string, 0, len(subs))
