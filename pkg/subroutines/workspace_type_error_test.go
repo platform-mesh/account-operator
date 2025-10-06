@@ -9,6 +9,7 @@ import (
 	kcptenancyv1alpha "github.com/kcp-dev/kcp/sdk/apis/tenancy/v1alpha1"
 	"github.com/platform-mesh/golang-commons/logger"
 	"github.com/stretchr/testify/suite"
+	kerrors "k8s.io/apimachinery/pkg/api/errors"
 	metav1 "k8s.io/apimachinery/pkg/apis/meta/v1"
 	"k8s.io/apimachinery/pkg/runtime"
 	"sigs.k8s.io/controller-runtime/pkg/client"
@@ -67,15 +68,14 @@ func (s *WorkspaceTypeErrorSuite) TestFinalizeNotFoundIsIgnored() {
 }
 
 func (s *WorkspaceTypeErrorSuite) TestFinalizeDeletionErrorsAreRetried() {
-	// client that fails Delete with a non-NotFound error to exercise retry wrapping
-	type failingDelete struct{ client.Client }
-	fd := &failingDelete{Client: fake.NewClientBuilder().WithScheme(s.scheme).Build()}
+	// Fails on any delete with a generic error; should return retryable error
+	base := fake.NewClientBuilder().WithScheme(s.scheme).Build()
+	fd := &failingDeleteClient{Client: base}
 	sub := NewWorkspaceTypeSubroutineWithClient(fd)
 	acc := &corev1alpha1.Account{ObjectMeta: metav1.ObjectMeta{Name: "final-err"}, Spec: corev1alpha1.AccountSpec{Type: corev1alpha1.AccountTypeOrg}}
-	// Inject behavior by overriding Delete method
-	// We can embed method by wrapping via a custom type method below
 	_, opErr := sub.Finalize(s.ctx, acc)
-	s.Nil(opErr) // because fd.Delete not actually overridden; skip strict assertion to avoid flaky
+	s.NotNil(opErr)
+	s.True(opErr.Retry())
 }
 
 func (s *WorkspaceTypeErrorSuite) TestProcessCreatesAndUpdates() {
@@ -88,4 +88,60 @@ func (s *WorkspaceTypeErrorSuite) TestProcessCreatesAndUpdates() {
 	// Run again to hit update path
 	_, opErr = sub.Process(s.ctx, acc)
 	s.Nil(opErr)
+}
+
+// conditionalDeleteClient returns NotFound on the first delete (org type), and generic error on the second (account type)
+type conditionalDeleteClient struct{ client.Client }
+
+var _ client.Client = (*conditionalDeleteClient)(nil)
+
+func (c *conditionalDeleteClient) Delete(ctx context.Context, obj client.Object, opts ...client.DeleteOption) error {
+	switch obj.GetName() {
+	case "final-org-org":
+		return kerrors.NewNotFound(kcptenancyv1alpha.Resource("workspacetype"), obj.GetName())
+	default:
+		return errors.New("boom")
+	}
+}
+
+// failingDeleteClient always fails Delete to exercise finalize error path
+type failingDeleteClient struct{ client.Client }
+
+func (f *failingDeleteClient) Delete(ctx context.Context, obj client.Object, opts ...client.DeleteOption) error {
+	return errors.New("delete failed")
+}
+
+func (s *WorkspaceTypeErrorSuite) TestFinalizeSecondDeleteErrorIsRetried() {
+	cd := &conditionalDeleteClient{Client: fake.NewClientBuilder().WithScheme(s.scheme).Build()}
+	sub := NewWorkspaceTypeSubroutineWithClient(cd)
+	acc := &corev1alpha1.Account{ObjectMeta: metav1.ObjectMeta{Name: "final-org"}, Spec: corev1alpha1.AccountSpec{Type: corev1alpha1.AccountTypeOrg}}
+	_, opErr := sub.Finalize(s.ctx, acc)
+	s.NotNil(opErr)
+	s.True(opErr.Retry())
+}
+
+// selectiveFailGetClient fails only on the second WorkspaceType Get to exercise the account type error branch in Process
+type selectiveFailGetClient struct {
+	client.Client
+	count int
+}
+
+func (sfc *selectiveFailGetClient) Get(ctx context.Context, key client.ObjectKey, obj client.Object, opts ...client.GetOption) error {
+	if _, ok := obj.(*kcptenancyv1alpha.WorkspaceType); ok {
+		sfc.count++
+		if sfc.count == 2 {
+			return errors.New("second get failed")
+		}
+	}
+	return sfc.Client.Get(ctx, key, obj, opts...)
+}
+
+func (s *WorkspaceTypeErrorSuite) TestProcessErrorOnAccountWorkspaceType() {
+	base := fake.NewClientBuilder().WithScheme(s.scheme).Build()
+	sfc := &selectiveFailGetClient{Client: base}
+	sub := NewWorkspaceTypeSubroutineWithClient(sfc)
+	acc := &corev1alpha1.Account{ObjectMeta: metav1.ObjectMeta{Name: "err-branch"}, Spec: corev1alpha1.AccountSpec{Type: corev1alpha1.AccountTypeOrg}}
+	_, opErr := sub.Process(s.ctx, acc)
+	s.NotNil(opErr)
+	s.True(opErr.Retry())
 }

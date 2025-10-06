@@ -101,6 +101,24 @@ func (s *WorkspaceSubroutineTestSuite) TestFinalizeDeletesWorkspace() {
 	s.True(res.RequeueAfter > 0)
 }
 
+// deleteErrorClient always fails Delete
+type deleteErrorClient struct{ client.Client }
+
+func (d *deleteErrorClient) Delete(ctx context.Context, obj client.Object, opts ...client.DeleteOption) error {
+	return fmt.Errorf("delete failed")
+}
+
+func (s *WorkspaceSubroutineTestSuite) TestFinalizeDeleteErrorIsRetryable() {
+	acc := &corev1alpha1.Account{ObjectMeta: metav1.ObjectMeta{Name: "org-del-err", Finalizers: []string{WorkspaceSubroutineFinalizer}, Annotations: map[string]string{"kcp.io/cluster": "root"}}, Spec: corev1alpha1.AccountSpec{Type: corev1alpha1.AccountTypeOrg}}
+	ws := &kcptenancyv1alpha.Workspace{ObjectMeta: metav1.ObjectMeta{Name: "org-del-err"}}
+	base := s.newClient(acc, ws)
+	derr := &deleteErrorClient{Client: base}
+	sub := &WorkspaceSubroutine{client: derr, limiter: workqueue.NewTypedItemExponentialFailureRateLimiter[ClusteredName](1*time.Millisecond, 1*time.Millisecond)}
+	_, opErr := sub.Finalize(s.ctx, acc)
+	s.NotNil(opErr)
+	s.True(opErr.Retry())
+}
+
 func (s *WorkspaceSubroutineTestSuite) TestProcessTreatsMissingOrgsClientAsReady() {
 	// When baseConfig is nil and orgsClient is nil, checkWorkspaceTypeReady returns true; should proceed to create workspace.
 	acc := &corev1alpha1.Account{ObjectMeta: metav1.ObjectMeta{Name: "org-ws3", Annotations: map[string]string{"kcp.io/cluster": "root"}}, Spec: corev1alpha1.AccountSpec{Type: corev1alpha1.AccountTypeOrg}}
@@ -203,6 +221,20 @@ func (s *WorkspaceSubroutineTestSuite) TestGetOrgsClientInvalidHostReturnsError(
 	orgsCl, err := sub.getOrgsClient()
 	s.Nil(orgsCl)
 	s.NotNil(err)
+}
+
+func (s *WorkspaceSubroutineTestSuite) TestGetOrgsClientBuildsAndCaches() {
+	acc := &corev1alpha1.Account{ObjectMeta: metav1.ObjectMeta{Name: "org-cache"}}
+	cl := s.newClient(acc)
+	sub := NewWorkspaceSubroutine(nil, cl, &rest.Config{Host: "http://example.com"}, s.scheme)
+	// First call builds client
+	orgs1, err1 := sub.getOrgsClient()
+	s.NoError(err1)
+	s.NotNil(orgs1)
+	// Second call returns cached client
+	orgs2, err2 := sub.getOrgsClient()
+	s.NoError(err2)
+	s.Equal(orgs1, orgs2)
 }
 
 func (s *WorkspaceSubroutineTestSuite) TestFinalizeNotFoundReturnsNil() {

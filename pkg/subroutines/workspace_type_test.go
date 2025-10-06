@@ -159,4 +159,11 @@ func (suite *WorkspaceTypeSubroutineTestSuite) TestGetOrgsClientCachesClient() {
 	suite.Equal(cl1, cl2)
 }
 
+func (suite *WorkspaceTypeSubroutineTestSuite) TestGetOrgsClientBuildsWithValidHost() {
+	sub := NewWorkspaceTypeSubroutine(&rest.Config{Host: "http://example.com"}, suite.scheme)
+	cl, err := sub.getOrgsClient()
+	suite.NoError(err)
+	suite.NotNil(cl)
+}
+
 // (intentionally skipped error injection test; covered in separate error suite)
