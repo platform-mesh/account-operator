@@ -98,8 +98,8 @@ func TestAccountInfoProcessWorkspaceNotReadyNoLimiter(t *testing.T) {
 	if opErr != nil {
 		t.Fatalf("unexpected error: %v", opErr)
 	}
-	if res.RequeueAfter != 1 { // Duration 1ns? no, compare >0
-		// be tolerant: just ensure it's positive
+	if res.RequeueAfter <= 0 {
+		t.Fatalf("expected positive requeue, got %v", res.RequeueAfter)
 	}
 }
 
