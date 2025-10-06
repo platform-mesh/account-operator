@@ -20,7 +20,7 @@ func TestWorkspaceTypeSubroutine_Getters(t *testing.T) {
 	if sub.GetName() != "WorkspaceTypeSubroutine" {
 		t.Fatalf("unexpected name: %s", sub.GetName())
 	}
-	fins := sub.Finalizers()
+	fins := sub.Finalizers(&corev1alpha1.Account{})
 	if len(fins) != 1 || fins[0] == "" {
 		t.Fatalf("unexpected finalizers: %v", fins)
 	}
@@ -31,26 +31,26 @@ func TestWorkspaceSubroutine_Getters(t *testing.T) {
 	if sub.GetName() != "WorkspaceSubroutine" {
 		t.Fatalf("unexpected name: %s", sub.GetName())
 	}
-	fins := sub.Finalizers()
+	fins := sub.Finalizers(&corev1alpha1.Account{})
 	if len(fins) != 1 || fins[0] == "" {
 		t.Fatalf("unexpected finalizers: %v", fins)
 	}
 }
 
 func TestAccountInfoSubroutine_Finalizers(t *testing.T) {
-	sub := NewAccountInfoSubroutine(nil, "")
-	fins := sub.Finalizers()
+	sub := NewAccountInfoSubroutine(nil, nil, "")
+	fins := sub.Finalizers(&corev1alpha1.Account{})
 	if len(fins) != 1 || fins[0] == "" {
 		t.Fatalf("unexpected finalizers: %v", fins)
 	}
 }
 
 func TestFGASubroutine_GetName(t *testing.T) {
-	sub := NewFGASubroutine(nil, nil, "creator", "parent", "account")
+	sub := NewFGASubroutine(nil, nil, nil, "creator", "parent", "account")
 	if sub.GetName() != "FGASubroutine" {
 		t.Fatalf("unexpected name: %s", sub.GetName())
 	}
-	fins := sub.Finalizers()
+	fins := sub.Finalizers(&corev1alpha1.Account{})
 	if len(fins) != 1 || fins[0] == "" {
 		t.Fatalf("unexpected finalizers: %v", fins)
 	}

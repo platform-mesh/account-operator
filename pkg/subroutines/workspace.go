@@ -28,18 +28,19 @@ const (
 )
 
 type WorkspaceSubroutine struct {
-	client     client.Client
-	limiter    workqueue.TypedRateLimiter[ClusteredName]
-	baseConfig *rest.Config
-	scheme     *runtime.Scheme
+	client        client.Client
+	clusterGetter ClusterClientGetter
+	limiter       workqueue.TypedRateLimiter[ClusteredName]
+	baseConfig    *rest.Config
+	scheme        *runtime.Scheme
 
 	mu         sync.Mutex
 	orgsClient client.Client
 }
 
-func NewWorkspaceSubroutine(clusterClient client.Client, baseConfig *rest.Config, scheme *runtime.Scheme) *WorkspaceSubroutine {
+func NewWorkspaceSubroutine(clusterGetter ClusterClientGetter, localClient client.Client, baseConfig *rest.Config, scheme *runtime.Scheme) *WorkspaceSubroutine {
 	exp := workqueue.NewTypedItemExponentialFailureRateLimiter[ClusteredName](1*time.Second, 120*time.Second)
-	return &WorkspaceSubroutine{client: clusterClient, limiter: exp, baseConfig: baseConfig, scheme: scheme}
+	return &WorkspaceSubroutine{client: localClient, clusterGetter: clusterGetter, limiter: exp, baseConfig: baseConfig, scheme: scheme}
 }
 
 // NewWorkspaceSubroutineForTesting creates a new WorkspaceSubroutine for unit tests.
@@ -55,8 +56,13 @@ func (r *WorkspaceSubroutine) Finalize(ctx context.Context, ro runtimeobject.Run
 	instance := ro.(*corev1alpha1.Account)
 	cn := MustGetClusteredName(ctx, ro)
 
+	clusterClient, err := clientForContext(ctx, r.clusterGetter, r.client)
+	if err != nil {
+		return ctrl.Result{}, errors.NewOperatorError(err, true, true)
+	}
+
 	ws := kcptenancyv1alpha.Workspace{}
-	if err := r.client.Get(ctx, client.ObjectKey{Name: instance.Name}, &ws); err != nil {
+	if err := clusterClient.Get(ctx, client.ObjectKey{Name: instance.Name}, &ws); err != nil {
 		if kerrors.IsNotFound(err) {
 			return ctrl.Result{}, nil
 		}
@@ -68,7 +74,7 @@ func (r *WorkspaceSubroutine) Finalize(ctx context.Context, ro runtimeobject.Run
 		return ctrl.Result{RequeueAfter: next}, nil
 	}
 
-	if err := r.client.Delete(ctx, &ws); err != nil {
+	if err := clusterClient.Delete(ctx, &ws); err != nil {
 		return ctrl.Result{}, errors.NewOperatorError(err, true, true)
 	}
 
@@ -76,7 +82,7 @@ func (r *WorkspaceSubroutine) Finalize(ctx context.Context, ro runtimeobject.Run
 	return ctrl.Result{RequeueAfter: next}, nil
 }
 
-func (r *WorkspaceSubroutine) Finalizers() []string { // coverage-ignore
+func (r *WorkspaceSubroutine) Finalizers(_ runtimeobject.RuntimeObject) []string { // coverage-ignore
 	return []string{WorkspaceSubroutineFinalizer}
 }
 
@@ -84,10 +90,15 @@ func (r *WorkspaceSubroutine) Process(ctx context.Context, ro runtimeobject.Runt
 	instance := ro.(*corev1alpha1.Account)
 	cn := MustGetClusteredName(ctx, ro)
 
+	clusterClient, err := clientForContext(ctx, r.clusterGetter, r.client)
+	if err != nil {
+		return ctrl.Result{}, errors.NewOperatorError(err, true, true)
+	}
+
 	workspaceTypeName := generateOrganizationWorkspaceTypeName(instance.Name)
 	if instance.Spec.Type == corev1alpha1.AccountTypeAccount {
 		accountInfo := &corev1alpha1.AccountInfo{}
-		if err := r.client.Get(ctx, client.ObjectKey{Name: DefaultAccountInfoName, Namespace: instance.Namespace}, accountInfo); err != nil {
+		if err := clusterClient.Get(ctx, client.ObjectKey{Name: DefaultAccountInfoName, Namespace: instance.Namespace}, accountInfo); err != nil {
 			if kerrors.IsNotFound(err) {
 				return ctrl.Result{RequeueAfter: r.limiter.When(cn)}, nil
 			}
@@ -108,12 +119,12 @@ func (r *WorkspaceSubroutine) Process(ctx context.Context, ro runtimeobject.Runt
 	}
 
 	createdWorkspace := &kcptenancyv1alpha.Workspace{ObjectMeta: metav1.ObjectMeta{Name: instance.Name}}
-	_, err = controllerutil.CreateOrUpdate(ctx, r.client, createdWorkspace, func() error {
+	_, err = controllerutil.CreateOrUpdate(ctx, clusterClient, createdWorkspace, func() error {
 		createdWorkspace.Spec.Type = &kcptenancyv1alpha.WorkspaceTypeReference{
 			Name: kcptenancyv1alpha.WorkspaceTypeName(workspaceTypeName),
 			Path: orgsWorkspacePath,
 		}
-		return controllerutil.SetOwnerReference(instance, createdWorkspace, r.client.Scheme())
+		return controllerutil.SetOwnerReference(instance, createdWorkspace, clusterClient.Scheme())
 	})
 	if err != nil {
 		return ctrl.Result{}, errors.NewOperatorError(err, true, true)

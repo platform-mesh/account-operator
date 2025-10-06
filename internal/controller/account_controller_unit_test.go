@@ -50,13 +50,15 @@ func buildTestReconciler(t *testing.T, cfg config.OperatorConfig) *AccountReconc
 		t.Fatalf("logger init: %v", err)
 	}
 
+	fakeClient := fake.NewClientBuilder().WithScheme(scheme).Build()
 	// Manually instantiate without calling NewAccountReconciler to avoid needing a full mc manager.
 	return &AccountReconciler{
-		log:        log,
-		cfg:        cfg,
-		baseConfig: restCfg,
-		scheme:     scheme,
-		serverCA:   "", // no CA data in unit test
+		log:         log,
+		cfg:         cfg,
+		baseConfig:  restCfg,
+		scheme:      scheme,
+		serverCA:    "",
+		subroutines: buildAccountSubroutines(cfg, nil, fakeClient, restCfg, scheme, "", nil),
 	}
 }
 
@@ -79,9 +81,11 @@ func TestBuildSubroutines_AllEnabled(t *testing.T) {
 	cfg.Subroutines.FGA.ParentRelation = "parent"
 	cfg.Subroutines.FGA.ObjectType = "account"
 
-	r := buildTestReconciler(t, cfg)
-	fakeClient := fake.NewClientBuilder().WithScheme(r.scheme).WithObjects(&corev1alpha1.Account{ObjectMeta: metav1.ObjectMeta{Name: "dummy"}}).Build()
-	subs := r.buildSubroutines(fakeClient)
+	scheme := runtime.NewScheme()
+	utilruntime.Must(corev1.AddToScheme(scheme))
+	utilruntime.Must(corev1alpha1.AddToScheme(scheme))
+	fakeClient := fake.NewClientBuilder().WithScheme(scheme).WithObjects(&corev1alpha1.Account{ObjectMeta: metav1.ObjectMeta{Name: "dummy"}}).Build()
+	subs := buildAccountSubroutines(cfg, nil, fakeClient, &rest.Config{}, scheme, "", nil)
 
 	if len(subs) != 4 {
 		t.Fatalf("expected 4 subroutines, got %d", len(subs))
@@ -95,10 +99,12 @@ func TestBuildSubroutines_AllEnabled(t *testing.T) {
 }
 
 func TestBuildSubroutines_DisabledAll(t *testing.T) {
-	var cfg config.OperatorConfig // all flags default false
-	r := buildTestReconciler(t, cfg)
-	fakeClient := fake.NewClientBuilder().WithScheme(r.scheme).Build()
-	subs := r.buildSubroutines(fakeClient)
+	var cfg config.OperatorConfig
+	scheme := runtime.NewScheme()
+	utilruntime.Must(corev1.AddToScheme(scheme))
+	utilruntime.Must(corev1alpha1.AddToScheme(scheme))
+	fakeClient := fake.NewClientBuilder().WithScheme(scheme).Build()
+	subs := buildAccountSubroutines(cfg, nil, fakeClient, &rest.Config{}, scheme, "", nil)
 	if len(subs) != 0 {
 		t.Fatalf("expected 0 subroutines, got %d", len(subs))
 	}
@@ -108,9 +114,11 @@ func TestBuildSubroutines_Partial(t *testing.T) {
 	var cfg config.OperatorConfig
 	cfg.Subroutines.Workspace.Enabled = true
 	cfg.Subroutines.AccountInfo.Enabled = true
-	r := buildTestReconciler(t, cfg)
-	fakeClient := fake.NewClientBuilder().WithScheme(r.scheme).Build()
-	subs := r.buildSubroutines(fakeClient)
+	scheme := runtime.NewScheme()
+	utilruntime.Must(corev1.AddToScheme(scheme))
+	utilruntime.Must(corev1alpha1.AddToScheme(scheme))
+	fakeClient := fake.NewClientBuilder().WithScheme(scheme).Build()
+	subs := buildAccountSubroutines(cfg, nil, fakeClient, &rest.Config{}, scheme, "", nil)
 	if len(subs) != 2 {
 		t.Fatalf("expected 2 subroutines, got %d", len(subs))
 	}

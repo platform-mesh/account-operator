@@ -24,19 +24,21 @@ import (
 type FGASubroutine struct {
 	fgaClient       openfgav1.OpenFGAServiceClient
 	client          client.Client
+	clusterGetter   ClusterClientGetter
 	objectType      string
 	parentRelation  string
 	creatorRelation string
 	limiter         workqueue.TypedRateLimiter[ClusteredName]
 }
 
-func NewFGASubroutine(cl client.Client, fgaClient openfgav1.OpenFGAServiceClient, creatorRelation, parentRealtion, objectType string) *FGASubroutine {
+func NewFGASubroutine(clusterGetter ClusterClientGetter, cl client.Client, fgaClient openfgav1.OpenFGAServiceClient, creatorRelation, parentRelation, objectType string) *FGASubroutine {
 	exp := workqueue.NewTypedItemExponentialFailureRateLimiter[ClusteredName](1*time.Second, 120*time.Second)
 	return &FGASubroutine{
 		client:          cl,
+		clusterGetter:   clusterGetter,
 		fgaClient:       fgaClient,
 		creatorRelation: creatorRelation,
-		parentRelation:  parentRealtion,
+		parentRelation:  parentRelation,
 		objectType:      objectType,
 		limiter:         exp,
 	}
@@ -49,7 +51,12 @@ func (e *FGASubroutine) Process(ctx context.Context, ro runtimeobject.RuntimeObj
 	log := logger.LoadLoggerFromContext(ctx)
 	log.Debug().Msg("Starting creator subroutine process() function")
 
-	accountWorkspace, err := retrieveWorkspace(ctx, account, e.client, log)
+	clusterClient, err := clientForContext(ctx, e.clusterGetter, e.client)
+	if err != nil {
+		return ctrl.Result{}, errors.NewOperatorError(err, true, true)
+	}
+
+	accountWorkspace, err := retrieveWorkspace(ctx, account, clusterClient, log)
 	if err != nil {
 		return ctrl.Result{}, errors.NewOperatorError(err, true, true)
 	}
@@ -60,10 +67,10 @@ func (e *FGASubroutine) Process(ctx context.Context, ro runtimeobject.RuntimeObj
 		return ctrl.Result{RequeueAfter: next}, nil
 	}
 
-	// Prepare context to work in workspace (single cluster mode)
+	// Prepare context to work in workspace
 	wsCtx := ctx
 
-	accountInfo, err := e.getAccountInfo(wsCtx)
+	accountInfo, err := e.getAccountInfo(wsCtx, clusterClient)
 	if err != nil {
 		log.Error().Err(err).Msg("Couldn't get Store Id")
 		return ctrl.Result{}, errors.NewOperatorError(err, true, true)
@@ -149,7 +156,12 @@ func (e *FGASubroutine) Finalize(ctx context.Context, runtimeObj runtimeobject.R
 
 	// Skip fga account finalization for organizations because the store is removed completely
 	if account.Spec.Type != v1alpha1.AccountTypeOrg {
-		accountInfo, err := e.getAccountInfo(ctx)
+		clusterClient, err := clientForContext(ctx, e.clusterGetter, e.client)
+		if err != nil {
+			return ctrl.Result{}, errors.NewOperatorError(err, true, true)
+		}
+
+		accountInfo, err := e.getAccountInfo(ctx, clusterClient)
 		if err != nil {
 			log.Error().Err(err).Msg("Couldn't get Store Id")
 			return ctrl.Result{}, errors.NewOperatorError(err, true, true)
@@ -211,10 +223,9 @@ func (e *FGASubroutine) Finalize(ctx context.Context, runtimeObj runtimeobject.R
 	return ctrl.Result{}, nil
 }
 
-func (e *FGASubroutine) getAccountInfo(ctx context.Context) (*v1alpha1.AccountInfo, error) {
-	// Get AccountInfo For Project
+func (e *FGASubroutine) getAccountInfo(ctx context.Context, cl client.Client) (*v1alpha1.AccountInfo, error) {
 	accountInfo := &v1alpha1.AccountInfo{}
-	err := e.client.Get(ctx, client.ObjectKey{Name: DefaultAccountInfoName}, accountInfo)
+	err := cl.Get(ctx, client.ObjectKey{Name: DefaultAccountInfoName}, accountInfo)
 	if err != nil {
 		return nil, err
 	}
@@ -223,7 +234,9 @@ func (e *FGASubroutine) getAccountInfo(ctx context.Context) (*v1alpha1.AccountIn
 
 func (e *FGASubroutine) GetName() string { return "FGASubroutine" }
 
-func (e *FGASubroutine) Finalizers() []string { return []string{"account.core.platform-mesh.io/fga"} }
+func (e *FGASubroutine) Finalizers(_ runtimeobject.RuntimeObject) []string {
+	return []string{"account.core.platform-mesh.io/fga"}
+}
 
 var saRegex = regexp.MustCompile(`^system:serviceaccount:[^:]*:[^:]*$`)
 

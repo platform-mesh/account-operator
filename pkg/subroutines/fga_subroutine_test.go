@@ -70,7 +70,7 @@ func (s *FGASubroutineTestSuite) TestProcessWritesTuplesForOrgCreator() {
 	mockFGA := mocks.NewOpenFGAServiceClient(s.T())
 	mockFGA.EXPECT().Write(mock.Anything, mock.Anything).Return(&openfgav1.WriteResponse{}, nil).Twice()
 
-	sub := NewFGASubroutine(cl, mockFGA, "member", "parent", "account")
+	sub := NewFGASubroutine(nil, cl, mockFGA, "member", "parent", "account")
 	res, opErr := sub.Process(s.ctx, acc)
 	s.Nil(opErr)
 	s.Equal(time.Duration(0), res.RequeueAfter)
@@ -106,7 +106,7 @@ func (s *FGASubroutineTestSuite) TestFinalizeDeletesTuplesForAccount() {
 	mockFGA := mocks.NewOpenFGAServiceClient(s.T())
 	// Expect three deletes when creator present: parent relation + role assignee + creator relation
 	mockFGA.EXPECT().Write(mock.Anything, mock.Anything).Return(&openfgav1.WriteResponse{}, nil).Times(3)
-	sub := NewFGASubroutine(cl, mockFGA, "member", "parent", "account")
+	sub := NewFGASubroutine(nil, cl, mockFGA, "member", "parent", "account")
 	res, opErr := sub.Finalize(s.ctx, acc)
 	s.Nil(opErr)
 	s.Equal(time.Duration(0), res.RequeueAfter)
@@ -121,7 +121,7 @@ func (s *FGASubroutineTestSuite) TestProcessErrorsOnMissingStore() {
 	// store id empty
 	cl := s.newClient(acc, ws, info)
 	mockFGA := mocks.NewOpenFGAServiceClient(s.T())
-	sub := NewFGASubroutine(cl, mockFGA, "member", "parent", "account")
+	sub := NewFGASubroutine(nil, cl, mockFGA, "member", "parent", "account")
 	_, opErr := sub.Process(s.ctx, acc)
 	s.NotNil(opErr)
 }

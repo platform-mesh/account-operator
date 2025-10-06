@@ -30,14 +30,15 @@ const (
 )
 
 type AccountInfoSubroutine struct {
-	client   client.Client
-	serverCA string
-	limiter  workqueue.TypedRateLimiter[ClusteredName]
+	client        client.Client
+	clusterGetter ClusterClientGetter
+	serverCA      string
+	limiter       workqueue.TypedRateLimiter[ClusteredName]
 }
 
-func NewAccountInfoSubroutine(client client.Client, serverCA string) *AccountInfoSubroutine {
+func NewAccountInfoSubroutine(clusterGetter ClusterClientGetter, client client.Client, serverCA string) *AccountInfoSubroutine {
 	exp := workqueue.NewTypedItemExponentialFailureRateLimiter[ClusteredName](1*time.Second, 120*time.Second)
-	return &AccountInfoSubroutine{client: client, serverCA: serverCA, limiter: exp}
+	return &AccountInfoSubroutine{client: client, clusterGetter: clusterGetter, serverCA: serverCA, limiter: exp}
 }
 
 func (r *AccountInfoSubroutine) GetName() string {
@@ -68,7 +69,7 @@ func (r *AccountInfoSubroutine) Finalize(ctx context.Context, ro runtimeobject.R
 	return ctrl.Result{}, nil
 }
 
-func (r *AccountInfoSubroutine) Finalizers() []string { // coverage-ignore
+func (r *AccountInfoSubroutine) Finalizers(_ runtimeobject.RuntimeObject) []string { // coverage-ignore
 	return []string{"account.core.platform-mesh.io/info"}
 }
 
@@ -78,7 +79,12 @@ func (r *AccountInfoSubroutine) Process(ctx context.Context, ro runtimeobject.Ru
 	cn := MustGetClusteredName(ctx, ro)
 
 	// select workspace for account
-	accountWorkspace, err := retrieveWorkspace(ctx, instance, r.client, log)
+	clusterClient, err := clientForContext(ctx, r.clusterGetter, r.client)
+	if err != nil {
+		return ctrl.Result{}, errors.NewOperatorError(err, true, true)
+	}
+
+	accountWorkspace, err := retrieveWorkspace(ctx, instance, clusterClient, log)
 	if err != nil {
 		return ctrl.Result{}, errors.NewOperatorError(err, true, true)
 	}
@@ -137,7 +143,7 @@ func (r *AccountInfoSubroutine) Process(ctx context.Context, ro runtimeobject.Ru
 		return ctrl.Result{}, nil
 	}
 
-	parentAccountInfo, exists, err := r.retrieveAccountInfo(ctx, log)
+	parentAccountInfo, exists, err := r.retrieveAccountInfo(ctx, clusterClient, log)
 	if err != nil {
 		return ctrl.Result{}, errors.NewOperatorError(err, true, true)
 	}
@@ -164,9 +170,9 @@ func (r *AccountInfoSubroutine) Process(ctx context.Context, ro runtimeobject.Ru
 	return ctrl.Result{}, nil
 }
 
-func (r *AccountInfoSubroutine) retrieveAccountInfo(ctx context.Context, log *logger.Logger) (*v1alpha1.AccountInfo, bool, error) {
+func (r *AccountInfoSubroutine) retrieveAccountInfo(ctx context.Context, cl client.Client, log *logger.Logger) (*v1alpha1.AccountInfo, bool, error) {
 	accountInfo := &v1alpha1.AccountInfo{}
-	err := r.client.Get(ctx, client.ObjectKey{Name: "account"}, accountInfo)
+	err := cl.Get(ctx, client.ObjectKey{Name: "account"}, accountInfo)
 	if err != nil {
 		if kerrors.IsNotFound(err) {
 			log.Info().Msg("accountInfo does not yet exist, retry")

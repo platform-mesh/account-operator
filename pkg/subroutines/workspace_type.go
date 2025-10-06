@@ -118,7 +118,7 @@ func (w *WorkspaceTypeSubroutine) GetName() string {
 	return workspaceTypeSubroutineName
 }
 
-func (w *WorkspaceTypeSubroutine) Finalizers() []string {
+func (w *WorkspaceTypeSubroutine) Finalizers(_ runtimeobject.RuntimeObject) []string {
 	return []string{workspaceTypeSubroutineFinalizer}
 }
 

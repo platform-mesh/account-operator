@@ -54,7 +54,7 @@ func (s *WorkspaceSubroutineTestSuite) TestProcessCreatesWorkspaceForOrg() {
 	orgType := &kcptenancyv1alpha.WorkspaceType{ObjectMeta: metav1.ObjectMeta{Name: "org-ws-org"}}
 	conditionshelper.Set(orgType, &conditionsapi.Condition{Type: conditionsapi.ReadyCondition, Status: v1.ConditionTrue, Reason: "Ready", Message: "ready"})
 	cl := s.newClient(acc, orgType)
-	sub := NewWorkspaceSubroutine(cl, nil, nil)
+	sub := NewWorkspaceSubroutine(nil, cl, nil, nil)
 	res, opErr := sub.Process(s.ctx, acc)
 	s.Nil(opErr)
 	s.Equal(time.Duration(0), res.RequeueAfter)

@@ -62,7 +62,7 @@ func (s *AccountInfoSubroutineTestSuite) TestProcessOrganizationCreatesAccountIn
 	ws := newWorkspace("org-a", string(kcpcorev1alpha.LogicalClusterPhaseReady), "cluster-org-a", "https://host/root:orgs/org-a")
 	cl := s.newClient(acc, ws)
 
-	sub := NewAccountInfoSubroutine(cl, "FAKE-CA")
+	sub := NewAccountInfoSubroutine(nil, cl, "FAKE-CA")
 	res, opErr := sub.Process(s.ctx, acc)
 	// should succeed immediately for org
 	s.Nil(opErr)
@@ -80,7 +80,7 @@ func (s *AccountInfoSubroutineTestSuite) TestProcessWorkspaceNotReadyRetries() {
 	acc := &corev1alpha1.Account{ObjectMeta: metav1.ObjectMeta{Name: "org-b", Annotations: map[string]string{"kcp.io/cluster": "root"}}, Spec: corev1alpha1.AccountSpec{Type: corev1alpha1.AccountTypeOrg}}
 	ws := newWorkspace("org-b", string(kcpcorev1alpha.LogicalClusterPhaseScheduling), "cluster-org-b", "https://host/root:orgs/org-b")
 	cl := s.newClient(acc, ws)
-	sub := NewAccountInfoSubroutine(cl, "CA")
+	sub := NewAccountInfoSubroutine(nil, cl, "CA")
 	res, opErr := sub.Process(s.ctx, acc)
 	s.Nil(opErr)
 	s.True(res.RequeueAfter > 0)
@@ -101,7 +101,7 @@ func (s *AccountInfoSubroutineTestSuite) TestProcessAccountInheritsParent() {
 	accWs := newWorkspace("acc-x", string(kcpcorev1alpha.LogicalClusterPhaseReady), "cluster-acc-x", "https://host/root:orgs/org-c/acc-x")
 
 	cl := s.newClient(orgAcc, orgWs, parentInfo, acc, accWs)
-	sub := NewAccountInfoSubroutine(cl, "CA")
+	sub := NewAccountInfoSubroutine(nil, cl, "CA")
 
 	res, opErr := sub.Process(s.ctx, acc)
 	s.Nil(opErr)
@@ -122,7 +122,7 @@ func (s *AccountInfoSubroutineTestSuite) TestProcessAccountParentMissing() {
 	acc := &corev1alpha1.Account{ObjectMeta: metav1.ObjectMeta{Name: "acc-missing", Annotations: map[string]string{"kcp.io/cluster": "root"}}, Spec: corev1alpha1.AccountSpec{Type: corev1alpha1.AccountTypeAccount}}
 	accWs := newWorkspace("acc-missing", string(kcpcorev1alpha.LogicalClusterPhaseReady), "cluster-acc-missing", "https://host/root:orgs/org-missing/acc-missing")
 	cl := s.newClient(orgAcc, orgWs, acc, accWs) // intentionally no AccountInfo object
-	sub := NewAccountInfoSubroutine(cl, "CA")
+	sub := NewAccountInfoSubroutine(nil, cl, "CA")
 	_, opErr := sub.Process(s.ctx, acc)
 	s.NotNil(opErr)
 }
