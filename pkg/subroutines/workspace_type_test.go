@@ -14,6 +14,7 @@ import (
 	metav1 "k8s.io/apimachinery/pkg/apis/meta/v1"
 	"k8s.io/apimachinery/pkg/runtime"
 	utilruntime "k8s.io/apimachinery/pkg/util/runtime"
+	"k8s.io/client-go/rest"
 	"sigs.k8s.io/controller-runtime/pkg/client"
 	"sigs.k8s.io/controller-runtime/pkg/client/fake"
 
@@ -135,6 +136,27 @@ func (suite *WorkspaceTypeSubroutineTestSuite) TestFinalizeSkipsForNonOrg() {
 	res, opErr := subroutine.Finalize(suite.ctx, account)
 	suite.Nil(opErr)
 	suite.Zero(res.RequeueAfter)
+}
+
+func (suite *WorkspaceTypeSubroutineTestSuite) TestGetOrgsClientInvalidBaseConfig() {
+	// Invalid host triggers error path in createOrganizationRestConfig
+	sub := NewWorkspaceTypeSubroutine(&rest.Config{Host: "http://%zz"}, suite.scheme)
+	cl, err := sub.getOrgsClient()
+	suite.Nil(cl)
+	suite.NotNil(err)
+}
+
+func (suite *WorkspaceTypeSubroutineTestSuite) TestGetOrgsClientCachesClient() {
+	// When orgsClient already present, it should be returned without error
+	cl := fake.NewClientBuilder().WithScheme(suite.scheme).Build()
+	sub := NewWorkspaceTypeSubroutineWithClient(cl)
+	cl1, err1 := sub.getOrgsClient()
+	suite.NoError(err1)
+	suite.Equal(cl, cl1)
+	// Second call returns cached client
+	cl2, err2 := sub.getOrgsClient()
+	suite.NoError(err2)
+	suite.Equal(cl1, cl2)
 }
 
 // (intentionally skipped error injection test; covered in separate error suite)

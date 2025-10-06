@@ -16,6 +16,7 @@ import (
 	"k8s.io/client-go/util/workqueue"
 	"sigs.k8s.io/controller-runtime/pkg/client"
 	"sigs.k8s.io/controller-runtime/pkg/client/fake"
+	mccontext "sigs.k8s.io/multicluster-runtime/pkg/context"
 
 	openfgav1 "github.com/openfga/api/proto/openfga/v1"
 	corev1alpha1 "github.com/platform-mesh/account-operator/api/v1alpha1"
@@ -139,6 +140,124 @@ func (s *FGASubroutineTestSuite) TestProcessErrorOnWriterFailure() {
 	sub := &FGASubroutine{client: cl, fgaClient: mockFGA, creatorRelation: "member", parentRelation: "parent", objectType: "account", limiter: lim}
 	_, opErr := sub.Process(s.ctx, acc)
 	s.NotNil(opErr)
+	mockFGA.AssertExpectations(s.T())
+}
+
+func (s *FGASubroutineTestSuite) TestProcessSkipsCreatorWhenAlreadyWritten() {
+	// If the Account condition marks FGASubroutine_Ready true, creator tuples should be skipped.
+	acc := &corev1alpha1.Account{ObjectMeta: metav1.ObjectMeta{Name: "org-fga5", Annotations: map[string]string{"kcp.io/cluster": "root"}}, Spec: corev1alpha1.AccountSpec{Type: corev1alpha1.AccountTypeOrg, Creator: strPtr("user@example.com")}}
+	acc.Status.Conditions = append(acc.Status.Conditions, metav1.Condition{Type: "FGASubroutine_Ready", Status: metav1.ConditionTrue})
+	ws := newReadyWorkspace("org-fga5", "cluster-org-fga5", "https://host/root:orgs/org-fga5")
+	info := &corev1alpha1.AccountInfo{ObjectMeta: metav1.ObjectMeta{Name: DefaultAccountInfoName}}
+	info.Spec.Account = corev1alpha1.AccountLocation{Name: "org-fga5", GeneratedClusterId: "cluster-org-fga5", OriginClusterId: "root", Type: corev1alpha1.AccountTypeOrg, Path: "org-fga5", URL: "https://host/root:orgs/org-fga5"}
+	info.Spec.Organization = info.Spec.Account
+	info.Spec.FGA.Store.Id = "store-1"
+	cl := s.newClient(acc, ws, info)
+	mockFGA := mocks.NewOpenFGAServiceClient(s.T())
+	// No writes expected because creatorTuplesWritten is true
+	sub := NewFGASubroutine(nil, cl, mockFGA, "member", "parent", "account")
+	res, opErr := sub.Process(s.ctx, acc)
+	s.Nil(opErr)
+	s.Equal(time.Duration(0), res.RequeueAfter)
+	mockFGA.AssertExpectations(s.T())
+}
+
+func (s *FGASubroutineTestSuite) TestProcessCreatorValidationRejectsServiceAccountLike() {
+	acc := &corev1alpha1.Account{ObjectMeta: metav1.ObjectMeta{Name: "org-fga6", Annotations: map[string]string{"kcp.io/cluster": "root"}}, Spec: corev1alpha1.AccountSpec{Type: corev1alpha1.AccountTypeOrg, Creator: strPtr("system.serviceaccount:ns:sa")}}
+	ws := newReadyWorkspace("org-fga6", "cluster-org-fga6", "https://host/root:orgs/org-fga6")
+	info := &corev1alpha1.AccountInfo{ObjectMeta: metav1.ObjectMeta{Name: DefaultAccountInfoName}}
+	info.Spec.Account = corev1alpha1.AccountLocation{Name: "org-fga6", GeneratedClusterId: "cluster-org-fga6", OriginClusterId: "root", Type: corev1alpha1.AccountTypeOrg, Path: "org-fga6", URL: "https://host/root:orgs/org-fga6"}
+	info.Spec.Organization = info.Spec.Account
+	info.Spec.FGA.Store.Id = "store-1"
+	cl := s.newClient(acc, ws, info)
+	mockFGA := mocks.NewOpenFGAServiceClient(s.T())
+	sub := NewFGASubroutine(nil, cl, mockFGA, "member", "parent", "account")
+	_, opErr := sub.Process(s.ctx, acc)
+	s.NotNil(opErr)
+}
+
+func (s *FGASubroutineTestSuite) TestFinalizeSkipsForOrgType() {
+	acc := &corev1alpha1.Account{ObjectMeta: metav1.ObjectMeta{Name: "org-fga-finalize", Annotations: map[string]string{"kcp.io/cluster": "root"}}, Spec: corev1alpha1.AccountSpec{Type: corev1alpha1.AccountTypeOrg}}
+	sub := &FGASubroutine{}
+	res, opErr := sub.Finalize(s.ctx, acc)
+	s.Nil(opErr)
+	s.Equal(time.Duration(0), res.RequeueAfter)
+}
+
+func (s *FGASubroutineTestSuite) TestFormatUserAndValidateCreatorHelpers() {
+	s.True(validateCreator("user@example.com"))
+	s.False(validateCreator("system.serviceaccount:ns:sa"))
+	s.Equal("system.serviceaccount.ns.sa", formatUser("system:serviceaccount:ns:sa"))
+	s.Equal("bob", formatUser("bob"))
+}
+
+func (s *FGASubroutineTestSuite) TestProcessUsesClusterGetter() {
+	acc := &corev1alpha1.Account{ObjectMeta: metav1.ObjectMeta{Name: "org-cluster", Annotations: map[string]string{"kcp.io/cluster": "root"}}, Spec: corev1alpha1.AccountSpec{Type: corev1alpha1.AccountTypeOrg, Creator: strPtr("user@example.com")}}
+	ws := newReadyWorkspace("org-cluster", "cluster-org", "https://host/root:orgs/org-cluster")
+	info := &corev1alpha1.AccountInfo{ObjectMeta: metav1.ObjectMeta{Name: DefaultAccountInfoName}}
+	info.Spec.Account = corev1alpha1.AccountLocation{Name: "org-cluster", GeneratedClusterId: "cluster-org", OriginClusterId: "root", Type: corev1alpha1.AccountTypeOrg, Path: "org-cluster", URL: "https://host/root:orgs/org-cluster"}
+	info.Spec.Organization = info.Spec.Account
+	info.Spec.FGA.Store.Id = "store-xyz"
+	cl := s.newClient(acc, ws, info)
+	getter := fakeClusterGetter{cluster: &fakeCluster{client: cl}}
+	mockFGA := mocks.NewOpenFGAServiceClient(s.T())
+	// Org with creator triggers two writes (role assignee + creator relation)
+	mockFGA.EXPECT().Write(mock.Anything, mock.Anything).Return(&openfgav1.WriteResponse{}, nil).Twice()
+	sub := NewFGASubroutine(getter, nil, mockFGA, "member", "parent", "account")
+	ctx := mccontext.WithCluster(s.ctx, "cluster-org")
+	res, opErr := sub.Process(ctx, acc)
+	s.Nil(opErr)
+	s.Equal(time.Duration(0), res.RequeueAfter)
+	mockFGA.AssertExpectations(s.T())
+}
+
+func (s *FGASubroutineTestSuite) TestProcessClusterGetterError() {
+	acc := &corev1alpha1.Account{ObjectMeta: metav1.ObjectMeta{Name: "org-cluster-err", Annotations: map[string]string{"kcp.io/cluster": "root"}}, Spec: corev1alpha1.AccountSpec{Type: corev1alpha1.AccountTypeOrg}}
+	getter := fakeClusterGetter{err: errors.New("boom")}
+	sub := NewFGASubroutine(getter, nil, mocks.NewOpenFGAServiceClient(s.T()), "member", "parent", "account")
+	ctx := mccontext.WithCluster(s.ctx, "cluster")
+	_, opErr := sub.Process(ctx, acc)
+	s.NotNil(opErr)
+}
+
+func (s *FGASubroutineTestSuite) TestFinalizeClusterGetterError() {
+	acc := &corev1alpha1.Account{ObjectMeta: metav1.ObjectMeta{Name: "acc-fga-err", Annotations: map[string]string{"kcp.io/cluster": "root"}}, Spec: corev1alpha1.AccountSpec{Type: corev1alpha1.AccountTypeAccount}}
+	getter := fakeClusterGetter{err: errors.New("boom")}
+	sub := NewFGASubroutine(getter, nil, mocks.NewOpenFGAServiceClient(s.T()), "member", "parent", "account")
+	ctx := mccontext.WithCluster(s.ctx, "cluster")
+	_, opErr := sub.Finalize(ctx, acc)
+	s.NotNil(opErr)
+}
+
+func (s *FGASubroutineTestSuite) TestFinalizeErrorsOnMissingStoreId() {
+	// For non-org accounts, when store id is empty, finalize should error
+	acc := &corev1alpha1.Account{ObjectMeta: metav1.ObjectMeta{Name: "acc-finalize-empty", Annotations: map[string]string{"kcp.io/cluster": "root"}}, Spec: corev1alpha1.AccountSpec{Type: corev1alpha1.AccountTypeAccount}}
+	ws := newReadyWorkspace("acc-finalize-empty", "cluster-acc", "https://host/root:orgs/org-x/acc-finalize-empty")
+	info := &corev1alpha1.AccountInfo{ObjectMeta: metav1.ObjectMeta{Name: DefaultAccountInfoName}}
+	info.Spec.Account = corev1alpha1.AccountLocation{Name: "acc-finalize-empty", GeneratedClusterId: "cluster-acc", OriginClusterId: "root", Type: corev1alpha1.AccountTypeAccount, Path: "org-x/acc-finalize-empty"}
+	// store id remains empty
+	cl := s.newClient(acc, ws, info)
+	sub := NewFGASubroutine(nil, cl, mocks.NewOpenFGAServiceClient(s.T()), "member", "parent", "account")
+	_, opErr := sub.Finalize(s.ctx, acc)
+	s.NotNil(opErr)
+}
+
+func (s *FGASubroutineTestSuite) TestProcessWritesParentForAccountType() {
+	// For account type, parent relation should be written
+	acc := &corev1alpha1.Account{ObjectMeta: metav1.ObjectMeta{Name: "acc-parent", Annotations: map[string]string{"kcp.io/cluster": "root"}}, Spec: corev1alpha1.AccountSpec{Type: corev1alpha1.AccountTypeAccount}}
+	ws := newReadyWorkspace("acc-parent", "cluster-acc-parent", "https://host/root:orgs/org-y/acc-parent")
+	info := &corev1alpha1.AccountInfo{ObjectMeta: metav1.ObjectMeta{Name: DefaultAccountInfoName}}
+	info.Spec.Account = corev1alpha1.AccountLocation{Name: "acc-parent", GeneratedClusterId: "cluster-acc-parent", OriginClusterId: "root", Type: corev1alpha1.AccountTypeAccount, Path: "org-y/acc-parent", URL: "https://host/root:orgs/org-y/acc-parent"}
+	info.Spec.ParentAccount = &corev1alpha1.AccountLocation{Name: "org-y", GeneratedClusterId: "cluster-org-y", OriginClusterId: "root", Type: corev1alpha1.AccountTypeOrg, Path: "org-y", URL: "https://host/root:orgs/org-y"}
+	info.Spec.FGA.Store.Id = "store-2"
+	cl := s.newClient(acc, ws, info)
+	mockFGA := mocks.NewOpenFGAServiceClient(s.T())
+	// Expect exactly one write for parent relation (no creator)
+	mockFGA.EXPECT().Write(mock.Anything, mock.Anything).Return(&openfgav1.WriteResponse{}, nil).Once()
+	sub := NewFGASubroutine(nil, cl, mockFGA, "member", "parent", "account")
+	res, opErr := sub.Process(s.ctx, acc)
+	s.Nil(opErr)
+	s.Equal(time.Duration(0), res.RequeueAfter)
 	mockFGA.AssertExpectations(s.T())
 }
 

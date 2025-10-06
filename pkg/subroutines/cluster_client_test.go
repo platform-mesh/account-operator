@@ -9,6 +9,7 @@ import (
 	corev1 "k8s.io/api/core/v1"
 	"k8s.io/apimachinery/pkg/runtime"
 	utilruntime "k8s.io/apimachinery/pkg/util/runtime"
+	"sigs.k8s.io/controller-runtime/pkg/client/fake"
 	"sigs.k8s.io/controller-runtime/pkg/cluster"
 	mccontext "sigs.k8s.io/multicluster-runtime/pkg/context"
 
@@ -63,4 +64,29 @@ func TestWorkspaceSubroutine_UsesClusterClientFromContext(t *testing.T) {
 	require.Equal(t, "beta", getter.last, "expected getter to be called with cluster 'beta'")
 
 	require.Equal(t, 2, getter.calls)
+}
+
+func TestClientForContextFallsBackToLocalClient(t *testing.T) {
+	scheme := runtime.NewScheme()
+	fakeClient := fake.NewClientBuilder().WithScheme(scheme).Build()
+	got, err := clientForContext(context.Background(), nil, fakeClient)
+	require.NoError(t, err)
+	require.Equal(t, fakeClient, got)
+}
+
+func TestClientForContextErrorsWithoutFallback(t *testing.T) {
+	_, err := clientForContext(context.Background(), nil, nil)
+	require.Error(t, err)
+}
+
+func TestClientForContextGetterPresentButNoClusterUsesFallback(t *testing.T) {
+	scheme := runtime.NewScheme()
+	fakeClient := fake.NewClientBuilder().WithScheme(scheme).Build()
+	// Provide a getter, but don’t set cluster in context; should ignore getter and use fallback
+	getter := &recordingGetter{}
+	got, err := clientForContext(context.Background(), getter, fakeClient)
+	require.NoError(t, err)
+	require.Equal(t, fakeClient, got)
+	// Getter should not be called since no cluster in context
+	require.Equal(t, 0, getter.calls)
 }

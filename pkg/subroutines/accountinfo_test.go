@@ -2,6 +2,7 @@ package subroutines
 
 import (
 	"context"
+	"errors"
 	"testing"
 	"time"
 
@@ -14,6 +15,7 @@ import (
 	"k8s.io/client-go/util/workqueue"
 	"sigs.k8s.io/controller-runtime/pkg/client"
 	"sigs.k8s.io/controller-runtime/pkg/client/fake"
+	mccontext "sigs.k8s.io/multicluster-runtime/pkg/context"
 
 	corev1alpha1 "github.com/platform-mesh/account-operator/api/v1alpha1"
 )
@@ -127,6 +129,27 @@ func (s *AccountInfoSubroutineTestSuite) TestProcessAccountParentMissing() {
 	s.NotNil(opErr)
 }
 
+func (s *AccountInfoSubroutineTestSuite) TestProcessUsesClusterGetter() {
+	acc := &corev1alpha1.Account{ObjectMeta: metav1.ObjectMeta{Name: "org-getter", Annotations: map[string]string{"kcp.io/cluster": "root"}}, Spec: corev1alpha1.AccountSpec{Type: corev1alpha1.AccountTypeOrg}}
+	ws := newWorkspace("org-getter", string(kcpcorev1alpha.LogicalClusterPhaseReady), "cluster-org-getter", "https://host/root:orgs/org-getter")
+	client := s.newClient(acc, ws)
+	getter := fakeClusterGetter{cluster: &fakeCluster{client: client}}
+	sub := NewAccountInfoSubroutine(getter, nil, "CA")
+	ctx := mccontext.WithCluster(s.ctx, "cluster-org-getter")
+	res, opErr := sub.Process(ctx, acc)
+	s.Nil(opErr)
+	s.Equal(time.Duration(0), res.RequeueAfter)
+}
+
+func (s *AccountInfoSubroutineTestSuite) TestProcessClusterGetterError() {
+	acc := &corev1alpha1.Account{ObjectMeta: metav1.ObjectMeta{Name: "org-getter-err", Annotations: map[string]string{"kcp.io/cluster": "root"}}, Spec: corev1alpha1.AccountSpec{Type: corev1alpha1.AccountTypeOrg}}
+	getter := fakeClusterGetter{err: errors.New("boom")}
+	sub := NewAccountInfoSubroutine(getter, nil, "CA")
+	ctx := mccontext.WithCluster(s.ctx, "cluster")
+	_, opErr := sub.Process(ctx, acc)
+	s.NotNil(opErr)
+}
+
 // Test Finalize behavior waiting for other finalizers
 func (s *AccountInfoSubroutineTestSuite) TestFinalizeDelaysUntilLast() {
 	acc := &corev1alpha1.Account{ObjectMeta: metav1.ObjectMeta{Name: "org-d", Finalizers: []string{"x", "y"}, Annotations: map[string]string{"kcp.io/cluster": "root"}}, Spec: corev1alpha1.AccountSpec{Type: corev1alpha1.AccountTypeOrg}}
@@ -146,6 +169,20 @@ func (s *AccountInfoSubroutineTestSuite) TestFinalizeDelaysUntilLast() {
 	res, opErr = sub.Finalize(s.ctx, acc)
 	s.Nil(opErr)
 	s.Equal(time.Duration(0), res.RequeueAfter)
+}
+
+func (s *AccountInfoSubroutineTestSuite) TestFinalizeNilRuntimeObject() {
+	sub := NewAccountInfoSubroutine(nil, nil, "CA")
+	_, opErr := sub.Finalize(s.ctx, nil)
+	s.NotNil(opErr)
+}
+
+func (s *AccountInfoSubroutineTestSuite) TestFinalizeMultipleFinalizersWithoutLimiter() {
+	sub := &AccountInfoSubroutine{}
+	acc := &corev1alpha1.Account{ObjectMeta: metav1.ObjectMeta{Name: "org-final", Finalizers: []string{"a", "b"}}}
+	res, opErr := sub.Finalize(s.ctx, acc)
+	s.Nil(opErr)
+	s.Equal(time.Second, res.RequeueAfter)
 }
 
 // Test retrieveCurrentWorkspacePath error paths
