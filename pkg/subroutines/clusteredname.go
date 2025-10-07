@@ -29,6 +29,8 @@ func GetClusteredName(ctx context.Context, instance runtimeobject.RuntimeObject)
 }
 
 func MustGetClusteredName(ctx context.Context, instance runtimeobject.RuntimeObject) ClusteredName {
-	cn, _ := GetClusteredName(ctx, instance)
-	return cn
+	if cn, ok := GetClusteredName(ctx, instance); ok {
+		return cn
+	}
+	panic("cluster not found in context, cannot requeue")
 }

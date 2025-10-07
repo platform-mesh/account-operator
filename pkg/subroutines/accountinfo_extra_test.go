@@ -13,6 +13,7 @@ import (
 	"k8s.io/apimachinery/pkg/runtime"
 	"sigs.k8s.io/controller-runtime/pkg/client"
 	"sigs.k8s.io/controller-runtime/pkg/client/fake"
+	mccontext "sigs.k8s.io/multicluster-runtime/pkg/context"
 
 	corev1alpha1 "github.com/platform-mesh/account-operator/api/v1alpha1"
 )
@@ -38,7 +39,8 @@ func TestAccountInfoFinalizeNilRuntimeObject(t *testing.T) {
 func TestAccountInfoFinalizeMultipleFinalizersNoLimiter(t *testing.T) {
 	acc := &corev1alpha1.Account{ObjectMeta: metav1.ObjectMeta{Name: "acc", Finalizers: []string{"f1", "f2"}}}
 	sub := &AccountInfoSubroutine{} // limiter is nil
-	res, opErr := sub.Finalize(context.Background(), acc)
+	ctx := mccontext.WithCluster(context.Background(), "cluster-test")
+	res, opErr := sub.Finalize(ctx, acc)
 	if opErr != nil {
 		t.Fatalf("unexpected error: %v", opErr)
 	}

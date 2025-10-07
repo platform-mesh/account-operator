@@ -12,6 +12,7 @@ import (
 	"k8s.io/apimachinery/pkg/runtime"
 	utilruntime "k8s.io/apimachinery/pkg/util/runtime"
 	"sigs.k8s.io/controller-runtime/pkg/client/fake"
+	mccontext "sigs.k8s.io/multicluster-runtime/pkg/context"
 )
 
 // Basic sanity tests to bump coverage on simple getters/finalizers.
@@ -81,7 +82,8 @@ func TestAccountInfoSubroutine_FinalizeFastPath(t *testing.T) {
 	acc.Spec.Type = corev1alpha1.AccountTypeOrg
 	// Only our finalizer present -> immediate return
 	acc.Finalizers = []string{"account.core.platform-mesh.io/info"}
-	res, err := sub.Finalize(context.Background(), acc)
+	ctx := mccontext.WithCluster(context.Background(), "cluster-test")
+	res, err := sub.Finalize(ctx, acc)
 	if err != nil {
 		t.Fatalf("unexpected op error: %v", err)
 	}
@@ -97,7 +99,8 @@ func TestAccountInfoSubroutine_FinalizeDelayed(t *testing.T) {
 	acc.Spec.Type = corev1alpha1.AccountTypeOrg
 	acc.Finalizers = []string{"x", "account.core.platform-mesh.io/info"}
 	sub := &AccountInfoSubroutine{limiter: workqueueNoop{}}
-	res, err := sub.Finalize(context.Background(), acc)
+	ctx := mccontext.WithCluster(context.Background(), "cluster-test")
+	res, err := sub.Finalize(ctx, acc)
 	if err != nil {
 		t.Fatalf("unexpected error: %v", err)
 	}

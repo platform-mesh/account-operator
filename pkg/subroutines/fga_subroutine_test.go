@@ -43,7 +43,8 @@ func (s *FGASubroutineTestSuite) SetupSuite() {
 	var err error
 	s.log, err = logger.New(logger.DefaultConfig())
 	s.Require().NoError(err)
-	s.ctx = context.Background()
+	// Provide a clustered context so MustGetClusteredName does not panic in tests.
+	s.ctx = mccontext.WithCluster(context.Background(), "cluster-test")
 }
 
 func (s *FGASubroutineTestSuite) newClient(objs ...client.Object) client.Client {

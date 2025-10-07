@@ -45,7 +45,7 @@ func (s *WorkspaceSubroutineTestSuite) SetupSuite() {
 	var err error
 	s.log, err = logger.New(logger.DefaultConfig())
 	s.Require().NoError(err)
-	s.ctx = context.Background()
+	s.ctx = mccontext.WithCluster(context.Background(), "cluster-test")
 }
 
 func (s *WorkspaceSubroutineTestSuite) newClient(objs ...client.Object) client.Client {

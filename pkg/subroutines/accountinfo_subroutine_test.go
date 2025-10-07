@@ -11,6 +11,7 @@ import (
 	"k8s.io/client-go/util/workqueue"
 	"sigs.k8s.io/controller-runtime/pkg/client"
 	"sigs.k8s.io/controller-runtime/pkg/client/fake"
+	mccontext "sigs.k8s.io/multicluster-runtime/pkg/context"
 
 	corev1alpha1 "github.com/platform-mesh/account-operator/api/v1alpha1"
 )
@@ -39,7 +40,8 @@ func TestAccountInfoProcessOrgCreatesInfo(t *testing.T) {
 	ws.Status.Phase = kcpcorev1alpha.LogicalClusterPhaseReady
 	cl := fake.NewClientBuilder().WithScheme(scheme).WithObjects(acc, ws).Build()
 	sub := &AccountInfoSubroutine{client: cl, serverCA: "ca", limiter: workqueue.NewTypedItemExponentialFailureRateLimiter[ClusteredName](1, 1)}
-	_, opErr := sub.Process(context.Background(), acc)
+	ctx := mccontext.WithCluster(context.Background(), "cluster-test")
+	_, opErr := sub.Process(ctx, acc)
 	if opErr != nil {
 		t.Fatalf("unexpected error: %v", opErr)
 	}
@@ -69,7 +71,8 @@ func TestAccountInfoProcessAccountCreatesInfoFromParent(t *testing.T) {
 	parent.Spec.FGA.Store.Id = "store-parent"
 	cl := fake.NewClientBuilder().WithScheme(scheme).WithObjects(acc, ws, parent).Build()
 	sub := &AccountInfoSubroutine{client: cl, serverCA: "cacert", limiter: workqueue.NewTypedItemExponentialFailureRateLimiter[ClusteredName](1, 1)}
-	_, opErr := sub.Process(context.Background(), acc)
+	ctx := mccontext.WithCluster(context.Background(), "cluster-test")
+	_, opErr := sub.Process(ctx, acc)
 	if opErr != nil {
 		t.Fatalf("unexpected error: %v", opErr)
 	}
@@ -94,7 +97,8 @@ func TestAccountInfoProcessWorkspaceNotReadyNoLimiter(t *testing.T) {
 	ws.Status.Phase = kcpcorev1alpha.LogicalClusterPhaseInitializing
 	cl := fake.NewClientBuilder().WithScheme(scheme).WithObjects(acc, ws).Build()
 	sub := &AccountInfoSubroutine{client: cl, serverCA: "ca"} // limiter nil
-	res, opErr := sub.Process(context.Background(), acc)
+	ctx := mccontext.WithCluster(context.Background(), "cluster-test")
+	res, opErr := sub.Process(ctx, acc)
 	if opErr != nil {
 		t.Fatalf("unexpected error: %v", opErr)
 	}
@@ -112,7 +116,8 @@ func TestAccountInfoProcessMissingOriginClusterAnnotation(t *testing.T) {
 	ws.Status.Phase = kcpcorev1alpha.LogicalClusterPhaseReady
 	cl := fake.NewClientBuilder().WithScheme(scheme).WithObjects(acc, ws).Build()
 	sub := &AccountInfoSubroutine{client: cl, serverCA: "ca"}
-	_, opErr := sub.Process(context.Background(), acc)
+	ctx := mccontext.WithCluster(context.Background(), "cluster-test")
+	_, opErr := sub.Process(ctx, acc)
 	if opErr == nil || !opErr.Retry() {
 		t.Fatalf("expected retryable error for missing origin cluster annotation")
 	}
