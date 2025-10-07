@@ -1,3 +1,4 @@
 package subroutines
 
-//go:generate bash -lc "cd ../.. && go run -mod=mod github.com/vektra/mockery/v3@v3.5.5"
+//go:generate bash -c "cd ../.. && if [ -f .mockery.yaml ]; then go run -mod=mod github.com/vektra/mockery/v3@v3.5.5; else go run -mod=mod github.com/vektra/mockery/v3@v3.5.5 --srcpkg=github.com/openfga/api/proto/openfga/v1 --name=OpenFGAServiceClient --case=underscore --with-expecter --dir=pkg/subroutines/mocks --pkgname=mocks --formatter=goimports && go run -mod=mod github.com/vektra/mockery/v3@v3.5.5 --srcpkg=sigs.k8s.io/controller-runtime/pkg/client --name=Client --case=underscore --with-expecter --dir=pkg/subroutines/mocks --pkgname=mocks --formatter=goimports; fi"
+//go:generate bash -c "cd ../.. && FILE=\"pkg/subroutines/mocks/mock_OpenFGAServiceClient.go\"; if [ -f \"$FILE\" ]; then if grep -qE '^\\s*\"github.com/openfga/api/proto/openfga/v1\"$' \"$FILE\"; then perl -0777 -i -pe 's/(^\\s*)\"github.com\\/openfga\\/api\\/proto\\/openfga\\/v1\"/$1openfgav1 \"github.com\\/openfga\\/api\\/proto\\/openfga\\/v1\"/m' \"$FILE\"; fi; fi"
