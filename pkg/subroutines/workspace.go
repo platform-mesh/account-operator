@@ -125,7 +125,11 @@ func (r *WorkspaceSubroutine) Process(ctx context.Context, ro runtimeobject.Runt
 			Name: kcptenancyv1alpha.WorkspaceTypeName(workspaceTypeName),
 			Path: orgsWorkspacePath,
 		}
-		return controllerutil.SetOwnerReference(instance, createdWorkspace, clusterClient.Scheme())
+		scheme := r.scheme
+		if scheme == nil {
+			scheme = clusterClient.Scheme()
+		}
+		return controllerutil.SetOwnerReference(instance, createdWorkspace, scheme)
 	})
 	if err != nil {
 		return ctrl.Result{}, errors.NewOperatorError(err, true, true)
