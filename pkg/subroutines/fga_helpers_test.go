@@ -10,8 +10,8 @@ func TestValidateCreator(t *testing.T) {
 		valid bool
 	}{
 		{"alice", true},
-		{"system.serviceaccount:ns:sa", false},
-		{"system.serviceaccount", false},
+		{"system:serviceaccount:ns:sa", false},
+		{"system:serviceaccount:", false},
 	}
 	for _, c := range cases {
 		if got := validateCreator(c.in); got != c.valid {

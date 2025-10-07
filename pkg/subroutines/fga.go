@@ -109,8 +109,8 @@ func (e *FGASubroutine) Process(ctx context.Context, ro runtimeobject.RuntimeObj
 	creatorTuplesWritten := meta.IsStatusConditionTrue(account.Status.Conditions, fmt.Sprintf("%s_Ready", e.GetName()))
 	if account.Spec.Creator != nil && !creatorTuplesWritten {
 		if valid := validateCreator(*account.Spec.Creator); !valid {
-			log.Error().Err(err).Str("creator", *account.Spec.Creator).Msg("creator string is in the protected service account prefix range")
-			return ctrl.Result{}, errors.NewOperatorError(err, false, false)
+			log.Error().Str("creator", *account.Spec.Creator).Msg("creator string is in the protected service account prefix range")
+			return ctrl.Result{}, errors.NewOperatorError(fmt.Errorf("creator in protected service account range"), false, false)
 		}
 		creator := formatUser(*account.Spec.Creator)
 
@@ -251,5 +251,5 @@ func formatUser(user string) string {
 
 // validateCreator validates the creator string to ensure if it is not in the service account prefix range
 func validateCreator(creator string) bool {
-	return !strings.HasPrefix(creator, "system.serviceaccount")
+	return !strings.HasPrefix(creator, "system:serviceaccount:")
 }

@@ -182,7 +182,7 @@ func (s *FGASubroutineTestSuite) TestProcessSkipsCreatorWhenAlreadyWritten() {
 }
 
 func (s *FGASubroutineTestSuite) TestProcessCreatorValidationRejectsServiceAccountLike() {
-	acc := &corev1alpha1.Account{ObjectMeta: metav1.ObjectMeta{Name: "org-fga6", Annotations: map[string]string{"kcp.io/cluster": "root"}}, Spec: corev1alpha1.AccountSpec{Type: corev1alpha1.AccountTypeOrg, Creator: strPtr("system.serviceaccount:ns:sa")}}
+	acc := &corev1alpha1.Account{ObjectMeta: metav1.ObjectMeta{Name: "org-fga6", Annotations: map[string]string{"kcp.io/cluster": "root"}}, Spec: corev1alpha1.AccountSpec{Type: corev1alpha1.AccountTypeOrg, Creator: strPtr("system:serviceaccount:ns:sa")}}
 	ws := newReadyWorkspace("org-fga6", "cluster-org-fga6", "https://host/root:orgs/org-fga6")
 	info := &corev1alpha1.AccountInfo{ObjectMeta: metav1.ObjectMeta{Name: DefaultAccountInfoName}}
 	info.Spec.Account = corev1alpha1.AccountLocation{Name: "org-fga6", GeneratedClusterId: "cluster-org-fga6", OriginClusterId: "root", Type: corev1alpha1.AccountTypeOrg, Path: "org-fga6", URL: "https://host/root:orgs/org-fga6"}
@@ -205,7 +205,7 @@ func (s *FGASubroutineTestSuite) TestFinalizeSkipsForOrgType() {
 
 func (s *FGASubroutineTestSuite) TestFormatUserAndValidateCreatorHelpers() {
 	s.True(validateCreator("user@example.com"))
-	s.False(validateCreator("system.serviceaccount:ns:sa"))
+	s.False(validateCreator("system:serviceaccount:ns:sa"))
 	s.Equal("system.serviceaccount.ns.sa", formatUser("system:serviceaccount:ns:sa"))
 	s.Equal("bob", formatUser("bob"))
 }
