@@ -2,6 +2,7 @@ package subroutines
 
 import (
 	"context"
+	"fmt"
 	"sync"
 	"time"
 
@@ -138,9 +139,6 @@ func (r *WorkspaceSubroutine) checkWorkspaceTypeReady(ctx context.Context, works
 	if err != nil {
 		return false, err
 	}
-	if orgsClient == nil {
-		return true, nil
-	}
 
 	wst := &kcptenancyv1alpha.WorkspaceType{}
 	if err := orgsClient.Get(ctx, client.ObjectKey{Name: workspaceTypeName}, wst); err != nil {
@@ -160,7 +158,7 @@ func (r *WorkspaceSubroutine) getOrgsClient() (client.Client, error) {
 		return r.orgsClient, nil
 	}
 	if r.baseConfig == nil {
-		return nil, nil
+		return nil, fmt.Errorf("workspace subroutine: base config not provided")
 	}
 
 	clientCfg, err := createOrganizationRestConfig(r.baseConfig)

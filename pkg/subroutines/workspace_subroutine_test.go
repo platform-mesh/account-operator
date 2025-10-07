@@ -58,6 +58,8 @@ func (s *WorkspaceSubroutineTestSuite) TestProcessCreatesWorkspaceForOrg() {
 	conditionshelper.Set(orgType, &conditionsapi.Condition{Type: conditionsapi.ReadyCondition, Status: v1.ConditionTrue, Reason: "Ready", Message: "ready"})
 	cl := s.newClient(acc, orgType)
 	sub := NewWorkspaceSubroutine(nil, cl, nil, nil)
+	// Inject orgsClient so readiness check can evaluate conditions
+	sub.orgsClient = cl
 	res, opErr := sub.Process(s.ctx, acc)
 	s.Nil(opErr)
 	s.Equal(time.Duration(0), res.RequeueAfter)
@@ -120,15 +122,12 @@ func (s *WorkspaceSubroutineTestSuite) TestFinalizeDeleteErrorIsRetryable() {
 }
 
 func (s *WorkspaceSubroutineTestSuite) TestProcessTreatsMissingOrgsClientAsReady() {
-	// When baseConfig is nil and orgsClient is nil, checkWorkspaceTypeReady returns true; should proceed to create workspace.
+	// With the new behavior, missing orgs client results in an error and no workspace creation.
 	acc := &corev1alpha1.Account{ObjectMeta: metav1.ObjectMeta{Name: "org-ws3", Annotations: map[string]string{"kcp.io/cluster": "root"}}, Spec: corev1alpha1.AccountSpec{Type: corev1alpha1.AccountTypeOrg}}
 	cl := s.newClient(acc)
 	sub := NewWorkspaceSubroutine(nil, cl, nil, nil)
-	res, opErr := sub.Process(s.ctx, acc)
-	s.Nil(opErr)
-	s.Equal(time.Duration(0), res.RequeueAfter)
-	created := &kcptenancyv1alpha.Workspace{}
-	s.Require().NoError(cl.Get(s.ctx, client.ObjectKey{Name: "org-ws3"}, created))
+	_, opErr := sub.Process(s.ctx, acc)
+	s.NotNil(opErr)
 }
 
 func (s *WorkspaceSubroutineTestSuite) TestFinalizeRequeuesWhileDeletionInProgress() {
@@ -183,6 +182,8 @@ func (s *WorkspaceSubroutineTestSuite) TestProcessWithClusterGetterSuccess() {
 	cl := s.newClient(acc, orgType)
 	getter := fakeClusterGetter{cluster: &fakeCluster{client: cl}}
 	sub := NewWorkspaceSubroutine(getter, nil, nil, s.scheme)
+	// Ensure readiness check can access orgs client
+	sub.orgsClient = cl
 	ctx := mccontext.WithCluster(s.ctx, "cluster")
 	res, opErr := sub.Process(ctx, acc)
 	s.Nil(opErr)

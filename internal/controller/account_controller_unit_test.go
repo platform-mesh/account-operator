@@ -30,6 +30,7 @@ import (
 
 	corev1alpha1 "github.com/platform-mesh/account-operator/api/v1alpha1"
 	"github.com/platform-mesh/account-operator/internal/config"
+	"github.com/platform-mesh/account-operator/pkg/subroutines/mocks"
 )
 
 // (removed unused buildTestReconciler helper)
@@ -56,8 +57,9 @@ func TestBuildSubroutines_AllEnabled(t *testing.T) {
 	scheme := runtime.NewScheme()
 	utilruntime.Must(corev1.AddToScheme(scheme))
 	utilruntime.Must(corev1alpha1.AddToScheme(scheme))
+	mockFGA := mocks.NewOpenFGAServiceClient(t)
 	fakeClient := fake.NewClientBuilder().WithScheme(scheme).WithObjects(&corev1alpha1.Account{ObjectMeta: metav1.ObjectMeta{Name: "dummy"}}).Build()
-	subs := buildAccountSubroutines(cfg, nil, fakeClient, &rest.Config{}, scheme, "", nil)
+	subs := buildAccountSubroutines(cfg, nil, fakeClient, &rest.Config{}, scheme, "", mockFGA)
 
 	if len(subs) != 4 {
 		t.Fatalf("expected 4 subroutines, got %d", len(subs))
