@@ -231,6 +231,18 @@ func (s *WorkspaceSubroutineTestSuite) TestProcessClusterGetterError() {
 	s.NotNil(opErr)
 }
 
+func (s *WorkspaceSubroutineTestSuite) TestProcessPanicsWithoutClusterInContext() {
+	// Currently Process calls MustGetClusteredName before checking the context; expect a panic here.
+	acc := &corev1alpha1.Account{ObjectMeta: metav1.ObjectMeta{Name: "org-nocluster"}, Spec: corev1alpha1.AccountSpec{Type: corev1alpha1.AccountTypeOrg}}
+	sub := NewWorkspaceSubroutine(fakeClusterGetter{cluster: &fakeCluster{}}, nil, nil, s.scheme)
+	defer func() {
+		if r := recover(); r == nil {
+			s.T().Fatalf("expected panic when cluster missing in context")
+		}
+	}()
+	_, _ = sub.Process(context.Background(), acc)
+}
+
 func (s *WorkspaceSubroutineTestSuite) TestFinalizeClusterGetterError() {
 	acc := &corev1alpha1.Account{ObjectMeta: metav1.ObjectMeta{Name: "org-cluster", Annotations: map[string]string{"kcp.io/cluster": "root"}, Finalizers: []string{WorkspaceSubroutineFinalizer}}, Spec: corev1alpha1.AccountSpec{Type: corev1alpha1.AccountTypeOrg}}
 	getter := fakeClusterGetter{err: errors.New("boom")}

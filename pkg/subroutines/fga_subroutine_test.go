@@ -225,6 +225,63 @@ func (s *FGASubroutineTestSuite) TestFinalizeSkipsForOrgType() {
 	s.Equal(time.Duration(0), res.RequeueAfter)
 }
 
+// client that returns a non-NotFound error from Get to exercise retrieveWorkspace error branch in FGA.Process
+type errGetWorkspaceClient struct{ client.Client }
+
+func (e *errGetWorkspaceClient) Get(ctx context.Context, key client.ObjectKey, obj client.Object, opts ...client.GetOption) error {
+	if _, ok := obj.(*kcptenancyv1alpha.Workspace); ok {
+		return errors.New("boom-get-workspace")
+	}
+	return e.Client.Get(ctx, key, obj, opts...)
+}
+
+func (s *FGASubroutineTestSuite) TestProcessRetrieveWorkspaceError() {
+	acc := &corev1alpha1.Account{ObjectMeta: metav1.ObjectMeta{Name: "org-rwerr", Annotations: map[string]string{"kcp.io/cluster": "root"}}, Spec: corev1alpha1.AccountSpec{Type: corev1alpha1.AccountTypeOrg}}
+	base := s.newClient(acc)
+	cl := &errGetWorkspaceClient{Client: base}
+	getter := fakeClusterGetter{cluster: &fakeCluster{client: cl}}
+	sub := NewFGASubroutine(getter, nil, mocks.NewOpenFGAServiceClient(s.T()), "member", "parent", "account")
+	_, opErr := sub.Process(s.ctx, acc)
+	s.NotNil(opErr)
+}
+
+// client that returns an error when retrieving AccountInfo to exercise getAccountInfo error path in Process
+type errGetAccountInfoClient struct{ client.Client }
+
+func (e *errGetAccountInfoClient) Get(ctx context.Context, key client.ObjectKey, obj client.Object, opts ...client.GetOption) error {
+	if _, ok := obj.(*corev1alpha1.AccountInfo); ok {
+		return errors.New("boom-get-accountinfo")
+	}
+	return e.Client.Get(ctx, key, obj, opts...)
+}
+
+func (s *FGASubroutineTestSuite) TestProcessGetAccountInfoError() {
+	acc := &corev1alpha1.Account{ObjectMeta: metav1.ObjectMeta{Name: "org-aierr", Annotations: map[string]string{"kcp.io/cluster": "root"}}, Spec: corev1alpha1.AccountSpec{Type: corev1alpha1.AccountTypeOrg}}
+	ws := newReadyWorkspace("org-aierr", "cluster-org-aierr", "https://host/root:orgs/org-aierr")
+	base := s.newClient(acc, ws)
+	cl := &errGetAccountInfoClient{Client: base}
+	getter := fakeClusterGetter{cluster: &fakeCluster{client: cl}}
+	sub := NewFGASubroutine(getter, nil, mocks.NewOpenFGAServiceClient(s.T()), "member", "parent", "account")
+	_, opErr := sub.Process(s.ctx, acc)
+	s.NotNil(opErr)
+}
+
+func (s *FGASubroutineTestSuite) TestFinalizeWriteError() {
+	acc := &corev1alpha1.Account{ObjectMeta: metav1.ObjectMeta{Name: "acc-finalize-werr", Annotations: map[string]string{"kcp.io/cluster": "root"}}, Spec: corev1alpha1.AccountSpec{Type: corev1alpha1.AccountTypeAccount}}
+	ws := newReadyWorkspace("acc-finalize-werr", "cluster-acc-finalize", "https://host/root:orgs/org-z/acc-finalize-werr")
+	info := &corev1alpha1.AccountInfo{ObjectMeta: metav1.ObjectMeta{Name: DefaultAccountInfoName}}
+	info.Spec.Account = corev1alpha1.AccountLocation{Name: "acc-finalize-werr", GeneratedClusterId: "cluster-acc-finalize", OriginClusterId: "root", Type: corev1alpha1.AccountTypeAccount, Path: "org-z/acc-finalize-werr"}
+	info.Spec.ParentAccount = &corev1alpha1.AccountLocation{Name: "org-z", GeneratedClusterId: "cluster-org-z", OriginClusterId: "root", Type: corev1alpha1.AccountTypeOrg, Path: "org-z"}
+	info.Spec.FGA.Store.Id = "store-err"
+	cl := s.newClient(acc, ws, info)
+	getter := fakeClusterGetter{cluster: &fakeCluster{client: cl}}
+	mockFGA := mocks.NewOpenFGAServiceClient(s.T())
+	mockFGA.EXPECT().Write(mock.Anything, mock.Anything).Return(nil, errors.New("writer-broke")).Once()
+	sub := NewFGASubroutine(getter, nil, mockFGA, "member", "parent", "account")
+	_, opErr := sub.Finalize(s.ctx, acc)
+	s.NotNil(opErr)
+}
+
 func (s *FGASubroutineTestSuite) TestFormatUserAndValidateCreatorHelpers() {
 	s.True(validateCreator("user@example.com"))
 	s.False(validateCreator("system:serviceaccount:ns:sa"))

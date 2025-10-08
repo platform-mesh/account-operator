@@ -210,3 +210,12 @@ func (s *AccountInfoSubroutineTestSuite) TestRetrieveCurrentWorkspacePathSuccess
 	s.Equal("my-org", last)
 	s.Equal("https://host/root:orgs/my-org", full)
 }
+
+func (s *AccountInfoSubroutineTestSuite) TestRetrieveCurrentWorkspacePathInvalidSplit() {
+	sub := &AccountInfoSubroutine{}
+	ws := &kcptenancyv1alpha.Workspace{}
+	// A URL-like string with fewer than 3 slash-separated segments triggers the len(split) < 3 branch
+	ws.Spec.URL = "x/y"
+	_, _, err := sub.retrieveCurrentWorkspacePath(ws)
+	s.Error(err)
+}

@@ -143,3 +143,15 @@ func TestAccountInfoProcessMissingOriginClusterAnnotation(t *testing.T) {
 		t.Fatalf("expected retryable error for missing origin cluster annotation")
 	}
 }
+
+// Ensure Process errors when the Account lacks the required origin cluster annotation.
+func (s *AccountInfoSubroutineTestSuite) TestProcessErrorsOnMissingOriginClusterAnnotation() {
+	// No 'kcp.io/cluster' annotation
+	acc := &corev1alpha1.Account{ObjectMeta: metav1.ObjectMeta{Name: "org-missing-origin"}, Spec: corev1alpha1.AccountSpec{Type: corev1alpha1.AccountTypeOrg}}
+	ws := newWorkspace("org-missing-origin", string(kcpcorev1alpha.LogicalClusterPhaseReady), "cluster-org", "https://host/root:org-missing-origin")
+	cl := s.newClient(acc, ws)
+	getter := fakeClusterGetter{cluster: &fakeCluster{client: cl}}
+	sub := NewAccountInfoSubroutine(getter, nil, "CA")
+	_, opErr := sub.Process(s.ctx, acc)
+	s.NotNil(opErr)
+}

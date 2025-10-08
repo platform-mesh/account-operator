@@ -258,5 +258,40 @@ func TestCreateOrganizationRestConfig_InvalidURL(t *testing.T) {
 	assert.Nil(t, result)
 }
 
+// Additional coverage: retrieveWorkspace should error on nil inputs
+func TestRetrieveWorkspace_NilAccount(t *testing.T) {
+	t.Parallel()
+	log, err := logger.New(logger.DefaultConfig())
+	assert.NoError(t, err)
+	// Using a real mocks.Client is unnecessary here, we won't call it
+	var cl client.Client = nil
+	ws, gotErr := retrieveWorkspace(context.Background(), nil, cl, log)
+	assert.Nil(t, ws)
+	assert.Error(t, gotErr)
+	assert.Contains(t, gotErr.Error(), "account is nil")
+}
+
+func TestRetrieveWorkspace_NilClient(t *testing.T) {
+	t.Parallel()
+	log, err := logger.New(logger.DefaultConfig())
+	assert.NoError(t, err)
+	acc := &corev1alpha1.Account{}
+	ws, gotErr := retrieveWorkspace(context.Background(), acc, nil, log)
+	assert.Nil(t, ws)
+	assert.Error(t, gotErr)
+	assert.Contains(t, gotErr.Error(), "client is nil")
+}
+
+func TestMustGetClusteredNamePanicsWithoutCluster(t *testing.T) {
+	// Use a minimal runtime object implementing the required interface
+	obj := &corev1alpha1.Account{}
+	defer func() {
+		if r := recover(); r == nil {
+			t.Fatalf("expected panic when cluster missing in context")
+		}
+	}()
+	_ = MustGetClusteredName(context.Background(), obj)
+}
+
 // Mock helper functions (existing)
 // (previously had helper mockGetWorkspaceByName; removed as unused to satisfy lint)
