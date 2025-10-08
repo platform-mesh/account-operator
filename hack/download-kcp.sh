@@ -18,9 +18,12 @@ if [[ "$KCP_VERSION" != v* ]]; then
   KCP_VERSION="v${KCP_VERSION}"
 fi
 
-PACKAGE="github.com/kcp-dev/kcp/cmd/kcp@${KCP_VERSION}"
+BUILD_DIR="$(mktemp -d "${TMPDIR:-/tmp}/kcp-build.XXXXXX")"
+trap 'rm -rf "$BUILD_DIR"' EXIT
 
-# Install the requested version directly into the repository bin dir to avoid
-# cloning the repository and running its make targets (which enforce a specific
-# Go patch version).
-GOBIN="$BIN_DIR" go install "$PACKAGE"
+git clone --depth=1 --branch "$KCP_VERSION" https://github.com/kcp-dev/kcp.git "$BUILD_DIR"
+
+pushd "$BUILD_DIR" >/dev/null
+  # Build kcp directly to avoid repository make targets that enforce a specific Go patch version.
+  GOWORK=off GOTOOLCHAIN=auto go build -o "$BIN_DIR/kcp" ./cmd/kcp
+popd >/dev/null
