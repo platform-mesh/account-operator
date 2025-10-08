@@ -9,16 +9,18 @@ done
 SCRIPT_DIR="$(cd -P "$(dirname "$SOURCE")" >/dev/null 2>&1 && pwd)"
 echo "$SCRIPT_DIR"
 
-LOCAL_BIN="$SCRIPT_DIR/../bin/kcp"          # destination path
-BUILD_DIR="$SCRIPT_DIR/../bin/build"          # destination path
+BIN_DIR="$SCRIPT_DIR/../bin"
+mkdir -p "$BIN_DIR"
 
-rm -rf "$BUILD_DIR"
+# Allow overriding the version via environment while defaulting to Taskfile value.
+KCP_VERSION="${KCP_VERSION:-0.27.1}"
+if [[ "$KCP_VERSION" != v* ]]; then
+  KCP_VERSION="v${KCP_VERSION}"
+fi
 
-git clone --depth=1 git@github.com:kcp-dev/kcp.git $BUILD_DIR
-cd "$BUILD_DIR"
-make build
+PACKAGE="github.com/kcp-dev/kcp/cmd/kcp@${KCP_VERSION}"
 
-mv "$BUILD_DIR/bin/kcp" "$LOCAL_BIN"
-chmod +x "$LOCAL_BIN"
-
-rm -rf "$BUILD_DIR"
+# Install the requested version directly into the repository bin dir to avoid
+# cloning the repository and running its make targets (which enforce a specific
+# Go patch version).
+GOBIN="$BIN_DIR" go install "$PACKAGE"
