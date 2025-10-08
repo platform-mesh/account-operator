@@ -39,7 +39,7 @@ func TestWorkspaceSubroutine_Getters(t *testing.T) {
 }
 
 func TestAccountInfoSubroutine_Finalizers(t *testing.T) {
-	sub := NewAccountInfoSubroutine(nil, nil, "")
+	sub := NewAccountInfoSubroutine(fakeClusterGetter{cluster: &fakeCluster{}}, nil, "")
 	fins := sub.Finalizers(&corev1alpha1.Account{})
 	if len(fins) != 1 || fins[0] == "" {
 		t.Fatalf("unexpected finalizers: %v", fins)

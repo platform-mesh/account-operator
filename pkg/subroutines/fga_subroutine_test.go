@@ -72,7 +72,8 @@ func (s *FGASubroutineTestSuite) TestProcessWritesTuplesForOrgCreator() {
 	mockFGA := mocks.NewOpenFGAServiceClient(s.T())
 	mockFGA.EXPECT().Write(mock.Anything, mock.Anything).Return(&openfgav1.WriteResponse{}, nil).Twice()
 
-	sub := NewFGASubroutine(nil, cl, mockFGA, "member", "parent", "account")
+	getter := fakeClusterGetter{cluster: &fakeCluster{client: cl}}
+	sub := NewFGASubroutine(getter, nil, mockFGA, "member", "parent", "account")
 	res, opErr := sub.Process(s.ctx, acc)
 	s.Nil(opErr)
 	s.Equal(time.Duration(0), res.RequeueAfter)
@@ -90,7 +91,15 @@ func (s *FGASubroutineTestSuite) TestProcessRetriesUntilWorkspaceReady() {
 	cl := s.newClient(acc, ws, info)
 	mockFGA := mocks.NewOpenFGAServiceClient(s.T())
 	lim := workqueue.NewTypedItemExponentialFailureRateLimiter[ClusteredName](1*time.Millisecond, 1*time.Millisecond)
-	sub := &FGASubroutine{client: cl, fgaClient: mockFGA, creatorRelation: "member", parentRelation: "parent", objectType: "account", limiter: lim}
+	sub := &FGASubroutine{
+		client:          cl,
+		clusterGetter:   fakeClusterGetter{cluster: &fakeCluster{client: cl}},
+		fgaClient:       mockFGA,
+		creatorRelation: "member",
+		parentRelation:  "parent",
+		objectType:      "account",
+		limiter:         lim,
+	}
 	res, opErr := sub.Process(s.ctx, acc)
 	s.Nil(opErr)
 	s.True(res.RequeueAfter > 0)
@@ -108,7 +117,8 @@ func (s *FGASubroutineTestSuite) TestFinalizeDeletesTuplesForAccount() {
 	mockFGA := mocks.NewOpenFGAServiceClient(s.T())
 	// Expect three deletes when creator present: parent relation + role assignee + creator relation
 	mockFGA.EXPECT().Write(mock.Anything, mock.Anything).Return(&openfgav1.WriteResponse{}, nil).Times(3)
-	sub := NewFGASubroutine(nil, cl, mockFGA, "member", "parent", "account")
+	getter := fakeClusterGetter{cluster: &fakeCluster{client: cl}}
+	sub := NewFGASubroutine(getter, nil, mockFGA, "member", "parent", "account")
 	res, opErr := sub.Finalize(s.ctx, acc)
 	s.Nil(opErr)
 	s.Equal(time.Duration(0), res.RequeueAfter)
@@ -126,7 +136,8 @@ func (s *FGASubroutineTestSuite) TestFinalizeDeletesTuplesForAccount_NoCreator()
 	mockFGA := mocks.NewOpenFGAServiceClient(s.T())
 	// Only one delete expected (parent relation)
 	mockFGA.EXPECT().Write(mock.Anything, mock.Anything).Return(&openfgav1.WriteResponse{}, nil).Once()
-	sub := NewFGASubroutine(nil, cl, mockFGA, "member", "parent", "account")
+	getter := fakeClusterGetter{cluster: &fakeCluster{client: cl}}
+	sub := NewFGASubroutine(getter, nil, mockFGA, "member", "parent", "account")
 	res, opErr := sub.Finalize(s.ctx, acc)
 	s.Nil(opErr)
 	s.Equal(time.Duration(0), res.RequeueAfter)
@@ -141,7 +152,8 @@ func (s *FGASubroutineTestSuite) TestProcessErrorsOnMissingStore() {
 	// store id empty
 	cl := s.newClient(acc, ws, info)
 	mockFGA := mocks.NewOpenFGAServiceClient(s.T())
-	sub := NewFGASubroutine(nil, cl, mockFGA, "member", "parent", "account")
+	getter := fakeClusterGetter{cluster: &fakeCluster{client: cl}}
+	sub := NewFGASubroutine(getter, nil, mockFGA, "member", "parent", "account")
 	_, opErr := sub.Process(s.ctx, acc)
 	s.NotNil(opErr)
 }
@@ -156,7 +168,15 @@ func (s *FGASubroutineTestSuite) TestProcessErrorOnWriterFailure() {
 	mockFGA := mocks.NewOpenFGAServiceClient(s.T())
 	mockFGA.EXPECT().Write(mock.Anything, mock.Anything).Return(nil, errors.New("boom"))
 	lim := workqueue.NewTypedItemExponentialFailureRateLimiter[ClusteredName](1*time.Millisecond, 1*time.Millisecond)
-	sub := &FGASubroutine{client: cl, fgaClient: mockFGA, creatorRelation: "member", parentRelation: "parent", objectType: "account", limiter: lim}
+	sub := &FGASubroutine{
+		client:          cl,
+		clusterGetter:   fakeClusterGetter{cluster: &fakeCluster{client: cl}},
+		fgaClient:       mockFGA,
+		creatorRelation: "member",
+		parentRelation:  "parent",
+		objectType:      "account",
+		limiter:         lim,
+	}
 	_, opErr := sub.Process(s.ctx, acc)
 	s.NotNil(opErr)
 	mockFGA.AssertExpectations(s.T())
@@ -174,7 +194,8 @@ func (s *FGASubroutineTestSuite) TestProcessSkipsCreatorWhenAlreadyWritten() {
 	cl := s.newClient(acc, ws, info)
 	mockFGA := mocks.NewOpenFGAServiceClient(s.T())
 	// No writes expected because creatorTuplesWritten is true
-	sub := NewFGASubroutine(nil, cl, mockFGA, "member", "parent", "account")
+	getter := fakeClusterGetter{cluster: &fakeCluster{client: cl}}
+	sub := NewFGASubroutine(getter, nil, mockFGA, "member", "parent", "account")
 	res, opErr := sub.Process(s.ctx, acc)
 	s.Nil(opErr)
 	s.Equal(time.Duration(0), res.RequeueAfter)
@@ -190,7 +211,8 @@ func (s *FGASubroutineTestSuite) TestProcessCreatorValidationRejectsServiceAccou
 	info.Spec.FGA.Store.Id = "store-1"
 	cl := s.newClient(acc, ws, info)
 	mockFGA := mocks.NewOpenFGAServiceClient(s.T())
-	sub := NewFGASubroutine(nil, cl, mockFGA, "member", "parent", "account")
+	getter := fakeClusterGetter{cluster: &fakeCluster{client: cl}}
+	sub := NewFGASubroutine(getter, nil, mockFGA, "member", "parent", "account")
 	_, opErr := sub.Process(s.ctx, acc)
 	s.NotNil(opErr)
 }
@@ -256,7 +278,8 @@ func (s *FGASubroutineTestSuite) TestFinalizeErrorsOnMissingStoreId() {
 	info.Spec.Account = corev1alpha1.AccountLocation{Name: "acc-finalize-empty", GeneratedClusterId: "cluster-acc", OriginClusterId: "root", Type: corev1alpha1.AccountTypeAccount, Path: "org-x/acc-finalize-empty"}
 	// store id remains empty
 	cl := s.newClient(acc, ws, info)
-	sub := NewFGASubroutine(nil, cl, mocks.NewOpenFGAServiceClient(s.T()), "member", "parent", "account")
+	getter := fakeClusterGetter{cluster: &fakeCluster{client: cl}}
+	sub := NewFGASubroutine(getter, nil, mocks.NewOpenFGAServiceClient(s.T()), "member", "parent", "account")
 	_, opErr := sub.Finalize(s.ctx, acc)
 	s.NotNil(opErr)
 }
@@ -273,7 +296,8 @@ func (s *FGASubroutineTestSuite) TestProcessWritesParentForAccountType() {
 	mockFGA := mocks.NewOpenFGAServiceClient(s.T())
 	// Expect exactly one write for parent relation (no creator)
 	mockFGA.EXPECT().Write(mock.Anything, mock.Anything).Return(&openfgav1.WriteResponse{}, nil).Once()
-	sub := NewFGASubroutine(nil, cl, mockFGA, "member", "parent", "account")
+	getter := fakeClusterGetter{cluster: &fakeCluster{client: cl}}
+	sub := NewFGASubroutine(getter, nil, mockFGA, "member", "parent", "account")
 	res, opErr := sub.Process(s.ctx, acc)
 	s.Nil(opErr)
 	s.Equal(time.Duration(0), res.RequeueAfter)
@@ -288,7 +312,8 @@ func (s *FGASubroutineTestSuite) TestProcessErrorsOnMissingAccountClusterId() {
 	info.Spec.Organization = info.Spec.Account
 	info.Spec.FGA.Store.Id = "store-1"
 	cl := s.newClient(acc, ws, info)
-	sub := NewFGASubroutine(nil, cl, mocks.NewOpenFGAServiceClient(s.T()), "member", "parent", "account")
+	getter := fakeClusterGetter{cluster: &fakeCluster{client: cl}}
+	sub := NewFGASubroutine(getter, nil, mocks.NewOpenFGAServiceClient(s.T()), "member", "parent", "account")
 	_, opErr := sub.Process(s.ctx, acc)
 	s.NotNil(opErr)
 }
@@ -301,7 +326,8 @@ func (s *FGASubroutineTestSuite) TestProcessErrorsOnMissingParentClusterIdForAcc
 	info.Spec.ParentAccount = &corev1alpha1.AccountLocation{Name: "org-x", GeneratedClusterId: "", OriginClusterId: "root", Type: corev1alpha1.AccountTypeOrg, Path: "org-x"}
 	info.Spec.FGA.Store.Id = "store-1"
 	cl := s.newClient(acc, ws, info)
-	sub := NewFGASubroutine(nil, cl, mocks.NewOpenFGAServiceClient(s.T()), "member", "parent", "account")
+	getter := fakeClusterGetter{cluster: &fakeCluster{client: cl}}
+	sub := NewFGASubroutine(getter, nil, mocks.NewOpenFGAServiceClient(s.T()), "member", "parent", "account")
 	_, opErr := sub.Process(s.ctx, acc)
 	s.NotNil(opErr)
 }

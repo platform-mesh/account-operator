@@ -57,7 +57,8 @@ func (s *WorkspaceSubroutineTestSuite) TestProcessCreatesWorkspaceForOrg() {
 	orgType := &kcptenancyv1alpha.WorkspaceType{ObjectMeta: metav1.ObjectMeta{Name: "org-ws-org"}}
 	conditionshelper.Set(orgType, &conditionsapi.Condition{Type: conditionsapi.ReadyCondition, Status: v1.ConditionTrue, Reason: "Ready", Message: "ready"})
 	cl := s.newClient(acc, orgType)
-	sub := NewWorkspaceSubroutine(nil, cl, nil, nil)
+	getter := fakeClusterGetter{cluster: &fakeCluster{client: cl}}
+	sub := NewWorkspaceSubroutine(getter, nil, nil, nil)
 	// Inject orgsClient so readiness check can evaluate conditions
 	sub.orgsClient = cl
 	res, opErr := sub.Process(s.ctx, acc)
@@ -76,7 +77,12 @@ func (s *WorkspaceSubroutineTestSuite) TestProcessRetriesUntilWorkspaceTypeReady
 	cl := s.newClient(acc, orgType)
 	lim := workqueue.NewTypedItemExponentialFailureRateLimiter[ClusteredName](1*time.Millisecond, 1*time.Millisecond)
 	// inject orgsClient so readiness logic actually checks conditions (otherwise treated as ready when baseConfig nil)
-	sub := &WorkspaceSubroutine{client: cl, limiter: lim, orgsClient: cl}
+	sub := &WorkspaceSubroutine{
+		client:        cl,
+		clusterGetter: fakeClusterGetter{cluster: &fakeCluster{client: cl}},
+		limiter:       lim,
+		orgsClient:    cl,
+	}
 	res, opErr := sub.Process(s.ctx, acc)
 	s.Nil(opErr)
 	s.True(res.RequeueAfter > 0)
@@ -86,7 +92,12 @@ func (s *WorkspaceSubroutineTestSuite) TestProcessRetriesWhenWorkspaceTypeMissin
 	acc := &corev1alpha1.Account{ObjectMeta: metav1.ObjectMeta{Name: "org-miss", Annotations: map[string]string{"kcp.io/cluster": "root"}}, Spec: corev1alpha1.AccountSpec{Type: corev1alpha1.AccountTypeOrg}}
 	cl := s.newClient(acc) // no workspace type at all
 	lim := workqueue.NewTypedItemExponentialFailureRateLimiter[ClusteredName](1*time.Millisecond, 1*time.Millisecond)
-	sub := &WorkspaceSubroutine{client: cl, limiter: lim, orgsClient: cl}
+	sub := &WorkspaceSubroutine{
+		client:        cl,
+		clusterGetter: fakeClusterGetter{cluster: &fakeCluster{client: cl}},
+		limiter:       lim,
+		orgsClient:    cl,
+	}
 	res, opErr := sub.Process(s.ctx, acc)
 	s.Nil(opErr)
 	s.True(res.RequeueAfter > 0)
@@ -97,7 +108,11 @@ func (s *WorkspaceSubroutineTestSuite) TestFinalizeDeletesWorkspace() {
 	ws := &kcptenancyv1alpha.Workspace{ObjectMeta: metav1.ObjectMeta{Name: "org-del"}}
 	cl := s.newClient(acc, ws)
 	lim := workqueue.NewTypedItemExponentialFailureRateLimiter[ClusteredName](1*time.Millisecond, 1*time.Millisecond)
-	sub := &WorkspaceSubroutine{client: cl, limiter: lim}
+	sub := &WorkspaceSubroutine{
+		client:        cl,
+		clusterGetter: fakeClusterGetter{cluster: &fakeCluster{client: cl}},
+		limiter:       lim,
+	}
 	res, opErr := sub.Finalize(s.ctx, acc)
 	s.Nil(opErr)
 	s.True(res.RequeueAfter > 0)
@@ -115,7 +130,11 @@ func (s *WorkspaceSubroutineTestSuite) TestFinalizeDeleteErrorIsRetryable() {
 	ws := &kcptenancyv1alpha.Workspace{ObjectMeta: metav1.ObjectMeta{Name: "org-del-err"}}
 	base := s.newClient(acc, ws)
 	derr := &deleteErrorClient{Client: base}
-	sub := &WorkspaceSubroutine{client: derr, limiter: workqueue.NewTypedItemExponentialFailureRateLimiter[ClusteredName](1*time.Millisecond, 1*time.Millisecond)}
+	sub := &WorkspaceSubroutine{
+		client:        derr,
+		clusterGetter: fakeClusterGetter{cluster: &fakeCluster{client: derr}},
+		limiter:       workqueue.NewTypedItemExponentialFailureRateLimiter[ClusteredName](1*time.Millisecond, 1*time.Millisecond),
+	}
 	_, opErr := sub.Finalize(s.ctx, acc)
 	s.NotNil(opErr)
 	s.True(opErr.Retry())
@@ -125,7 +144,8 @@ func (s *WorkspaceSubroutineTestSuite) TestProcessTreatsMissingOrgsClientAsReady
 	// With the new behavior, missing orgs client results in an error and no workspace creation.
 	acc := &corev1alpha1.Account{ObjectMeta: metav1.ObjectMeta{Name: "org-ws3", Annotations: map[string]string{"kcp.io/cluster": "root"}}, Spec: corev1alpha1.AccountSpec{Type: corev1alpha1.AccountTypeOrg}}
 	cl := s.newClient(acc)
-	sub := NewWorkspaceSubroutine(nil, cl, nil, nil)
+	getter := fakeClusterGetter{cluster: &fakeCluster{client: cl}}
+	sub := NewWorkspaceSubroutine(getter, nil, nil, nil)
 	_, opErr := sub.Process(s.ctx, acc)
 	s.NotNil(opErr)
 }
@@ -137,7 +157,11 @@ func (s *WorkspaceSubroutineTestSuite) TestFinalizeRequeuesWhileDeletionInProgre
 	ws.SetDeletionTimestamp(&now)
 	cl := s.newClient(acc, ws)
 	lim := workqueue.NewTypedItemExponentialFailureRateLimiter[ClusteredName](1*time.Millisecond, 1*time.Millisecond)
-	sub := &WorkspaceSubroutine{client: cl, limiter: lim}
+	sub := &WorkspaceSubroutine{
+		client:        cl,
+		clusterGetter: fakeClusterGetter{cluster: &fakeCluster{client: cl}},
+		limiter:       lim,
+	}
 	res, opErr := sub.Finalize(s.ctx, acc)
 	s.Nil(opErr)
 	s.True(res.RequeueAfter > 0)
@@ -169,7 +193,12 @@ func (s *WorkspaceSubroutineTestSuite) TestProcessWorkspaceTypeGetError() {
 	cl := s.newClient(acc, orgType)
 	failing := &failingGetClient{Client: cl}
 	lim := workqueue.NewTypedItemExponentialFailureRateLimiter[ClusteredName](1*time.Millisecond, 1*time.Millisecond)
-	sub := &WorkspaceSubroutine{client: cl, limiter: lim, orgsClient: failing}
+	sub := &WorkspaceSubroutine{
+		client:        cl,
+		clusterGetter: fakeClusterGetter{cluster: &fakeCluster{client: cl}},
+		limiter:       lim,
+		orgsClient:    failing,
+	}
 	_, opErr := sub.Process(s.ctx, acc)
 	s.NotNil(opErr)
 	s.True(opErr.Retry())
@@ -217,7 +246,8 @@ func (s *WorkspaceSubroutineTestSuite) TestGetOrgsClientInvalidHostReturnsError(
 	// baseConfig with invalid URL host should cause createOrganizationRestConfig to fail
 	acc := &corev1alpha1.Account{ObjectMeta: metav1.ObjectMeta{Name: "org-invalid"}}
 	cl := s.newClient(acc)
-	sub := NewWorkspaceSubroutine(nil, cl, &rest.Config{Host: "http://%zz"}, s.scheme)
+	getter := fakeClusterGetter{cluster: &fakeCluster{client: cl}}
+	sub := NewWorkspaceSubroutine(getter, nil, &rest.Config{Host: "http://%zz"}, s.scheme)
 	// call unexported via method on instance
 	orgsCl, err := sub.getOrgsClient()
 	s.Nil(orgsCl)
@@ -227,7 +257,8 @@ func (s *WorkspaceSubroutineTestSuite) TestGetOrgsClientInvalidHostReturnsError(
 func (s *WorkspaceSubroutineTestSuite) TestGetOrgsClientBuildsAndCaches() {
 	acc := &corev1alpha1.Account{ObjectMeta: metav1.ObjectMeta{Name: "org-cache"}}
 	cl := s.newClient(acc)
-	sub := NewWorkspaceSubroutine(nil, cl, &rest.Config{Host: "http://example.com"}, s.scheme)
+	getter := fakeClusterGetter{cluster: &fakeCluster{client: cl}}
+	sub := NewWorkspaceSubroutine(getter, nil, &rest.Config{Host: "http://example.com"}, s.scheme)
 	// First call builds client
 	orgs1, err1 := sub.getOrgsClient()
 	s.NoError(err1)
@@ -242,7 +273,11 @@ func (s *WorkspaceSubroutineTestSuite) TestFinalizeNotFoundReturnsNil() {
 	// No workspace object present; Finalize should treat NotFound as success
 	acc := &corev1alpha1.Account{ObjectMeta: metav1.ObjectMeta{Name: "org-missing", Finalizers: []string{WorkspaceSubroutineFinalizer}, Annotations: map[string]string{"kcp.io/cluster": "root"}}, Spec: corev1alpha1.AccountSpec{Type: corev1alpha1.AccountTypeOrg}}
 	cl := s.newClient(acc) // workspace not created
-	sub := &WorkspaceSubroutine{client: cl, limiter: workqueue.NewTypedItemExponentialFailureRateLimiter[ClusteredName](1*time.Millisecond, 1*time.Millisecond)}
+	sub := &WorkspaceSubroutine{
+		client:        cl,
+		clusterGetter: fakeClusterGetter{cluster: &fakeCluster{client: cl}},
+		limiter:       workqueue.NewTypedItemExponentialFailureRateLimiter[ClusteredName](1*time.Millisecond, 1*time.Millisecond),
+	}
 	res, opErr := sub.Finalize(s.ctx, acc)
 	s.Nil(opErr)
 	s.Equal(time.Duration(0), res.RequeueAfter)
@@ -253,7 +288,11 @@ func (s *WorkspaceSubroutineTestSuite) TestProcessAccountRequeuesWhenAccountInfo
 	acc := &corev1alpha1.Account{ObjectMeta: metav1.ObjectMeta{Name: "acc-miss", Namespace: "default", Annotations: map[string]string{"kcp.io/cluster": "root"}}, Spec: corev1alpha1.AccountSpec{Type: corev1alpha1.AccountTypeAccount}}
 	cl := s.newClient(acc)
 	lim := workqueue.NewTypedItemExponentialFailureRateLimiter[ClusteredName](1*time.Millisecond, 1*time.Millisecond)
-	sub := &WorkspaceSubroutine{client: cl, limiter: lim}
+	sub := &WorkspaceSubroutine{
+		client:        cl,
+		clusterGetter: fakeClusterGetter{cluster: &fakeCluster{client: cl}},
+		limiter:       lim,
+	}
 	res, opErr := sub.Process(s.ctx, acc)
 	s.Nil(opErr)
 	s.True(res.RequeueAfter > 0)
@@ -265,7 +304,11 @@ func (s *WorkspaceSubroutineTestSuite) TestProcessAccountRequeuesWhenOrgNameEmpt
 	info := &corev1alpha1.AccountInfo{ObjectMeta: metav1.ObjectMeta{Name: DefaultAccountInfoName, Namespace: "default"}}
 	cl := s.newClient(acc, info)
 	lim := workqueue.NewTypedItemExponentialFailureRateLimiter[ClusteredName](1*time.Millisecond, 1*time.Millisecond)
-	sub := &WorkspaceSubroutine{client: cl, limiter: lim}
+	sub := &WorkspaceSubroutine{
+		client:        cl,
+		clusterGetter: fakeClusterGetter{cluster: &fakeCluster{client: cl}},
+		limiter:       lim,
+	}
 	res, opErr := sub.Process(s.ctx, acc)
 	s.Nil(opErr)
 	s.True(res.RequeueAfter > 0)
