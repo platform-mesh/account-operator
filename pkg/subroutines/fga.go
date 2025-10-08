@@ -63,14 +63,10 @@ func (e *FGASubroutine) Process(ctx context.Context, ro runtimeobject.RuntimeObj
 
 	if accountWorkspace.Status.Phase != kcpcorev1alpha.LogicalClusterPhaseReady {
 		log.Info().Msg("workspace is not ready yet, retry")
-		next := e.limiter.When(cn)
-		return ctrl.Result{RequeueAfter: next}, nil
+		return ctrl.Result{RequeueAfter: e.limiter.When(cn)}, nil
 	}
 
-	// Prepare context to work in workspace
-	wsCtx := ctx
-
-	accountInfo, err := e.getAccountInfo(wsCtx, clusterClient)
+	accountInfo, err := e.getAccountInfo(ctx, clusterClient)
 	if err != nil {
 		log.Error().Err(err).Msg("Couldn't get Store Id")
 		return ctrl.Result{}, errors.NewOperatorError(err, true, true)

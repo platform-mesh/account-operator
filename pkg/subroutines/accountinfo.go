@@ -55,17 +55,10 @@ func (r *AccountInfoSubroutine) Finalize(ctx context.Context, ro runtimeobject.R
 
 	// The account info object is relevant input for other finalizers, removing the accountinfo finalizer at last
 	if len(ro.GetFinalizers()) > 1 {
-		// guard nil limiter
-		if r.limiter != nil {
-			delay := r.limiter.When(cn)
-			return ctrl.Result{RequeueAfter: delay}, nil
-		}
-		return ctrl.Result{RequeueAfter: 1 * time.Second}, nil
+		return ctrl.Result{RequeueAfter: r.limiter.When(cn)}, nil
 	}
 
-	if r.limiter != nil {
-		r.limiter.Forget(cn)
-	}
+	r.limiter.Forget(cn)
 	return ctrl.Result{}, nil
 }
 
@@ -94,15 +87,8 @@ func (r *AccountInfoSubroutine) Process(ctx context.Context, ro runtimeobject.Ru
 
 	if accountWorkspace.Status.Phase != kcpcorev1alpha.LogicalClusterPhaseReady {
 		log.Info().Msg("workspace is not ready yet, retry")
-		if r.limiter != nil {
-			delay := r.limiter.When(cn)
-			return ctrl.Result{RequeueAfter: delay}, nil
-		}
-		return ctrl.Result{RequeueAfter: 1 * time.Second}, nil
+		return ctrl.Result{RequeueAfter: r.limiter.When(cn)}, nil
 	}
-
-	// Prepare context to work in workspace (single cluster mode)
-	wsCtx := ctx
 
 	// Retrieve logical cluster
 	currentWorkspacePath, currentWorkspaceUrl, err := r.retrieveCurrentWorkspacePath(accountWorkspace)
@@ -125,7 +111,7 @@ func (r *AccountInfoSubroutine) Process(ctx context.Context, ro runtimeobject.Ru
 
 	if instance.Spec.Type == v1alpha1.AccountTypeOrg {
 		accountInfo := &v1alpha1.AccountInfo{ObjectMeta: v1.ObjectMeta{Name: DefaultAccountInfoName}}
-		_, err = controllerutil.CreateOrPatch(wsCtx, clusterClient, accountInfo, func() error {
+		_, err = controllerutil.CreateOrPatch(ctx, clusterClient, accountInfo, func() error {
 			// the .Spec.FGA.Store.ID is set from an external workspace initializer
 			accountInfo.Spec.Account = selfAccountLocation
 			accountInfo.Spec.ParentAccount = nil
@@ -137,9 +123,7 @@ func (r *AccountInfoSubroutine) Process(ctx context.Context, ro runtimeobject.Ru
 			return ctrl.Result{}, errors.NewOperatorError(err, true, true)
 		}
 
-		if r.limiter != nil {
-			r.limiter.Forget(cn)
-		}
+		r.limiter.Forget(cn)
 		return ctrl.Result{}, nil
 	}
 
@@ -153,7 +137,7 @@ func (r *AccountInfoSubroutine) Process(ctx context.Context, ro runtimeobject.Ru
 	}
 
 	accountInfo := &v1alpha1.AccountInfo{ObjectMeta: v1.ObjectMeta{Name: DefaultAccountInfoName}}
-	_, err = controllerutil.CreateOrUpdate(wsCtx, clusterClient, accountInfo, func() error {
+	_, err = controllerutil.CreateOrUpdate(ctx, clusterClient, accountInfo, func() error {
 		accountInfo.Spec.Account = selfAccountLocation
 		accountInfo.Spec.ParentAccount = &parentAccountInfo.Spec.Account
 		accountInfo.Spec.Organization = parentAccountInfo.Spec.Organization
@@ -164,9 +148,7 @@ func (r *AccountInfoSubroutine) Process(ctx context.Context, ro runtimeobject.Ru
 	if err != nil {
 		return ctrl.Result{}, errors.NewOperatorError(err, true, true)
 	}
-	if r.limiter != nil {
-		r.limiter.Forget(cn)
-	}
+	r.limiter.Forget(cn)
 	return ctrl.Result{}, nil
 }
 

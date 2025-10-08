@@ -71,16 +71,14 @@ func (r *WorkspaceSubroutine) Finalize(ctx context.Context, ro runtimeobject.Run
 	}
 
 	if ws.GetDeletionTimestamp() != nil {
-		next := r.limiter.When(cn)
-		return ctrl.Result{RequeueAfter: next}, nil
+		return ctrl.Result{RequeueAfter: r.limiter.When(cn)}, nil
 	}
 
 	if err := clusterClient.Delete(ctx, &ws); err != nil {
 		return ctrl.Result{}, errors.NewOperatorError(err, true, true)
 	}
 
-	next := r.limiter.When(cn)
-	return ctrl.Result{RequeueAfter: next}, nil
+	return ctrl.Result{RequeueAfter: r.limiter.When(cn)}, nil
 }
 
 func (r *WorkspaceSubroutine) Finalizers(_ runtimeobject.RuntimeObject) []string { // coverage-ignore
@@ -135,6 +133,7 @@ func (r *WorkspaceSubroutine) Process(ctx context.Context, ro runtimeobject.Runt
 		return ctrl.Result{}, errors.NewOperatorError(err, true, true)
 	}
 
+	r.limiter.Forget(cn)
 	return ctrl.Result{}, nil
 }
 
