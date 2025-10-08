@@ -17,6 +17,7 @@ import (
 	"k8s.io/client-go/util/workqueue"
 	ctrl "sigs.k8s.io/controller-runtime"
 	"sigs.k8s.io/controller-runtime/pkg/client"
+	mccontext "sigs.k8s.io/multicluster-runtime/pkg/context"
 
 	"github.com/platform-mesh/account-operator/api/v1alpha1"
 )
@@ -51,10 +52,16 @@ func (e *FGASubroutine) Process(ctx context.Context, ro runtimeobject.RuntimeObj
 	log := logger.LoadLoggerFromContext(ctx)
 	log.Debug().Msg("Starting creator subroutine process() function")
 
-	clusterClient, err := clientForContext(ctx, e.clusterGetter, e.client)
+	clusterName, ok := mccontext.ClusterFrom(ctx)
+	if !ok {
+		return ctrl.Result{}, errors.NewOperatorError(fmt.Errorf("cluster client not available: ensure context carries cluster information"), true, true)
+	}
+
+	clusterRef, err := e.clusterGetter.GetCluster(ctx, clusterName)
 	if err != nil {
 		return ctrl.Result{}, errors.NewOperatorError(err, true, true)
 	}
+	clusterClient := clusterRef.GetClient()
 
 	accountWorkspace, err := retrieveWorkspace(ctx, account, clusterClient, log)
 	if err != nil {
@@ -152,10 +159,16 @@ func (e *FGASubroutine) Finalize(ctx context.Context, runtimeObj runtimeobject.R
 
 	// Skip fga account finalization for organizations because the store is removed completely
 	if account.Spec.Type != v1alpha1.AccountTypeOrg {
-		clusterClient, err := clientForContext(ctx, e.clusterGetter, e.client)
+		clusterName, ok := mccontext.ClusterFrom(ctx)
+		if !ok {
+			return ctrl.Result{}, errors.NewOperatorError(fmt.Errorf("cluster client not available: ensure context carries cluster information"), true, true)
+		}
+
+		clusterRef, err := e.clusterGetter.GetCluster(ctx, clusterName)
 		if err != nil {
 			return ctrl.Result{}, errors.NewOperatorError(err, true, true)
 		}
+		clusterClient := clusterRef.GetClient()
 
 		accountInfo, err := e.getAccountInfo(ctx, clusterClient)
 		if err != nil {

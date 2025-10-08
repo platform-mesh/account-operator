@@ -36,9 +36,9 @@ func TestAccountInfoFinalizeNilRuntimeObject(t *testing.T) {
 	}
 }
 
-func TestAccountInfoFinalizeMultipleFinalizersNoLimiter(t *testing.T) {
+func TestAccountInfoFinalizeMultipleFinalizersStaticLimiter(t *testing.T) {
 	acc := &corev1alpha1.Account{ObjectMeta: metav1.ObjectMeta{Name: "acc", Finalizers: []string{"f1", "f2"}}}
-	sub := &AccountInfoSubroutine{} // limiter is nil
+	sub := &AccountInfoSubroutine{limiter: staticLimiter{delay: time.Second}}
 	ctx := mccontext.WithCluster(context.Background(), "cluster-test")
 	res, opErr := sub.Finalize(ctx, acc)
 	if opErr != nil {

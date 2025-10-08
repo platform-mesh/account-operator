@@ -76,7 +76,7 @@ func TestWorkspaceTypeSubroutine_ProcessCreates(t *testing.T) {
 
 // Exercise AccountInfo finalize fast path
 func TestAccountInfoSubroutine_FinalizeFastPath(t *testing.T) {
-	sub := &AccountInfoSubroutine{limiter: nil}
+	sub := &AccountInfoSubroutine{limiter: staticLimiter{delay: time.Millisecond}}
 	acc := &corev1alpha1.Account{}
 	acc.Name = "org-final"
 	acc.Spec.Type = corev1alpha1.AccountTypeOrg
@@ -98,7 +98,7 @@ func TestAccountInfoSubroutine_FinalizeDelayed(t *testing.T) {
 	acc.Name = "org-final-delay"
 	acc.Spec.Type = corev1alpha1.AccountTypeOrg
 	acc.Finalizers = []string{"x", "account.core.platform-mesh.io/info"}
-	sub := &AccountInfoSubroutine{limiter: workqueueNoop{}}
+	sub := &AccountInfoSubroutine{limiter: staticLimiter{delay: time.Millisecond}}
 	ctx := mccontext.WithCluster(context.Background(), "cluster-test")
 	res, err := sub.Finalize(ctx, acc)
 	if err != nil {
@@ -108,10 +108,3 @@ func TestAccountInfoSubroutine_FinalizeDelayed(t *testing.T) {
 		t.Fatalf("expected requeue delay")
 	}
 }
-
-// workqueueNoop provides deterministic small delay
-type workqueueNoop struct{}
-
-func (w workqueueNoop) When(_ ClusteredName) time.Duration { return time.Millisecond }
-func (w workqueueNoop) Forget(_ ClusteredName)             {}
-func (w workqueueNoop) NumRequeues(_ ClusteredName) int    { return 0 }

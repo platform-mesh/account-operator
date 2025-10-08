@@ -3,6 +3,7 @@ package subroutines
 import (
 	"context"
 	"testing"
+	"time"
 
 	kcpcorev1alpha "github.com/kcp-dev/kcp/sdk/apis/core/v1alpha1"
 	kcptenancyv1alpha "github.com/kcp-dev/kcp/sdk/apis/tenancy/v1alpha1"
@@ -88,7 +89,7 @@ func TestAccountInfoProcessAccountCreatesInfoFromParent(t *testing.T) {
 	}
 }
 
-func TestAccountInfoProcessWorkspaceNotReadyNoLimiter(t *testing.T) {
+func TestAccountInfoProcessWorkspaceNotReadyStaticLimiter(t *testing.T) {
 	scheme := newSchemeForAccountInfo(t)
 	acc := &corev1alpha1.Account{ObjectMeta: metav1.ObjectMeta{Name: "org-nr", Annotations: map[string]string{"kcp.io/cluster": "root"}}, Spec: corev1alpha1.AccountSpec{Type: corev1alpha1.AccountTypeOrg}}
 	ws := &kcptenancyv1alpha.Workspace{ObjectMeta: metav1.ObjectMeta{Name: "org-nr"}}
@@ -96,7 +97,7 @@ func TestAccountInfoProcessWorkspaceNotReadyNoLimiter(t *testing.T) {
 	ws.Spec.URL = "https://host/root:orgs/org-nr"
 	ws.Status.Phase = kcpcorev1alpha.LogicalClusterPhaseInitializing
 	cl := fake.NewClientBuilder().WithScheme(scheme).WithObjects(acc, ws).Build()
-	sub := &AccountInfoSubroutine{client: cl, serverCA: "ca"} // limiter nil
+	sub := &AccountInfoSubroutine{client: cl, serverCA: "ca", limiter: staticLimiter{delay: time.Second}}
 	ctx := mccontext.WithCluster(context.Background(), "cluster-test")
 	res, opErr := sub.Process(ctx, acc)
 	if opErr != nil {
@@ -115,7 +116,7 @@ func TestAccountInfoProcessMissingOriginClusterAnnotation(t *testing.T) {
 	ws.Spec.URL = "https://host/root:orgs/org-noann"
 	ws.Status.Phase = kcpcorev1alpha.LogicalClusterPhaseReady
 	cl := fake.NewClientBuilder().WithScheme(scheme).WithObjects(acc, ws).Build()
-	sub := &AccountInfoSubroutine{client: cl, serverCA: "ca"}
+	sub := &AccountInfoSubroutine{client: cl, serverCA: "ca", limiter: staticLimiter{delay: time.Second}}
 	ctx := mccontext.WithCluster(context.Background(), "cluster-test")
 	_, opErr := sub.Process(ctx, acc)
 	if opErr == nil || !opErr.Retry() {

@@ -177,8 +177,8 @@ func (s *AccountInfoSubroutineTestSuite) TestFinalizeNilRuntimeObject() {
 	s.NotNil(opErr)
 }
 
-func (s *AccountInfoSubroutineTestSuite) TestFinalizeMultipleFinalizersWithoutLimiter() {
-	sub := &AccountInfoSubroutine{}
+func (s *AccountInfoSubroutineTestSuite) TestFinalizeMultipleFinalizersStaticLimiter() {
+	sub := &AccountInfoSubroutine{limiter: staticLimiter{delay: time.Second}}
 	acc := &corev1alpha1.Account{ObjectMeta: metav1.ObjectMeta{Name: "org-final", Finalizers: []string{"a", "b"}}}
 	res, opErr := sub.Finalize(s.ctx, acc)
 	s.Nil(opErr)

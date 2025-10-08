@@ -18,6 +18,7 @@ import (
 	ctrl "sigs.k8s.io/controller-runtime"
 	"sigs.k8s.io/controller-runtime/pkg/client"
 	"sigs.k8s.io/controller-runtime/pkg/controller/controllerutil"
+	mccontext "sigs.k8s.io/multicluster-runtime/pkg/context"
 
 	"github.com/platform-mesh/account-operator/api/v1alpha1"
 )
@@ -72,10 +73,16 @@ func (r *AccountInfoSubroutine) Process(ctx context.Context, ro runtimeobject.Ru
 	cn := MustGetClusteredName(ctx, ro)
 
 	// select workspace for account
-	clusterClient, err := clientForContext(ctx, r.clusterGetter, r.client)
+	clusterName, ok := mccontext.ClusterFrom(ctx)
+	if !ok {
+		return ctrl.Result{}, errors.NewOperatorError(fmt.Errorf("cluster client not available: ensure context carries cluster information"), true, true)
+	}
+
+	clusterRef, err := r.clusterGetter.GetCluster(ctx, clusterName)
 	if err != nil {
 		return ctrl.Result{}, errors.NewOperatorError(err, true, true)
 	}
+	clusterClient := clusterRef.GetClient()
 
 	accountWorkspace, err := retrieveWorkspace(ctx, instance, clusterClient, log)
 	if err != nil {
