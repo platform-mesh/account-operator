@@ -49,12 +49,37 @@ func (r *AccountInfoSubroutine) GetName() string {
 func (r *AccountInfoSubroutine) Finalize(ctx context.Context, ro runtimeobject.RuntimeObject) (ctrl.Result, errors.OperatorError) {
 	cn := MustGetClusteredName(ctx, ro)
 
-	// The account info object is relevant input for other finalizers, removing the accountinfo finalizer at last
-	if len(ro.GetFinalizers()) > 1 {
-		delay := r.limiter.When(cn)
-		return ctrl.Result{RequeueAfter: delay}, nil
+	// Determine whether we should keep requeuing or surface an error based on deletion age.
+	requeue := true
+	if ts := ro.GetDeletionTimestamp(); ts != nil {
+		oneMinAgo := v1.Now().Add(-1 * time.Minute)
+		if ts.Time.Before(oneMinAgo) {
+			requeue = false
+		}
 	}
 
+	// The account info object is relevant input for other finalizers, removing the accountinfo finalizer at last
+	if len(ro.GetFinalizers()) > 1 {
+		if requeue {
+			delay := r.limiter.When(cn)
+			return ctrl.Result{RequeueAfter: delay}, nil
+		}
+		return ctrl.Result{}, errors.NewOperatorError(fmt.Errorf("finalizer not removed yet"), true, false)
+	}
+
+	accountList := &v1alpha1.AccountList{}
+	if err := r.client.List(ctx, accountList); err != nil {
+		return ctrl.Result{}, errors.NewOperatorError(err, true, true)
+	}
+	if len(accountList.Items) > 0 {
+		if requeue {
+			delay := r.limiter.When(cn)
+			return ctrl.Result{RequeueAfter: delay}, nil
+		}
+		return ctrl.Result{}, errors.NewOperatorError(fmt.Errorf("finalizer not removed yet"), true, false)
+	}
+
+	// All clear: no other finalizers and no child accounts exist.
 	r.limiter.Forget(cn)
 	return ctrl.Result{}, nil
 }

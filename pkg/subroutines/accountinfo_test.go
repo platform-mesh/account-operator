@@ -485,6 +485,65 @@ func (suite *AccountInfoSubroutineTestSuite) TestFinalizeNoContext() {
 	})
 }
 
+func (suite *AccountInfoSubroutineTestSuite) TestFinalize_Blocks_WhenChildAccountsExist() {
+	// Given: only our finalizer remains and there are child accounts
+	ctx := context.Background()
+	ctx = kontext.WithCluster(ctx, "some-cluster-id")
+	acc := &v1alpha1.Account{
+		ObjectMeta: v1.ObjectMeta{
+			Name:              "example-account",
+			Finalizers:        []string{"account.core.platform-mesh.io/info"},
+			DeletionTimestamp: &v1.Time{Time: time.Now()},
+		},
+	}
+	// Mock: List returns one child account
+	suite.clientMock.EXPECT().
+		List(mock.Anything, mock.AnythingOfType("*v1alpha1.AccountList")).
+		Run(func(ctx context.Context, list client.ObjectList, opts ...client.ListOption) {
+			al := list.(*v1alpha1.AccountList)
+			al.Items = []v1alpha1.Account{{}}
+		}).
+		Return(nil)
+
+	// When
+	res, err := suite.testObj.Finalize(ctx, acc)
+
+	// Then
+	suite.Nil(err)
+	suite.Assert().NotZero(res.RequeueAfter)
+}
+
+func (suite *AccountInfoSubroutineTestSuite) TestFinalize_ReturnsError_AfterOneMinute_WhenChildAccountsExist() {
+	// Given: only our finalizer remains, deletion older than 1 minute, and there are child accounts
+	ctx := context.Background()
+	ctx = kontext.WithCluster(ctx, "some-cluster-id")
+	acc := &v1alpha1.Account{
+		ObjectMeta: v1.ObjectMeta{
+			Name:              "example-account",
+			Finalizers:        []string{"account.core.platform-mesh.io/info"},
+			DeletionTimestamp: &v1.Time{Time: time.Now().Add(-2 * time.Minute)},
+		},
+	}
+	// Mock: List returns one child account
+	suite.clientMock.EXPECT().
+		List(mock.Anything, mock.AnythingOfType("*v1alpha1.AccountList")).
+		Run(func(ctx context.Context, list client.ObjectList, opts ...client.ListOption) {
+			al := list.(*v1alpha1.AccountList)
+			al.Items = []v1alpha1.Account{{}}
+		}).
+		Return(nil)
+
+	// When
+	res, err := suite.testObj.Finalize(ctx, acc)
+
+	// Then
+	suite.NotNil(err)
+	suite.Contains(err.Err().Error(), "finalizer not removed yet")
+	suite.True(err.Retry())
+	suite.False(err.Sentry())
+	suite.Assert().Zero(res.RequeueAfter)
+}
+
 func (suite *AccountInfoSubroutineTestSuite) mockGetAccountInfoCallNotFound() *mocks.Client_Get_Call {
 	return suite.clientMock.EXPECT().
 		Get(mock.Anything, mock.Anything, mock.AnythingOfType("*v1alpha1.AccountInfo")).
