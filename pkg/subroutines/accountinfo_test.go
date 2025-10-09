@@ -27,6 +27,8 @@ import (
 	"github.com/platform-mesh/account-operator/internal/config"
 	"github.com/platform-mesh/account-operator/pkg/subroutines"
 	"github.com/platform-mesh/account-operator/pkg/subroutines/mocks"
+
+	"k8s.io/apimachinery/pkg/labels"
 )
 
 type AccountInfoSubroutineTestSuite struct {
@@ -496,10 +498,19 @@ func (suite *AccountInfoSubroutineTestSuite) TestFinalize_Blocks_WhenChildAccoun
 			DeletionTimestamp: &v1.Time{Time: time.Now()},
 		},
 	}
-	// Mock: List returns one child account
+	// Mock: List returns one child account and assert proper scoping via label selector
 	suite.clientMock.EXPECT().
-		List(mock.Anything, mock.AnythingOfType("*v1alpha1.AccountList")).
+		List(mock.Anything, mock.AnythingOfType("*v1alpha1.AccountList"), mock.Anything).
 		Run(func(ctx context.Context, list client.ObjectList, opts ...client.ListOption) {
+			// Verify ListOptions include a label selector that matches the expected owner label
+			var lo client.ListOptions
+			for _, o := range opts {
+				o.ApplyToList(&lo)
+			}
+			suite.Require().NotNil(lo.LabelSelector, "expected a label selector for filtering child accounts")
+			expected := labels.Set{string(v1alpha1.NamespaceAccountOwnerLabel): "example-account"}
+			suite.True(lo.LabelSelector.Matches(expected), "label selector should match owner label for current Account")
+
 			al := list.(*v1alpha1.AccountList)
 			al.Items = []v1alpha1.Account{{}}
 		}).
@@ -524,10 +535,19 @@ func (suite *AccountInfoSubroutineTestSuite) TestFinalize_ReturnsError_AfterOneM
 			DeletionTimestamp: &v1.Time{Time: time.Now().Add(-2 * time.Minute)},
 		},
 	}
-	// Mock: List returns one child account
+	// Mock: List returns one child account and assert proper scoping via label selector
 	suite.clientMock.EXPECT().
-		List(mock.Anything, mock.AnythingOfType("*v1alpha1.AccountList")).
+		List(mock.Anything, mock.AnythingOfType("*v1alpha1.AccountList"), mock.Anything).
 		Run(func(ctx context.Context, list client.ObjectList, opts ...client.ListOption) {
+			// Verify ListOptions include a label selector that matches the expected owner label
+			var lo client.ListOptions
+			for _, o := range opts {
+				o.ApplyToList(&lo)
+			}
+			suite.Require().NotNil(lo.LabelSelector, "expected a label selector for filtering child accounts")
+			expected := labels.Set{string(v1alpha1.NamespaceAccountOwnerLabel): "example-account"}
+			suite.True(lo.LabelSelector.Matches(expected), "label selector should match owner label for current Account")
+
 			al := list.(*v1alpha1.AccountList)
 			al.Items = []v1alpha1.Account{{}}
 		}).

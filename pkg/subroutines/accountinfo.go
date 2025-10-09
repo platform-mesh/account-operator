@@ -68,7 +68,13 @@ func (r *AccountInfoSubroutine) Finalize(ctx context.Context, ro runtimeobject.R
 	}
 
 	accountList := &v1alpha1.AccountList{}
-	if err := r.client.List(ctx, accountList); err != nil {
+	// Only consider child Accounts of the current Account to decide on finalizer removal.
+	// We use the parent-identifying label set on child Accounts to filter the list.
+	if err := r.client.List(
+		ctx,
+		accountList,
+		client.MatchingLabels(map[string]string{string(v1alpha1.NamespaceAccountOwnerLabel): ro.GetName()}),
+	); err != nil {
 		return ctrl.Result{}, errors.NewOperatorError(err, true, true)
 	}
 	if len(accountList.Items) > 0 {
