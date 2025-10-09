@@ -13,7 +13,6 @@ import (
 	"github.com/platform-mesh/golang-commons/errors"
 	kerrors "k8s.io/apimachinery/pkg/api/errors"
 	metav1 "k8s.io/apimachinery/pkg/apis/meta/v1"
-	"k8s.io/apimachinery/pkg/runtime"
 	"k8s.io/client-go/rest"
 	"k8s.io/client-go/util/workqueue"
 	ctrl "sigs.k8s.io/controller-runtime"
@@ -34,15 +33,14 @@ type WorkspaceSubroutine struct {
 	clusterGetter ClusterClientGetter
 	limiter       workqueue.TypedRateLimiter[ClusteredName]
 	baseConfig    *rest.Config
-	scheme        *runtime.Scheme
 
 	mu         sync.Mutex
 	orgsClient client.Client
 }
 
-func NewWorkspaceSubroutine(clusterGetter ClusterClientGetter, localClient client.Client, baseConfig *rest.Config, scheme *runtime.Scheme) *WorkspaceSubroutine {
+func NewWorkspaceSubroutine(clusterGetter ClusterClientGetter, localClient client.Client, baseConfig *rest.Config) *WorkspaceSubroutine {
 	exp := workqueue.NewTypedItemExponentialFailureRateLimiter[ClusteredName](1*time.Second, 120*time.Second)
-	return &WorkspaceSubroutine{client: localClient, clusterGetter: clusterGetter, limiter: exp, baseConfig: baseConfig, scheme: scheme}
+	return &WorkspaceSubroutine{client: localClient, clusterGetter: clusterGetter, limiter: exp, baseConfig: baseConfig}
 }
 
 // NewWorkspaceSubroutineForTesting creates a new WorkspaceSubroutine for unit tests.
@@ -136,11 +134,7 @@ func (r *WorkspaceSubroutine) Process(ctx context.Context, ro runtimeobject.Runt
 			Name: kcptenancyv1alpha.WorkspaceTypeName(workspaceTypeName),
 			Path: orgsWorkspacePath,
 		}
-		scheme := r.scheme
-		if scheme == nil {
-			scheme = clusterClient.Scheme()
-		}
-		return controllerutil.SetOwnerReference(instance, createdWorkspace, scheme)
+		return controllerutil.SetOwnerReference(instance, createdWorkspace, clusterClient.Scheme())
 	})
 	if err != nil {
 		return ctrl.Result{}, errors.NewOperatorError(err, true, true)
@@ -183,8 +177,8 @@ func (r *WorkspaceSubroutine) getOrgsClient() (client.Client, error) {
 	}
 
 	options := client.Options{}
-	if r.scheme != nil {
-		options.Scheme = r.scheme
+	if r.client != nil {
+		options.Scheme = r.client.Scheme()
 	}
 
 	orgsClient, err := client.New(clientCfg, options)

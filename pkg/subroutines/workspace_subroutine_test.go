@@ -58,7 +58,7 @@ func (s *WorkspaceSubroutineTestSuite) TestProcessCreatesWorkspaceForOrg() {
 	conditionshelper.Set(orgType, &conditionsapi.Condition{Type: conditionsapi.ReadyCondition, Status: v1.ConditionTrue, Reason: "Ready", Message: "ready"})
 	cl := s.newClient(acc, orgType)
 	getter := fakeClusterGetter{cluster: &fakeCluster{client: cl}}
-	sub := NewWorkspaceSubroutine(getter, nil, nil, nil)
+	sub := NewWorkspaceSubroutine(getter, nil, nil)
 	// Inject orgsClient so readiness check can evaluate conditions
 	sub.orgsClient = cl
 	res, opErr := sub.Process(s.ctx, acc)
@@ -145,7 +145,7 @@ func (s *WorkspaceSubroutineTestSuite) TestProcessTreatsMissingOrgsClientAsReady
 	acc := &corev1alpha1.Account{ObjectMeta: metav1.ObjectMeta{Name: "org-ws3", Annotations: map[string]string{"kcp.io/cluster": "root"}}, Spec: corev1alpha1.AccountSpec{Type: corev1alpha1.AccountTypeOrg}}
 	cl := s.newClient(acc)
 	getter := fakeClusterGetter{cluster: &fakeCluster{client: cl}}
-	sub := NewWorkspaceSubroutine(getter, nil, nil, nil)
+	sub := NewWorkspaceSubroutine(getter, nil, nil)
 	_, opErr := sub.Process(s.ctx, acc)
 	s.NotNil(opErr)
 }
@@ -170,7 +170,7 @@ func (s *WorkspaceSubroutineTestSuite) TestFinalizeRequeuesWhileDeletionInProgre
 func (s *WorkspaceSubroutineTestSuite) TestProcessClientForContextError() {
 	acc := &corev1alpha1.Account{ObjectMeta: metav1.ObjectMeta{Name: "org-ctx", Annotations: map[string]string{"kcp.io/cluster": "root"}}, Spec: corev1alpha1.AccountSpec{Type: corev1alpha1.AccountTypeOrg}}
 	getter := fakeClusterGetter{err: errors.New("boom")}
-	sub := NewWorkspaceSubroutine(getter, nil, nil, s.scheme)
+	sub := NewWorkspaceSubroutine(getter, nil, nil)
 	ctx := mccontext.WithCluster(s.ctx, "cluster")
 	_, opErr := sub.Process(ctx, acc)
 	s.NotNil(opErr)
@@ -210,7 +210,7 @@ func (s *WorkspaceSubroutineTestSuite) TestProcessWithClusterGetterSuccess() {
 	conditionshelper.Set(orgType, &conditionsapi.Condition{Type: conditionsapi.ReadyCondition, Status: v1.ConditionTrue})
 	cl := s.newClient(acc, orgType)
 	getter := fakeClusterGetter{cluster: &fakeCluster{client: cl}}
-	sub := NewWorkspaceSubroutine(getter, nil, nil, s.scheme)
+	sub := NewWorkspaceSubroutine(getter, nil, nil)
 	// Ensure readiness check can access orgs client
 	sub.orgsClient = cl
 	ctx := mccontext.WithCluster(s.ctx, "cluster")
@@ -225,7 +225,7 @@ func (s *WorkspaceSubroutineTestSuite) TestProcessWithClusterGetterSuccess() {
 func (s *WorkspaceSubroutineTestSuite) TestProcessClusterGetterError() {
 	acc := &corev1alpha1.Account{ObjectMeta: metav1.ObjectMeta{Name: "org-cluster", Annotations: map[string]string{"kcp.io/cluster": "root"}}, Spec: corev1alpha1.AccountSpec{Type: corev1alpha1.AccountTypeOrg}}
 	getter := fakeClusterGetter{err: errors.New("boom")}
-	sub := NewWorkspaceSubroutine(getter, nil, nil, s.scheme)
+	sub := NewWorkspaceSubroutine(getter, nil, nil)
 	ctx := mccontext.WithCluster(s.ctx, "cluster")
 	_, opErr := sub.Process(ctx, acc)
 	s.NotNil(opErr)
@@ -234,7 +234,7 @@ func (s *WorkspaceSubroutineTestSuite) TestProcessClusterGetterError() {
 func (s *WorkspaceSubroutineTestSuite) TestProcessPanicsWithoutClusterInContext() {
 	// Currently Process calls MustGetClusteredName before checking the context; expect a panic here.
 	acc := &corev1alpha1.Account{ObjectMeta: metav1.ObjectMeta{Name: "org-nocluster"}, Spec: corev1alpha1.AccountSpec{Type: corev1alpha1.AccountTypeOrg}}
-	sub := NewWorkspaceSubroutine(fakeClusterGetter{cluster: &fakeCluster{}}, nil, nil, s.scheme)
+	sub := NewWorkspaceSubroutine(fakeClusterGetter{cluster: &fakeCluster{}}, nil, nil)
 	defer func() {
 		if r := recover(); r == nil {
 			s.T().Fatalf("expected panic when cluster missing in context")
@@ -247,7 +247,7 @@ func (s *WorkspaceSubroutineTestSuite) TestFinalizeClusterGetterError() {
 	acc := &corev1alpha1.Account{ObjectMeta: metav1.ObjectMeta{Name: "org-cluster", Annotations: map[string]string{"kcp.io/cluster": "root"}, Finalizers: []string{WorkspaceSubroutineFinalizer}}, Spec: corev1alpha1.AccountSpec{Type: corev1alpha1.AccountTypeOrg}}
 	getter := fakeClusterGetter{err: errors.New("boom")}
 	lim := workqueue.NewTypedItemExponentialFailureRateLimiter[ClusteredName](1*time.Millisecond, 1*time.Millisecond)
-	sub := NewWorkspaceSubroutine(getter, nil, nil, s.scheme)
+	sub := NewWorkspaceSubroutine(getter, nil, nil)
 	sub.limiter = lim
 	ctx := mccontext.WithCluster(s.ctx, "cluster")
 	_, opErr := sub.Finalize(ctx, acc)
@@ -259,7 +259,7 @@ func (s *WorkspaceSubroutineTestSuite) TestGetOrgsClientInvalidHostReturnsError(
 	acc := &corev1alpha1.Account{ObjectMeta: metav1.ObjectMeta{Name: "org-invalid"}}
 	cl := s.newClient(acc)
 	getter := fakeClusterGetter{cluster: &fakeCluster{client: cl}}
-	sub := NewWorkspaceSubroutine(getter, nil, &rest.Config{Host: "http://%zz"}, s.scheme)
+	sub := NewWorkspaceSubroutine(getter, nil, &rest.Config{Host: "http://%zz"})
 	// call unexported via method on instance
 	orgsCl, err := sub.getOrgsClient()
 	s.Nil(orgsCl)
@@ -270,7 +270,7 @@ func (s *WorkspaceSubroutineTestSuite) TestGetOrgsClientBuildsAndCaches() {
 	acc := &corev1alpha1.Account{ObjectMeta: metav1.ObjectMeta{Name: "org-cache"}}
 	cl := s.newClient(acc)
 	getter := fakeClusterGetter{cluster: &fakeCluster{client: cl}}
-	sub := NewWorkspaceSubroutine(getter, nil, &rest.Config{Host: "http://example.com"}, s.scheme)
+	sub := NewWorkspaceSubroutine(getter, nil, &rest.Config{Host: "http://example.com"})
 	// First call builds client
 	orgs1, err1 := sub.getOrgsClient()
 	s.NoError(err1)

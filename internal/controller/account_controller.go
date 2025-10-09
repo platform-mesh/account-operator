@@ -111,7 +111,7 @@ func buildAccountSubroutines(
 	}
 
 	if cfg.Subroutines.Workspace.Enabled {
-		subs = append(subs, subroutines.NewWorkspaceSubroutine(clusterGetter, localClient, baseConfig, scheme))
+		subs = append(subs, subroutines.NewWorkspaceSubroutine(clusterGetter, localClient, baseConfig))
 	}
 
 	if cfg.Subroutines.AccountInfo.Enabled {
