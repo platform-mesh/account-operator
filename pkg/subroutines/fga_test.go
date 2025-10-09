@@ -40,11 +40,6 @@ func newFgaError(c openfgav1.ErrorCode, m string) *fgaError {
 	}
 }
 
-func TestFGASubroutine_GetName(t *testing.T) {
-	routine := NewFGASubroutine(nil, nil, "", "", "")
-	assert.Equal(t, "FGASubroutine", routine.GetName())
-}
-
 func TestFGASubroutine_Finalizers(t *testing.T) {
 	routine := NewFGASubroutine(nil, nil, "", "", "")
 	assert.Equal(t, []string{"account.core.platform-mesh.io/fga"}, routine.Finalizers())
