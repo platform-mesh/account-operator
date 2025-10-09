@@ -5,7 +5,6 @@ import (
 	"fmt"
 	"testing"
 
-	kcpcorev1alpha1 "github.com/kcp-dev/kcp/sdk/apis/core/v1alpha1"
 	kcptenancyv1alpha "github.com/kcp-dev/kcp/sdk/apis/tenancy/v1alpha1"
 	"github.com/platform-mesh/golang-commons/logger"
 	"github.com/stretchr/testify/assert"
@@ -14,7 +13,6 @@ import (
 	kerrors "k8s.io/apimachinery/pkg/api/errors"
 	metav1 "k8s.io/apimachinery/pkg/apis/meta/v1"
 	"k8s.io/apimachinery/pkg/runtime/schema"
-	"k8s.io/apimachinery/pkg/types"
 	"k8s.io/client-go/rest"
 	"sigs.k8s.io/controller-runtime/pkg/client"
 
@@ -131,7 +129,7 @@ func (suite *CommonTestSuite) TestRetrieveWorkspace_Success() {
 	}
 
 	suite.clientMock.EXPECT().
-		Get(suite.ctx, client.ObjectKey{Name: "test-account"}, mock.AnythingOfType("*v1alpha1.Workspace")).
+		Get(suite.ctx, client.ObjectKey{Name: "test-account"}, mock.Anything).
 		Run(func(ctx context.Context, key client.ObjectKey, obj client.Object, opts ...client.GetOption) {
 			workspace := obj.(*kcptenancyv1alpha.Workspace)
 			workspace.Name = expectedWorkspace.Name
@@ -157,7 +155,7 @@ func (suite *CommonTestSuite) TestRetrieveWorkspace_NotFound() {
 	}
 
 	suite.clientMock.EXPECT().
-		Get(suite.ctx, client.ObjectKey{Name: "nonexistent-account"}, mock.AnythingOfType("*v1alpha1.Workspace")).
+		Get(suite.ctx, client.ObjectKey{Name: "nonexistent-account"}, mock.Anything).
 		Return(kerrors.NewNotFound(schema.GroupResource{Group: "tenancy.kcp.io", Resource: "workspaces"}, "nonexistent-account"))
 
 	// When
@@ -177,7 +175,7 @@ func (suite *CommonTestSuite) TestRetrieveWorkspace_GetError() {
 	}
 
 	suite.clientMock.EXPECT().
-		Get(suite.ctx, client.ObjectKey{Name: "test-account"}, mock.AnythingOfType("*v1alpha1.Workspace")).
+		Get(suite.ctx, client.ObjectKey{Name: "test-account"}, mock.Anything).
 		Return(kerrors.NewInternalError(fmt.Errorf("internal server error")))
 
 	// When
@@ -260,22 +258,40 @@ func TestCreateOrganizationRestConfig_InvalidURL(t *testing.T) {
 	assert.Nil(t, result)
 }
 
-// Mock helper functions (existing)
-func mockGetWorkspaceByName(clientMock *mocks.Client, ready kcpcorev1alpha1.LogicalClusterPhaseType, path string) *mocks.Client_Get_Call {
-	return clientMock.EXPECT().
-		Get(mock.Anything, mock.Anything, mock.AnythingOfType("*v1alpha1.Workspace")).
-		Run(func(ctx context.Context, key types.NamespacedName, obj client.Object, opts ...client.GetOption) {
-			wsPath := ""
-			if path != "" {
-				wsPath = "https://example.com/" + path
-			}
-			actual, _ := obj.(*kcptenancyv1alpha.Workspace)
-			actual.Name = key.Name
-			actual.Spec = kcptenancyv1alpha.WorkspaceSpec{
-				Cluster: "some-cluster-id-" + key.Name,
-				URL:     wsPath,
-			}
-			actual.Status.Phase = ready
-		}).
-		Return(nil)
+// Additional coverage: retrieveWorkspace should error on nil inputs
+func TestRetrieveWorkspace_NilAccount(t *testing.T) {
+	t.Parallel()
+	log, err := logger.New(logger.DefaultConfig())
+	assert.NoError(t, err)
+	// Using a real mocks.Client is unnecessary here, we won't call it
+	var cl client.Client = nil
+	ws, gotErr := retrieveWorkspace(context.Background(), nil, cl, log)
+	assert.Nil(t, ws)
+	assert.Error(t, gotErr)
+	assert.Contains(t, gotErr.Error(), "account is nil")
 }
+
+func TestRetrieveWorkspace_NilClient(t *testing.T) {
+	t.Parallel()
+	log, err := logger.New(logger.DefaultConfig())
+	assert.NoError(t, err)
+	acc := &corev1alpha1.Account{}
+	ws, gotErr := retrieveWorkspace(context.Background(), acc, nil, log)
+	assert.Nil(t, ws)
+	assert.Error(t, gotErr)
+	assert.Contains(t, gotErr.Error(), "client is nil")
+}
+
+func TestMustGetClusteredNamePanicsWithoutCluster(t *testing.T) {
+	// Use a minimal runtime object implementing the required interface
+	obj := &corev1alpha1.Account{}
+	defer func() {
+		if r := recover(); r == nil {
+			t.Fatalf("expected panic when cluster missing in context")
+		}
+	}()
+	_ = MustGetClusteredName(context.Background(), obj)
+}
+
+// Mock helper functions (existing)
+// (previously had helper mockGetWorkspaceByName; removed as unused to satisfy lint)

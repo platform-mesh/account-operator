@@ -2,6 +2,7 @@ package subroutines
 
 import (
 	"context"
+	"fmt"
 
 	kcptenancyv1alpha "github.com/kcp-dev/kcp/sdk/apis/tenancy/v1alpha1"
 	"github.com/platform-mesh/golang-commons/controller/lifecycle/runtimeobject"
@@ -10,6 +11,7 @@ import (
 	"github.com/platform-mesh/golang-commons/logger"
 	kerrors "k8s.io/apimachinery/pkg/api/errors"
 	metav1 "k8s.io/apimachinery/pkg/apis/meta/v1"
+	"k8s.io/client-go/rest"
 	ctrl "sigs.k8s.io/controller-runtime"
 	"sigs.k8s.io/controller-runtime/pkg/client"
 	"sigs.k8s.io/controller-runtime/pkg/controller/controllerutil"
@@ -31,14 +33,14 @@ var _ subroutine.Subroutine = &WorkspaceTypeSubroutine{}
 
 type WorkspaceTypeSubroutine struct {
 	orgsClient client.Client
+	initErr    error
 }
 
-func (w WorkspaceTypeSubroutine) Process(ctx context.Context, ro runtimeobject.RuntimeObject) (ctrl.Result, errors.OperatorError) {
+func (w *WorkspaceTypeSubroutine) Process(ctx context.Context, ro runtimeobject.RuntimeObject) (ctrl.Result, errors.OperatorError) {
 	instance := ro.(*v1alpha1.Account)
 	log := logger.LoadLoggerFromContext(ctx)
 
 	if instance.Spec.Type != v1alpha1.AccountTypeOrg {
-		// Only process org accounts
 		return ctrl.Result{}, nil
 	}
 
@@ -47,14 +49,12 @@ func (w WorkspaceTypeSubroutine) Process(ctx context.Context, ro runtimeobject.R
 	orgWst := generateOrgWorkspaceType(instance, orgWorkspaceTypeName, accountWorkspaceTypeName)
 	accWst := generateAccountWorkspaceType(instance, orgWorkspaceTypeName, accountWorkspaceTypeName)
 
-	err := w.createOrUpdateWorkspaceType(ctx, orgWst)
-	if err != nil {
-		log.Error().Err(err).Str("name", accWst.Name).Msg("failed to create or update org workspace type")
+	if err := w.createOrUpdateWorkspaceType(ctx, orgWst); err != nil {
+		log.Error().Err(err).Str("name", orgWst.Name).Msg("failed to create or update org workspace type")
 		return ctrl.Result{}, errors.NewOperatorError(err, true, true)
 	}
 
-	err = w.createOrUpdateWorkspaceType(ctx, accWst)
-	if err != nil {
+	if err := w.createOrUpdateWorkspaceType(ctx, accWst); err != nil {
 		log.Error().Err(err).Str("name", accWst.Name).Msg("failed to create or update account workspace type")
 		return ctrl.Result{}, errors.NewOperatorError(err, true, true)
 	}
@@ -62,37 +62,46 @@ func (w WorkspaceTypeSubroutine) Process(ctx context.Context, ro runtimeobject.R
 	return ctrl.Result{}, nil
 }
 
-func (w WorkspaceTypeSubroutine) createOrUpdateWorkspaceType(ctx context.Context, desiredWst kcptenancyv1alpha.WorkspaceType) error {
+func (w *WorkspaceTypeSubroutine) createOrUpdateWorkspaceType(ctx context.Context, desiredWst kcptenancyv1alpha.WorkspaceType) error {
+	orgsClient, err := w.getOrgsClient()
+	if err != nil {
+		return err
+	}
+
 	wst := &kcptenancyv1alpha.WorkspaceType{ObjectMeta: metav1.ObjectMeta{Name: desiredWst.Name}}
-	_, err := controllerutil.CreateOrUpdate(ctx, w.orgsClient, wst, func() error {
+	_, err = controllerutil.CreateOrUpdate(ctx, orgsClient, wst, func() error {
 		wst.Spec = desiredWst.Spec
 		return nil
 	})
 	return err
 }
 
-func (w WorkspaceTypeSubroutine) Finalize(ctx context.Context, ro runtimeobject.RuntimeObject) (ctrl.Result, errors.OperatorError) {
+func (w *WorkspaceTypeSubroutine) Finalize(ctx context.Context, ro runtimeobject.RuntimeObject) (ctrl.Result, errors.OperatorError) {
 	instance := ro.(*v1alpha1.Account)
 	log := logger.LoadLoggerFromContext(ctx)
 	if instance.Spec.Type != v1alpha1.AccountTypeOrg {
-		// Only process org accounts
 		return ctrl.Result{}, nil
+	}
+
+	orgsClient, err := w.getOrgsClient()
+	if err != nil {
+		log.Error().Err(err).Msg("failed to get orgs client")
+		return ctrl.Result{}, errors.NewOperatorError(err, true, true)
 	}
 
 	orgWorkspaceTypeName := generateOrganizationWorkspaceTypeName(instance.Name)
 	accountWorkspaceTypeName := generateAccountWorkspaceTypeName(instance.Name)
 
-	err := w.orgsClient.Delete(ctx, &kcptenancyv1alpha.WorkspaceType{ObjectMeta: metav1.ObjectMeta{Name: orgWorkspaceTypeName}})
-	if err != nil {
+	if err := orgsClient.Delete(ctx, &kcptenancyv1alpha.WorkspaceType{ObjectMeta: metav1.ObjectMeta{Name: orgWorkspaceTypeName}}); err != nil {
 		if !kerrors.IsNotFound(err) {
-			log.Error().Err(err).Str("name", orgWorkspaceTypeName).Msg("failed to delete org workspace")
+			log.Error().Err(err).Str("name", orgWorkspaceTypeName).Msg("failed to delete org workspace type")
 			return ctrl.Result{}, errors.NewOperatorError(err, true, true)
 		}
 	}
-	err = w.orgsClient.Delete(ctx, &kcptenancyv1alpha.WorkspaceType{ObjectMeta: metav1.ObjectMeta{Name: accountWorkspaceTypeName}})
-	if err != nil {
+
+	if err := orgsClient.Delete(ctx, &kcptenancyv1alpha.WorkspaceType{ObjectMeta: metav1.ObjectMeta{Name: accountWorkspaceTypeName}}); err != nil {
 		if !kerrors.IsNotFound(err) {
-			log.Error().Err(err).Str("name", accountWorkspaceTypeName).Msg("failed to delete acc workspace")
+			log.Error().Err(err).Str("name", accountWorkspaceTypeName).Msg("failed to delete account workspace type")
 			return ctrl.Result{}, errors.NewOperatorError(err, true, true)
 		}
 	}
@@ -100,26 +109,53 @@ func (w WorkspaceTypeSubroutine) Finalize(ctx context.Context, ro runtimeobject.
 	return ctrl.Result{}, nil
 }
 
-func (w WorkspaceTypeSubroutine) GetName() string {
+func (w *WorkspaceTypeSubroutine) GetName() string {
 	return workspaceTypeSubroutineName
 }
 
-func (w WorkspaceTypeSubroutine) Finalizers() []string {
+func (w *WorkspaceTypeSubroutine) Finalizers(_ runtimeobject.RuntimeObject) []string {
 	return []string{workspaceTypeSubroutineFinalizer}
 }
 
-func NewWorkspaceTypeSubroutine(mgr ctrl.Manager) *WorkspaceTypeSubroutine {
-	clientCfg, err := createOrganizationRestConfig(mgr.GetConfig())
-	if err != nil {
-		panic(err)
+func NewWorkspaceTypeSubroutine(baseConfig *rest.Config, localClient client.Client) *WorkspaceTypeSubroutine {
+	w := &WorkspaceTypeSubroutine{}
+	if baseConfig == nil {
+		w.initErr = fmt.Errorf("workspace type subroutine: base config not provided")
+		return w
 	}
-	orgsClient, err := client.New(clientCfg, client.Options{
-		Scheme: mgr.GetScheme(),
-	})
+
+	clientCfg, err := createOrganizationRestConfig(baseConfig)
 	if err != nil {
-		panic(err)
+		w.initErr = err
+		return w
 	}
+
+	options := client.Options{}
+	if localClient != nil {
+		options.Scheme = localClient.Scheme()
+	}
+
+	orgsClient, err := client.New(clientCfg, options)
+	if err != nil {
+		w.initErr = err
+		return w
+	}
+	w.orgsClient = orgsClient
+	return w
+}
+
+func NewWorkspaceTypeSubroutineWithClient(orgsClient client.Client) *WorkspaceTypeSubroutine {
 	return &WorkspaceTypeSubroutine{orgsClient: orgsClient}
+}
+
+func (w *WorkspaceTypeSubroutine) getOrgsClient() (client.Client, error) {
+	if w.orgsClient != nil {
+		return w.orgsClient, nil
+	}
+	if w.initErr != nil {
+		return nil, w.initErr
+	}
+	return nil, fmt.Errorf("workspace type subroutine: orgs client not initialized")
 }
 
 func generateOrgWorkspaceType(instance *v1alpha1.Account, orgWorkspaceTypeName, accountWorkspaceTypeName string) kcptenancyv1alpha.WorkspaceType {

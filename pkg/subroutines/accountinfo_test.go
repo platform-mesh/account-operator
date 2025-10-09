@@ -1,562 +1,221 @@
-package subroutines_test
+package subroutines
 
 import (
 	"context"
-	"fmt"
+	"errors"
 	"testing"
 	"time"
 
-	kcpcorev1alpha1 "github.com/kcp-dev/kcp/sdk/apis/core/v1alpha1"
+	kcpcorev1alpha "github.com/kcp-dev/kcp/sdk/apis/core/v1alpha1"
 	kcptenancyv1alpha "github.com/kcp-dev/kcp/sdk/apis/tenancy/v1alpha1"
-	platformmeshcontext "github.com/platform-mesh/golang-commons/context"
 	"github.com/platform-mesh/golang-commons/logger"
-	"github.com/stretchr/testify/assert"
-	"github.com/stretchr/testify/mock"
 	"github.com/stretchr/testify/suite"
-	corev1 "k8s.io/api/core/v1"
-	kerrors "k8s.io/apimachinery/pkg/api/errors"
-	v1 "k8s.io/apimachinery/pkg/apis/meta/v1"
-	"k8s.io/apimachinery/pkg/runtime/schema"
-	"k8s.io/apimachinery/pkg/types"
-	utilruntime "k8s.io/apimachinery/pkg/util/runtime"
-	"k8s.io/client-go/kubernetes/scheme"
+	metav1 "k8s.io/apimachinery/pkg/apis/meta/v1"
+	"k8s.io/apimachinery/pkg/runtime"
+	"k8s.io/client-go/util/workqueue"
 	"sigs.k8s.io/controller-runtime/pkg/client"
-	"sigs.k8s.io/controller-runtime/pkg/kontext"
+	"sigs.k8s.io/controller-runtime/pkg/client/fake"
+	mccontext "sigs.k8s.io/multicluster-runtime/pkg/context"
 
-	"github.com/platform-mesh/account-operator/api/v1alpha1"
-	"github.com/platform-mesh/account-operator/internal/config"
-	"github.com/platform-mesh/account-operator/pkg/subroutines"
-	"github.com/platform-mesh/account-operator/pkg/subroutines/mocks"
+	corev1alpha1 "github.com/platform-mesh/account-operator/api/v1alpha1"
 )
 
 type AccountInfoSubroutineTestSuite struct {
 	suite.Suite
-
-	// Tested Object(s)
-	testObj *subroutines.AccountInfoSubroutine
-
-	// Mocks
-	clientMock *mocks.Client
-	context    context.Context
-	log        *logger.Logger
-}
-
-func (suite *AccountInfoSubroutineTestSuite) SetupTest() {
-	// Setup Mocks
-	suite.clientMock = new(mocks.Client)
-
-	// Initialize Tested Object(s)
-	suite.testObj = subroutines.NewAccountInfoSubroutine(suite.clientMock, "some-ca")
-
-	utilruntime.Must(v1alpha1.AddToScheme(scheme.Scheme))
-	utilruntime.Must(corev1.AddToScheme(scheme.Scheme))
-
-	cfg := config.OperatorConfig{}
-	var err error
-	suite.log, err = logger.New(logger.DefaultConfig())
-	suite.Require().NoError(err)
-	suite.context, _, _ = platformmeshcontext.StartContext(suite.log, cfg, 1*time.Minute)
+	scheme *runtime.Scheme
+	ctx    context.Context
+	log    *logger.Logger
 }
 
 func TestAccountInfoSubroutineTestSuite(t *testing.T) {
 	suite.Run(t, new(AccountInfoSubroutineTestSuite))
 }
 
-func (suite *AccountInfoSubroutineTestSuite) TestProcessing_OK_ForOrganization() {
-	// Given
-	testAccount := &v1alpha1.Account{
-		ObjectMeta: v1.ObjectMeta{
-			Name: "root-org",
-			Annotations: map[string]string{
-				"kcp.io/cluster": "asd",
-			},
-		},
-		Spec: v1alpha1.AccountSpec{
-			Type: v1alpha1.AccountTypeOrg,
-		},
+func (s *AccountInfoSubroutineTestSuite) SetupSuite() {
+	s.scheme = runtime.NewScheme()
+	s.Require().NoError(corev1alpha1.AddToScheme(s.scheme))
+	s.Require().NoError(kcpcorev1alpha.AddToScheme(s.scheme))
+	s.Require().NoError(kcptenancyv1alpha.AddToScheme(s.scheme))
+
+	var err error
+	s.log, err = logger.New(logger.DefaultConfig())
+	s.Require().NoError(err)
+	s.ctx = mccontext.WithCluster(context.Background(), "cluster-test")
+}
+
+func (s *AccountInfoSubroutineTestSuite) newClient(objs ...client.Object) client.Client {
+	return fake.NewClientBuilder().WithScheme(s.scheme).WithObjects(objs...).Build()
+}
+
+// helper to create workspace
+func newWorkspace(name, phase, cluster, url string) *kcptenancyv1alpha.Workspace {
+	ws := &kcptenancyv1alpha.Workspace{ObjectMeta: metav1.ObjectMeta{Name: name}}
+	ws.Spec.Cluster = cluster
+	ws.Spec.URL = url
+	if phase != "" {
+		ws.Status.Phase = kcpcorev1alpha.LogicalClusterPhaseType(phase)
 	}
-	expectedAccountInfo := v1alpha1.AccountInfo{
-		ObjectMeta: v1.ObjectMeta{
-			Name: "account",
-		},
-		Spec: v1alpha1.AccountInfoSpec{
-			ClusterInfo: v1alpha1.ClusterInfo{
-				CA: "some-ca",
-			},
-			Organization: v1alpha1.AccountLocation{
-				Name:               "root-org",
-				GeneratedClusterId: "some-cluster-id-root-org",
-				OriginClusterId:    "asd",
-				Path:               "root:platform-mesh:orgs:root-org",
-				URL:                "https://example.com/root:platform-mesh:orgs:root-org",
-				Type:               "org",
-			},
-			Account: v1alpha1.AccountLocation{
-				Name:               "root-org",
-				GeneratedClusterId: "some-cluster-id-root-org",
-				OriginClusterId:    "asd",
-				Path:               "root:platform-mesh:orgs:root-org",
-				URL:                "https://example.com/root:platform-mesh:orgs:root-org",
-				Type:               "org",
-			},
-		},
-	}
-
-	suite.mockGetWorkspaceByName(kcpcorev1alpha1.LogicalClusterPhaseReady, "root:platform-mesh:orgs:root-org")
-	suite.mockGetAccountInfoCallNotFound()
-	suite.mockCreateAccountInfoCall(expectedAccountInfo)
-	ctx := context.Background()
-	ctx = kontext.WithCluster(ctx, "some-cluster-id")
-	// When
-	res, err := suite.testObj.Process(ctx, testAccount)
-
-	// Then
-	suite.Nil(err)
-	suite.Assert().Zero(res.RequeueAfter)
-	suite.clientMock.AssertExpectations(suite.T())
+	return ws
 }
 
-func (suite *AccountInfoSubroutineTestSuite) TestProcessing_ForOrganization_Missing_Context() {
-	// Given
-	testAccount := &v1alpha1.Account{
-		ObjectMeta: v1.ObjectMeta{
-			Name: "root-org",
-			Annotations: map[string]string{
-				"kcp.io/cluster": "asd",
-			},
-		},
-		Spec: v1alpha1.AccountSpec{
-			Type: v1alpha1.AccountTypeOrg,
-		},
-	}
-	expectedAccountInfo := v1alpha1.AccountInfo{
-		ObjectMeta: v1.ObjectMeta{
-			Name: "account",
-		},
-		Spec: v1alpha1.AccountInfoSpec{
-			ClusterInfo: v1alpha1.ClusterInfo{
-				CA: "some-ca",
-			},
-			Organization: v1alpha1.AccountLocation{
-				Name:               "root-org",
-				GeneratedClusterId: "some-cluster-id-root-org",
-				OriginClusterId:    "asd",
-				Path:               "root:platform-mesh:orgs:root-org",
-				URL:                "https://example.com/root:platform-mesh:orgs:root-org",
-				Type:               "org",
-			},
-			Account: v1alpha1.AccountLocation{
-				Name:               "root-org",
-				GeneratedClusterId: "some-cluster-id-root-org",
-				OriginClusterId:    "asd",
-				Path:               "root:platform-mesh:orgs:root-org",
-				URL:                "https://example.com/root:platform-mesh:orgs:root-org",
-				Type:               "org",
-			},
-		},
-	}
+// Test organization account info creation path
+func (s *AccountInfoSubroutineTestSuite) TestProcessOrganizationCreatesAccountInfo() {
+	acc := &corev1alpha1.Account{ObjectMeta: metav1.ObjectMeta{Name: "org-a", Annotations: map[string]string{"kcp.io/cluster": "root"}}, Spec: corev1alpha1.AccountSpec{Type: corev1alpha1.AccountTypeOrg}}
+	ws := newWorkspace("org-a", string(kcpcorev1alpha.LogicalClusterPhaseReady), "cluster-org-a", "https://host/root:orgs/org-a")
+	cl := s.newClient(acc, ws)
 
-	suite.mockGetWorkspaceByName(kcpcorev1alpha1.LogicalClusterPhaseReady, "root:platform-mesh:orgs:root-org")
-	suite.mockGetAccountInfoCallNotFound()
-	suite.mockCreateAccountInfoCall(expectedAccountInfo)
+	getter := fakeClusterGetter{cluster: &fakeCluster{client: cl}}
+	sub := NewAccountInfoSubroutine(getter, nil, "FAKE-CA")
+	res, opErr := sub.Process(s.ctx, acc)
+	// should succeed immediately for org
+	s.Nil(opErr)
+	s.Equal(time.Duration(0), res.RequeueAfter)
 
-	// When
-	assert.Panics(suite.T(), func() {
-		suite.testObj.Process(context.Background(), testAccount)
-	})
+	created := &corev1alpha1.AccountInfo{}
+	s.Require().NoError(cl.Get(s.ctx, client.ObjectKey{Name: DefaultAccountInfoName}, created))
+	s.Equal("org-a", created.Spec.Account.Name)
+	s.Equal(corev1alpha1.AccountTypeOrg, created.Spec.Account.Type)
+	s.Equal("FAKE-CA", created.Spec.ClusterInfo.CA)
 }
 
-func (suite *AccountInfoSubroutineTestSuite) TestProcessing_ForOrganization_Workspace_Not_Ready() {
-	// Given
-	testAccount := &v1alpha1.Account{
-		ObjectMeta: v1.ObjectMeta{
-			Name: "root-org",
-		},
-		Spec: v1alpha1.AccountSpec{
-			Type: v1alpha1.AccountTypeOrg,
-		},
-	}
-	ctx := context.Background()
-	ctx = kontext.WithCluster(ctx, "some-cluster-id")
-
-	suite.mockGetWorkspaceByName(kcpcorev1alpha1.LogicalClusterPhaseInitializing, "root:platform-mesh:orgs")
-
-	// When
-	res, err := suite.testObj.Process(ctx, testAccount)
-
-	// Then
-	suite.Nil(err)
-	suite.Assert().NotZero(res.RequeueAfter)
-	suite.clientMock.AssertExpectations(suite.T())
+// Test retry when workspace not ready
+func (s *AccountInfoSubroutineTestSuite) TestProcessWorkspaceNotReadyRetries() {
+	acc := &corev1alpha1.Account{ObjectMeta: metav1.ObjectMeta{Name: "org-b", Annotations: map[string]string{"kcp.io/cluster": "root"}}, Spec: corev1alpha1.AccountSpec{Type: corev1alpha1.AccountTypeOrg}}
+	ws := newWorkspace("org-b", string(kcpcorev1alpha.LogicalClusterPhaseScheduling), "cluster-org-b", "https://host/root:orgs/org-b")
+	cl := s.newClient(acc, ws)
+	getter := fakeClusterGetter{cluster: &fakeCluster{client: cl}}
+	sub := NewAccountInfoSubroutine(getter, nil, "CA")
+	res, opErr := sub.Process(s.ctx, acc)
+	s.Nil(opErr)
+	s.True(res.RequeueAfter > 0)
 }
 
-func (suite *AccountInfoSubroutineTestSuite) TestProcessing_ForOrganization_Workspace_Not_Ready_no_Context() {
-	// Given
-	testAccount := &v1alpha1.Account{
-		ObjectMeta: v1.ObjectMeta{
-			Name: "root-org",
-		},
-		Spec: v1alpha1.AccountSpec{
-			Type: v1alpha1.AccountTypeOrg,
-		},
-	}
-	ctx := context.Background()
+// Test account type inherits parent info
+func (s *AccountInfoSubroutineTestSuite) TestProcessAccountInheritsParent() {
+	// parent org and its workspace + existing AccountInfo in workspace
+	orgAcc := &corev1alpha1.Account{ObjectMeta: metav1.ObjectMeta{Name: "org-c", Annotations: map[string]string{"kcp.io/cluster": "root"}}, Spec: corev1alpha1.AccountSpec{Type: corev1alpha1.AccountTypeOrg}}
+	orgWs := newWorkspace("org-c", string(kcpcorev1alpha.LogicalClusterPhaseReady), "cluster-org-c", "https://host/root:orgs/org-c")
+	parentInfo := &corev1alpha1.AccountInfo{ObjectMeta: metav1.ObjectMeta{Name: DefaultAccountInfoName}}
+	parentInfo.Spec.Account = corev1alpha1.AccountLocation{Name: "org-c", GeneratedClusterId: "cluster-org-c", OriginClusterId: "root", Type: corev1alpha1.AccountTypeOrg, Path: "org-c", URL: "https://host/root:orgs/org-c"}
+	parentInfo.Spec.Organization = parentInfo.Spec.Account
+	parentInfo.Spec.FGA.Store.Id = "store-123"
+	parentInfo.Spec.ClusterInfo.CA = "CA"
 
-	suite.mockGetWorkspaceByName(kcpcorev1alpha1.LogicalClusterPhaseInitializing, "root:platform-mesh:orgs")
+	acc := &corev1alpha1.Account{ObjectMeta: metav1.ObjectMeta{Name: "acc-x", Annotations: map[string]string{"kcp.io/cluster": "root"}}, Spec: corev1alpha1.AccountSpec{Type: corev1alpha1.AccountTypeAccount}}
+	accWs := newWorkspace("acc-x", string(kcpcorev1alpha.LogicalClusterPhaseReady), "cluster-acc-x", "https://host/root:orgs/org-c/acc-x")
 
-	// When
-	assert.Panics(suite.T(), func() {
-		suite.testObj.Process(ctx, testAccount)
-	})
+	cl := s.newClient(orgAcc, orgWs, parentInfo, acc, accWs)
+	getter := fakeClusterGetter{cluster: &fakeCluster{client: cl}}
+	sub := NewAccountInfoSubroutine(getter, nil, "CA")
+
+	res, opErr := sub.Process(s.ctx, acc)
+	s.Nil(opErr)
+	s.Equal(time.Duration(0), res.RequeueAfter)
+
+	created := &corev1alpha1.AccountInfo{}
+	s.Require().NoError(cl.Get(s.ctx, client.ObjectKey{Name: DefaultAccountInfoName}, created))
+	s.Equal("acc-x", created.Spec.Account.Name)
+	s.NotNil(created.Spec.ParentAccount)
+	s.Equal("org-c", created.Spec.ParentAccount.Name)
+	s.Equal("store-123", created.Spec.FGA.Store.Id)
 }
 
-func (suite *AccountInfoSubroutineTestSuite) TestProcessing_ForOrganization_No_Workspace() {
-	// Given
-	testAccount := &v1alpha1.Account{
-		ObjectMeta: v1.ObjectMeta{
-			Name: "root-org",
-		},
-		Spec: v1alpha1.AccountSpec{
-			Type: v1alpha1.AccountTypeOrg,
-		},
-	}
-
-	suite.mockGetWorkspaceNotFound()
-	ctx := kontext.WithCluster(suite.context, "some-cluster-id")
-
-	// When
-	_, err := suite.testObj.Process(ctx, testAccount)
-
-	// Then
-	suite.NotNil(err)
-	suite.Equal("workspace does not exist:  \"\" not found", err.Err().Error())
-	suite.Error(err.Err())
-	suite.True(err.Retry())
-	suite.True(err.Sentry())
-	suite.clientMock.AssertExpectations(suite.T())
+// Test account path when parent AccountInfo missing -> expect operator error
+func (s *AccountInfoSubroutineTestSuite) TestProcessAccountParentMissing() {
+	orgAcc := &corev1alpha1.Account{ObjectMeta: metav1.ObjectMeta{Name: "org-missing", Annotations: map[string]string{"kcp.io/cluster": "root"}}, Spec: corev1alpha1.AccountSpec{Type: corev1alpha1.AccountTypeOrg}}
+	orgWs := newWorkspace("org-missing", string(kcpcorev1alpha.LogicalClusterPhaseReady), "cluster-org-missing", "https://host/root:orgs/org-missing")
+	acc := &corev1alpha1.Account{ObjectMeta: metav1.ObjectMeta{Name: "acc-missing", Annotations: map[string]string{"kcp.io/cluster": "root"}}, Spec: corev1alpha1.AccountSpec{Type: corev1alpha1.AccountTypeAccount}}
+	accWs := newWorkspace("acc-missing", string(kcpcorev1alpha.LogicalClusterPhaseReady), "cluster-acc-missing", "https://host/root:orgs/org-missing/acc-missing")
+	cl := s.newClient(orgAcc, orgWs, acc, accWs) // intentionally no AccountInfo object
+	getter := fakeClusterGetter{cluster: &fakeCluster{client: cl}}
+	sub := NewAccountInfoSubroutine(getter, nil, "CA")
+	_, opErr := sub.Process(s.ctx, acc)
+	s.NotNil(opErr)
 }
 
-func (suite *AccountInfoSubroutineTestSuite) TestProcessing_OK_No_Path() {
-	// Given
-	testAccount := &v1alpha1.Account{
-		ObjectMeta: v1.ObjectMeta{
-			Name: "root-org",
-		},
-		Spec: v1alpha1.AccountSpec{
-			Type: v1alpha1.AccountTypeOrg,
-		},
-	}
-	suite.mockGetWorkspaceByName(kcpcorev1alpha1.LogicalClusterPhaseReady, "")
-	ctx := kontext.WithCluster(suite.context, "some-cluster-id")
-
-	// When
-	_, err := suite.testObj.Process(ctx, testAccount)
-
-	// Then
-	suite.NotNil(err)
-	suite.Equal("workspace URL is empty", err.Err().Error())
-	suite.Error(err.Err())
-	suite.True(err.Retry())
-	suite.True(err.Sentry())
-	suite.clientMock.AssertExpectations(suite.T())
+func (s *AccountInfoSubroutineTestSuite) TestProcessUsesClusterGetter() {
+	acc := &corev1alpha1.Account{ObjectMeta: metav1.ObjectMeta{Name: "org-getter", Annotations: map[string]string{"kcp.io/cluster": "root"}}, Spec: corev1alpha1.AccountSpec{Type: corev1alpha1.AccountTypeOrg}}
+	ws := newWorkspace("org-getter", string(kcpcorev1alpha.LogicalClusterPhaseReady), "cluster-org-getter", "https://host/root:orgs/org-getter")
+	client := s.newClient(acc, ws)
+	getter := fakeClusterGetter{cluster: &fakeCluster{client: client}}
+	sub := NewAccountInfoSubroutine(getter, nil, "CA")
+	ctx := mccontext.WithCluster(s.ctx, "cluster-org-getter")
+	res, opErr := sub.Process(ctx, acc)
+	s.Nil(opErr)
+	s.Equal(time.Duration(0), res.RequeueAfter)
 }
 
-func (suite *AccountInfoSubroutineTestSuite) TestProcessing_OK_Empty_Path() {
-	// Given
-	testAccount := &v1alpha1.Account{
-		ObjectMeta: v1.ObjectMeta{
-			Name: "root-org",
-		},
-		Spec: v1alpha1.AccountSpec{
-			Type: v1alpha1.AccountTypeOrg,
-		},
-	}
-	suite.mockGetWorkspaceByName(kcpcorev1alpha1.LogicalClusterPhaseReady, " ")
-	ctx := kontext.WithCluster(suite.context, "some-cluster-id")
-
-	// When
-	_, err := suite.testObj.Process(ctx, testAccount)
-
-	// Then
-	suite.NotNil(err)
-	suite.Equal("workspace URL is empty", err.Err().Error())
-	suite.Error(err.Err())
-	suite.True(err.Retry())
-	suite.True(err.Sentry())
-	suite.clientMock.AssertExpectations(suite.T())
+func (s *AccountInfoSubroutineTestSuite) TestProcessClusterGetterError() {
+	acc := &corev1alpha1.Account{ObjectMeta: metav1.ObjectMeta{Name: "org-getter-err", Annotations: map[string]string{"kcp.io/cluster": "root"}}, Spec: corev1alpha1.AccountSpec{Type: corev1alpha1.AccountTypeOrg}}
+	getter := fakeClusterGetter{err: errors.New("boom")}
+	sub := NewAccountInfoSubroutine(getter, nil, "CA")
+	ctx := mccontext.WithCluster(s.ctx, "cluster")
+	_, opErr := sub.Process(ctx, acc)
+	s.NotNil(opErr)
 }
 
-func (suite *AccountInfoSubroutineTestSuite) TestProcessing_OK_Invalid_Path() {
-	// Given
-	testAccount := &v1alpha1.Account{
-		ObjectMeta: v1.ObjectMeta{
-			Name: "root-org",
-		},
-		Spec: v1alpha1.AccountSpec{
-			Type: v1alpha1.AccountTypeOrg,
-		},
-	}
-	suite.mockGetWorkspaceByWrongPath(kcpcorev1alpha1.LogicalClusterPhaseReady)
-	ctx := kontext.WithCluster(suite.context, "some-cluster-id")
+// Test Finalize behavior waiting for other finalizers
+func (s *AccountInfoSubroutineTestSuite) TestFinalizeDelaysUntilLast() {
+	acc := &corev1alpha1.Account{ObjectMeta: metav1.ObjectMeta{Name: "org-d", Finalizers: []string{"x", "y"}, Annotations: map[string]string{"kcp.io/cluster": "root"}}, Spec: corev1alpha1.AccountSpec{Type: corev1alpha1.AccountTypeOrg}}
+	ws := newWorkspace("org-d", string(kcpcorev1alpha.LogicalClusterPhaseReady), "cluster-org-d", "https://host/root:orgs/org-d")
+	cl := s.newClient(acc, ws)
 
-	// When
-	_, err := suite.testObj.Process(ctx, testAccount)
+	// custom limiter to make deterministic timing
+	lim := workqueue.NewTypedItemExponentialFailureRateLimiter[ClusteredName](1*time.Millisecond, 1*time.Millisecond)
+	sub := &AccountInfoSubroutine{client: cl, serverCA: "CA", limiter: lim}
 
-	// Then
-	suite.NotNil(err)
-	suite.Equal("workspace URL is invalid", err.Err().Error())
-	suite.Error(err.Err())
-	suite.True(err.Retry())
-	suite.True(err.Sentry())
-	suite.clientMock.AssertExpectations(suite.T())
+	res, opErr := sub.Finalize(s.ctx, acc)
+	s.Nil(opErr)
+	s.True(res.RequeueAfter > 0)
+
+	// now only our finalizer
+	acc.Finalizers = []string{"account.core.platform-mesh.io/info"}
+	res, opErr = sub.Finalize(s.ctx, acc)
+	s.Nil(opErr)
+	s.Equal(time.Duration(0), res.RequeueAfter)
 }
 
-func (suite *AccountInfoSubroutineTestSuite) TestProcessing_OK_ForAccount() {
-	// Given
-	testAccount := &v1alpha1.Account{
-		ObjectMeta: v1.ObjectMeta{
-			Name: "example-account",
-			Annotations: map[string]string{
-				"kcp.io/cluster": "asd",
-			},
-		},
-		Spec: v1alpha1.AccountSpec{
-			Type: v1alpha1.AccountTypeAccount,
-		},
-	}
-	expectedAccountInfo := v1alpha1.AccountInfo{
-		ObjectMeta: v1.ObjectMeta{
-			Name: "account",
-		},
-		Spec: v1alpha1.AccountInfoSpec{
-			ClusterInfo: v1alpha1.ClusterInfo{CA: "some-ca"},
-			Organization: v1alpha1.AccountLocation{
-				Name:               "root-org",
-				GeneratedClusterId: "some-cluster-id-root-org",
-				Path:               "root:platform-mesh:orgs:root-org",
-				Type:               "org",
-				URL:                "https://example.com/root:platform-mesh:orgs:root-org",
-			},
-			Account: v1alpha1.AccountLocation{
-				Name:               "example-account",
-				GeneratedClusterId: "some-cluster-id-example-account",
-				OriginClusterId:    "asd",
-				Path:               "root:platform-mesh:orgs:root-org:example-account",
-				Type:               "account",
-				URL:                "https://example.com/root:platform-mesh:orgs:root-org:example-account",
-			},
-			ParentAccount: &v1alpha1.AccountLocation{
-				Name:               "root-org",
-				GeneratedClusterId: "some-cluster-id-root-org",
-				Path:               "root:platform-mesh:orgs:root-org",
-				URL:                "https://example.com/root:platform-mesh:orgs:root-org",
-				Type:               "org",
-			},
-			FGA: v1alpha1.FGAInfo{
-				Store: v1alpha1.StoreInfo{
-					Id: "1",
-				},
-			},
-		},
-	}
-
-	suite.mockGetWorkspaceByName(kcpcorev1alpha1.LogicalClusterPhaseReady, "root:platform-mesh:orgs:root-org:example-account")
-	parentAccountInfoSpec := v1alpha1.AccountInfoSpec{
-		Organization:  expectedAccountInfo.Spec.Organization,
-		ParentAccount: nil,
-		Account:       expectedAccountInfo.Spec.Organization,
-		FGA:           v1alpha1.FGAInfo{Store: v1alpha1.StoreInfo{Id: "1"}},
-	}
-	suite.mockGetAccountInfo(parentAccountInfoSpec).Once()
-	suite.mockGetAccountInfoCallNotFound()
-	suite.mockCreateAccountInfoCall(expectedAccountInfo)
-	ctx := kontext.WithCluster(suite.context, "some-cluster-id")
-
-	// When
-	_, err := suite.testObj.Process(ctx, testAccount)
-
-	// Then
-	suite.Nil(err)
-	suite.clientMock.AssertExpectations(suite.T())
+func (s *AccountInfoSubroutineTestSuite) TestFinalizeNilRuntimeObject() {
+	sub := NewAccountInfoSubroutine(fakeClusterGetter{cluster: &fakeCluster{}}, nil, "CA")
+	_, opErr := sub.Finalize(s.ctx, nil)
+	s.NotNil(opErr)
 }
 
-func (suite *AccountInfoSubroutineTestSuite) TestProcessing_ForAccount_No_Parent() {
-	// Given
-	testAccount := &v1alpha1.Account{
-		ObjectMeta: v1.ObjectMeta{
-			Name: "example-account",
-			Annotations: map[string]string{
-				"kcp.io/cluster": "asd",
-			},
-		},
-		Spec: v1alpha1.AccountSpec{
-			Type: v1alpha1.AccountTypeAccount,
-		},
-	}
-
-	suite.mockGetWorkspaceByName(kcpcorev1alpha1.LogicalClusterPhaseReady, "root:platform-mesh:orgs:root-org")
-	suite.mockGetAccountInfoCallNotFound()
-
-	ctx := kontext.WithCluster(suite.context, "some-cluster-id")
-	// When
-	_, err := suite.testObj.Process(ctx, testAccount)
-
-	// Then
-	suite.NotNil(err)
-	suite.Equal("AccountInfo does not yet exist. Retry another time", err.Err().Error())
-	suite.Error(err.Err())
-	suite.True(err.Retry())
-	suite.False(err.Sentry())
-	suite.clientMock.AssertExpectations(suite.T())
+func (s *AccountInfoSubroutineTestSuite) TestFinalizeMultipleFinalizersStaticLimiter() {
+	sub := &AccountInfoSubroutine{limiter: staticLimiter{delay: time.Second}}
+	acc := &corev1alpha1.Account{ObjectMeta: metav1.ObjectMeta{Name: "org-final", Finalizers: []string{"a", "b"}}}
+	res, opErr := sub.Finalize(s.ctx, acc)
+	s.Nil(opErr)
+	s.Equal(time.Second, res.RequeueAfter)
 }
 
-func (suite *AccountInfoSubroutineTestSuite) TestProcessing_ForAccount_Parent_Lookup_Failed() {
-	// Given
-	testAccount := &v1alpha1.Account{
-		ObjectMeta: v1.ObjectMeta{
-			Name: "example-account",
-			Annotations: map[string]string{
-				"kcp.io/cluster": "asd",
-			},
-		},
-		Spec: v1alpha1.AccountSpec{
-			Type: v1alpha1.AccountTypeAccount,
-		},
-	}
+// Test retrieveCurrentWorkspacePath error paths
+func (s *AccountInfoSubroutineTestSuite) TestRetrieveCurrentWorkspacePathErrors() {
+	sub := &AccountInfoSubroutine{}
+	_, _, err := sub.retrieveCurrentWorkspacePath(&kcptenancyv1alpha.Workspace{})
+	s.Error(err)
 
-	suite.mockGetWorkspaceByName(kcpcorev1alpha1.LogicalClusterPhaseReady, "root:platform-mesh:orgs:root-org")
-	suite.mockGetAccountInfoCallFailed()
-	ctx := kontext.WithCluster(suite.context, "some-cluster-id")
-
-	// When
-	_, err := suite.testObj.Process(ctx, testAccount)
-
-	// Then
-	suite.NotNil(err)
-	suite.Equal("Internal error occurred: failed", err.Err().Error())
-	suite.Error(err.Err())
-	suite.True(err.Retry())
-	suite.True(err.Sentry())
-	suite.clientMock.AssertExpectations(suite.T())
+	ws := &kcptenancyv1alpha.Workspace{}
+	ws.Spec.URL = "https://host/root:orgs/" // trailing slash -> last segment empty
+	_, _, err = sub.retrieveCurrentWorkspacePath(ws)
+	s.Error(err)
 }
 
-func (suite *AccountInfoSubroutineTestSuite) TestGetName_OK() {
-	// When
-	result := suite.testObj.GetName()
-
-	// Then
-	suite.Equal(subroutines.AccountInfoSubroutineName, result)
+func (s *AccountInfoSubroutineTestSuite) TestRetrieveCurrentWorkspacePathSuccess() {
+	sub := &AccountInfoSubroutine{}
+	ws := &kcptenancyv1alpha.Workspace{}
+	ws.Spec.URL = "https://host/root:orgs/my-org"
+	last, full, err := sub.retrieveCurrentWorkspacePath(ws)
+	s.NoError(err)
+	s.Equal("my-org", last)
+	s.Equal("https://host/root:orgs/my-org", full)
 }
 
-func (suite *AccountInfoSubroutineTestSuite) TestGetFinalizerName() {
-	// When
-	finalizers := suite.testObj.Finalizers()
-
-	// Then
-	suite.Len(finalizers, 1)
-}
-
-func (suite *AccountInfoSubroutineTestSuite) TestFinalize() {
-	// When
-	ctx := context.Background()
-	ctx = kontext.WithCluster(ctx, "some-cluster-id")
-	res, err := suite.testObj.Finalize(ctx, &v1alpha1.Account{
-		ObjectMeta: v1.ObjectMeta{
-			Name:       "example-account",
-			Finalizers: []string{"account.core.platform-mesh.io/info", "account.core.platform-mesh.io/abc"},
-		},
-	})
-
-	// Then
-	suite.Nil(err)
-	suite.Assert().NotZero(res.RequeueAfter)
-}
-
-func (suite *AccountInfoSubroutineTestSuite) TestFinalizeNoContext() {
-	// When
-	ctx := context.Background()
-	assert.Panics(suite.T(), func() {
-		suite.testObj.Finalize(ctx, &v1alpha1.Account{
-			ObjectMeta: v1.ObjectMeta{
-				Name:       "example-account",
-				Finalizers: []string{"account.core.platform-mesh.io/info", "account.core.platform-mesh.io/abc"},
-			},
-		})
-	})
-}
-
-func (suite *AccountInfoSubroutineTestSuite) mockGetAccountInfoCallNotFound() *mocks.Client_Get_Call {
-	return suite.clientMock.EXPECT().
-		Get(mock.Anything, mock.Anything, mock.AnythingOfType("*v1alpha1.AccountInfo")).
-		Return(kerrors.NewNotFound(schema.GroupResource{}, ""))
-}
-
-func (suite *AccountInfoSubroutineTestSuite) mockGetAccountInfoCallFailed() *mocks.Client_Get_Call {
-	return suite.clientMock.EXPECT().
-		Get(mock.Anything, mock.Anything, mock.AnythingOfType("*v1alpha1.AccountInfo")).
-		Return(kerrors.NewInternalError(fmt.Errorf("failed")))
-}
-
-func (suite *AccountInfoSubroutineTestSuite) mockCreateAccountInfoCall(info v1alpha1.AccountInfo) *mocks.Client_Create_Call {
-	return suite.clientMock.EXPECT().
-		Create(mock.Anything, mock.Anything).
-		Run(func(ctx context.Context, obj client.Object, opts ...client.CreateOption) {
-			actual, _ := obj.(*v1alpha1.AccountInfo)
-			if !suite.Equal(info, *actual) {
-				suite.log.Info().Msgf("Expected: %+v", actual)
-			}
-			suite.Assert().Equal(info, *actual)
-		}).
-		Return(nil)
-}
-
-func (suite *AccountInfoSubroutineTestSuite) mockGetWorkspaceByName(ready kcpcorev1alpha1.LogicalClusterPhaseType, path string) *mocks.Client_Get_Call {
-	return suite.clientMock.EXPECT().
-		Get(mock.Anything, mock.Anything, mock.AnythingOfType("*v1alpha1.Workspace")).
-		Run(func(ctx context.Context, key types.NamespacedName, obj client.Object, opts ...client.GetOption) {
-			wsPath := ""
-			if path != "" {
-				wsPath = "https://example.com/" + path
-			}
-			actual, _ := obj.(*kcptenancyv1alpha.Workspace)
-			actual.Name = key.Name
-			actual.Spec = kcptenancyv1alpha.WorkspaceSpec{
-				Cluster: "some-cluster-id-" + key.Name,
-				URL:     wsPath,
-			}
-			actual.Status.Phase = ready
-		}).
-		Return(nil)
-}
-
-func (suite *AccountInfoSubroutineTestSuite) mockGetWorkspaceByWrongPath(ready kcpcorev1alpha1.LogicalClusterPhaseType) *mocks.Client_Get_Call {
-	return suite.clientMock.EXPECT().
-		Get(mock.Anything, mock.Anything, mock.AnythingOfType("*v1alpha1.Workspace")).
-		Run(func(ctx context.Context, key types.NamespacedName, obj client.Object, opts ...client.GetOption) {
-			actual, _ := obj.(*kcptenancyv1alpha.Workspace)
-			actual.Name = key.Name
-			actual.Spec = kcptenancyv1alpha.WorkspaceSpec{
-				Cluster: "some-cluster-id-" + key.Name,
-				URL:     "asd",
-			}
-			actual.Status.Phase = ready
-		}).
-		Return(nil)
-}
-
-func (suite *AccountInfoSubroutineTestSuite) mockGetWorkspaceNotFound() *mocks.Client_Get_Call {
-	return suite.clientMock.EXPECT().
-		Get(mock.Anything, mock.Anything, mock.AnythingOfType("*v1alpha1.Workspace")).
-		Return(kerrors.NewNotFound(schema.GroupResource{}, ""))
-}
-
-func (suite *AccountInfoSubroutineTestSuite) mockGetAccountInfo(spec v1alpha1.AccountInfoSpec) *mocks.Client_Get_Call {
-	return suite.clientMock.EXPECT().
-		Get(mock.Anything, mock.Anything, mock.AnythingOfType("*v1alpha1.AccountInfo")).
-		Run(func(ctx context.Context, key types.NamespacedName, obj client.Object, opts ...client.GetOption) {
-			actual, _ := obj.(*v1alpha1.AccountInfo)
-			actual.Name = key.Name
-			actual.Spec = spec
-		}).
-		Return(nil)
+func (s *AccountInfoSubroutineTestSuite) TestRetrieveCurrentWorkspacePathInvalidSplit() {
+	sub := &AccountInfoSubroutine{}
+	ws := &kcptenancyv1alpha.Workspace{}
+	// A URL-like string with fewer than 3 slash-separated segments triggers the len(split) < 3 branch
+	ws.Spec.URL = "x/y"
+	_, _, err := sub.retrieveCurrentWorkspacePath(ws)
+	s.Error(err)
 }

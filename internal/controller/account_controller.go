@@ -21,55 +21,101 @@ import (
 
 	openfgav1 "github.com/openfga/api/proto/openfga/v1"
 	platformmeshconfig "github.com/platform-mesh/golang-commons/config"
-	"github.com/platform-mesh/golang-commons/controller/lifecycle/controllerruntime"
-	"github.com/platform-mesh/golang-commons/controller/lifecycle/subroutine"
+	mclifecycle "github.com/platform-mesh/golang-commons/controller/lifecycle/multicluster"
+	lifecyclesubroutine "github.com/platform-mesh/golang-commons/controller/lifecycle/subroutine"
 	"github.com/platform-mesh/golang-commons/logger"
+	"k8s.io/client-go/rest"
 	ctrl "sigs.k8s.io/controller-runtime"
-	"sigs.k8s.io/controller-runtime/pkg/kcp"
+	"sigs.k8s.io/controller-runtime/pkg/client"
 	"sigs.k8s.io/controller-runtime/pkg/predicate"
+	mccontext "sigs.k8s.io/multicluster-runtime/pkg/context"
+	mcmanager "sigs.k8s.io/multicluster-runtime/pkg/manager"
+	mcreconcile "sigs.k8s.io/multicluster-runtime/pkg/reconcile"
 
 	corev1alpha1 "github.com/platform-mesh/account-operator/api/v1alpha1"
 	"github.com/platform-mesh/account-operator/internal/config"
 	"github.com/platform-mesh/account-operator/pkg/subroutines"
 )
 
-var (
+const (
 	operatorName          = "account-operator"
 	accountReconcilerName = "AccountReconciler"
 )
 
-// AccountReconciler reconciles a Account object
+// AccountReconciler orchestrates Account resources across logical clusters.
 type AccountReconciler struct {
-	lifecycle *controllerruntime.LifecycleManager
+	log         *logger.Logger
+	cfg         config.OperatorConfig
+	mcMgr       mcmanager.Manager
+	fgaClient   openfgav1.OpenFGAServiceClient
+	baseConfig  *rest.Config
+	serverCA    string
+	subroutines []lifecyclesubroutine.Subroutine
+	lifecycle   *mclifecycle.LifecycleManager
 }
 
-func NewAccountReconciler(log *logger.Logger, mgr ctrl.Manager, cfg config.OperatorConfig, fgaClient openfgav1.OpenFGAServiceClient) *AccountReconciler {
-	var subs []subroutine.Subroutine
-	if cfg.Subroutines.WorkspaceType.Enabled {
-		subs = append(subs, subroutines.NewWorkspaceTypeSubroutine(mgr))
-	}
-	if cfg.Subroutines.Workspace.Enabled {
-		subs = append(subs, subroutines.NewWorkspaceSubroutine(mgr))
-	}
-	if cfg.Subroutines.AccountInfo.Enabled {
-		subs = append(subs, subroutines.NewAccountInfoSubroutine(mgr.GetClient(), string(mgr.GetConfig().CAData)))
-	}
-	if cfg.Subroutines.FGA.Enabled {
-		subs = append(subs, subroutines.NewFGASubroutine(mgr.GetClient(), fgaClient, cfg.Subroutines.FGA.CreatorRelation, cfg.Subroutines.FGA.ParentRelation, cfg.Subroutines.FGA.ObjectType))
-	}
+func NewAccountReconciler(log *logger.Logger, mgr mcmanager.Manager, cfg config.OperatorConfig, fgaClient openfgav1.OpenFGAServiceClient) *AccountReconciler {
+	localMgr := mgr.GetLocalManager()
+	localCfg := rest.CopyConfig(localMgr.GetConfig())
+	localClient := localMgr.GetClient()
+	serverCA := string(localCfg.CAData)
+
+	subs := buildAccountSubroutines(cfg, mgr, localClient, localCfg, serverCA, fgaClient)
+	lc := mclifecycle.NewLifecycleManager(subs, operatorName, accountReconcilerName, mgr, log)
+	lc.WithConditionManagement()
+
 	return &AccountReconciler{
-		lifecycle: controllerruntime.NewLifecycleManager(log, operatorName, accountReconcilerName, mgr.GetClient(), subs).WithConditionManagement(),
+		log:         log,
+		cfg:         cfg,
+		mcMgr:       mgr,
+		fgaClient:   fgaClient,
+		baseConfig:  localCfg,
+		serverCA:    serverCA,
+		subroutines: subs,
+		lifecycle:   lc,
 	}
 }
 
-func (r *AccountReconciler) Reconcile(ctx context.Context, req ctrl.Request) (ctrl.Result, error) {
-	return r.lifecycle.Reconcile(ctx, req, &corev1alpha1.Account{})
+func (r *AccountReconciler) SetupWithManager(mgr mcmanager.Manager, cfg *platformmeshconfig.CommonServiceConfig, _ *logger.Logger, eventPredicates ...predicate.Predicate) error {
+	max := 0
+	debugLabel := ""
+	if cfg != nil {
+		max = cfg.MaxConcurrentReconciles
+		debugLabel = cfg.DebugLabelValue
+	}
+	return r.lifecycle.SetupWithManager(mgr, max, accountReconcilerName, &corev1alpha1.Account{}, debugLabel, r, r.log, eventPredicates...)
 }
 
-func (r *AccountReconciler) SetupWithManager(mgr ctrl.Manager, cfg *platformmeshconfig.CommonServiceConfig, log *logger.Logger, eventPredicates ...predicate.Predicate) error {
-	builder, err := r.lifecycle.SetupWithManagerBuilder(mgr, cfg.MaxConcurrentReconciles, accountReconcilerName, &corev1alpha1.Account{}, cfg.DebugLabelValue, log, eventPredicates...)
-	if err != nil {
-		return err
+func (r *AccountReconciler) Reconcile(ctx context.Context, req mcreconcile.Request) (ctrl.Result, error) {
+	ctx = logger.SetLoggerInContext(ctx, r.log.ChildLogger("cluster", req.ClusterName).ChildLogger("account", req.NamespacedName.String()))
+	return r.lifecycle.Reconcile(mccontext.WithCluster(ctx, req.ClusterName), req, &corev1alpha1.Account{})
+}
+
+func buildAccountSubroutines(
+	cfg config.OperatorConfig,
+	clusterGetter subroutines.ClusterClientGetter,
+	localClient client.Client,
+	baseConfig *rest.Config,
+	serverCA string,
+	fgaClient openfgav1.OpenFGAServiceClient,
+) []lifecyclesubroutine.Subroutine {
+	subs := make([]lifecyclesubroutine.Subroutine, 0, 4)
+
+	if cfg.Subroutines.WorkspaceType.Enabled {
+		subs = append(subs, subroutines.NewWorkspaceTypeSubroutine(baseConfig, localClient))
 	}
-	return builder.Complete(kcp.WithClusterInContext(r))
+
+	if cfg.Subroutines.Workspace.Enabled {
+		subs = append(subs, subroutines.NewWorkspaceSubroutine(clusterGetter, localClient, baseConfig))
+	}
+
+	if cfg.Subroutines.AccountInfo.Enabled {
+		subs = append(subs, subroutines.NewAccountInfoSubroutine(clusterGetter, localClient, serverCA))
+	}
+
+	if cfg.Subroutines.FGA.Enabled {
+		subs = append(subs, subroutines.NewFGASubroutine(clusterGetter, localClient, fgaClient, cfg.Subroutines.FGA.CreatorRelation, cfg.Subroutines.FGA.ParentRelation, cfg.Subroutines.FGA.ObjectType))
+	}
+
+	return subs
 }

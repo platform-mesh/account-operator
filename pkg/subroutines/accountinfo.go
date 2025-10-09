@@ -8,7 +8,6 @@ import (
 
 	kcpcorev1alpha "github.com/kcp-dev/kcp/sdk/apis/core/v1alpha1"
 	kcptenancyv1alpha "github.com/kcp-dev/kcp/sdk/apis/tenancy/v1alpha1"
-	"github.com/kcp-dev/logicalcluster/v3"
 	"github.com/platform-mesh/golang-commons/controller/lifecycle/runtimeobject"
 	"github.com/platform-mesh/golang-commons/controller/lifecycle/subroutine"
 	"github.com/platform-mesh/golang-commons/errors"
@@ -19,7 +18,7 @@ import (
 	ctrl "sigs.k8s.io/controller-runtime"
 	"sigs.k8s.io/controller-runtime/pkg/client"
 	"sigs.k8s.io/controller-runtime/pkg/controller/controllerutil"
-	"sigs.k8s.io/controller-runtime/pkg/kontext"
+	mccontext "sigs.k8s.io/multicluster-runtime/pkg/context"
 
 	"github.com/platform-mesh/account-operator/api/v1alpha1"
 )
@@ -32,14 +31,15 @@ const (
 )
 
 type AccountInfoSubroutine struct {
-	client   client.Client
-	serverCA string
-	limiter  workqueue.TypedRateLimiter[ClusteredName]
+	client        client.Client
+	clusterGetter ClusterClientGetter
+	serverCA      string
+	limiter       workqueue.TypedRateLimiter[ClusteredName]
 }
 
-func NewAccountInfoSubroutine(client client.Client, serverCA string) *AccountInfoSubroutine {
+func NewAccountInfoSubroutine(clusterGetter ClusterClientGetter, client client.Client, serverCA string) *AccountInfoSubroutine {
 	exp := workqueue.NewTypedItemExponentialFailureRateLimiter[ClusteredName](1*time.Second, 120*time.Second)
-	return &AccountInfoSubroutine{client: client, serverCA: serverCA, limiter: exp}
+	return &AccountInfoSubroutine{client: client, clusterGetter: clusterGetter, serverCA: serverCA, limiter: exp}
 }
 
 func (r *AccountInfoSubroutine) GetName() string {
@@ -47,19 +47,23 @@ func (r *AccountInfoSubroutine) GetName() string {
 }
 
 func (r *AccountInfoSubroutine) Finalize(ctx context.Context, ro runtimeobject.RuntimeObject) (ctrl.Result, errors.OperatorError) {
+	// defensive: avoid nil deref if runtimeobject is not provided
+	if ro == nil {
+		return ctrl.Result{}, errors.NewOperatorError(fmt.Errorf("runtimeobject is nil"), true, true)
+	}
+
 	cn := MustGetClusteredName(ctx, ro)
 
 	// The account info object is relevant input for other finalizers, removing the accountinfo finalizer at last
 	if len(ro.GetFinalizers()) > 1 {
-		delay := r.limiter.When(cn)
-		return ctrl.Result{RequeueAfter: delay}, nil
+		return ctrl.Result{RequeueAfter: r.limiter.When(cn)}, nil
 	}
 
 	r.limiter.Forget(cn)
 	return ctrl.Result{}, nil
 }
 
-func (r *AccountInfoSubroutine) Finalizers() []string { // coverage-ignore
+func (r *AccountInfoSubroutine) Finalizers(_ runtimeobject.RuntimeObject) []string { // coverage-ignore
 	return []string{"account.core.platform-mesh.io/info"}
 }
 
@@ -69,19 +73,29 @@ func (r *AccountInfoSubroutine) Process(ctx context.Context, ro runtimeobject.Ru
 	cn := MustGetClusteredName(ctx, ro)
 
 	// select workspace for account
-	accountWorkspace, err := retrieveWorkspace(ctx, instance, r.client, log)
+	clusterName, ok := mccontext.ClusterFrom(ctx)
+	if !ok {
+		return ctrl.Result{}, errors.NewOperatorError(fmt.Errorf("cluster client not available: ensure context carries cluster information"), true, true)
+	}
+
+	clusterRef, err := r.clusterGetter.GetCluster(ctx, clusterName)
 	if err != nil {
 		return ctrl.Result{}, errors.NewOperatorError(err, true, true)
+	}
+	clusterClient := clusterRef.GetClient()
+
+	accountWorkspace, err := retrieveWorkspace(ctx, instance, clusterClient, log)
+	if err != nil {
+		return ctrl.Result{}, errors.NewOperatorError(err, true, true)
+	}
+	if accountWorkspace == nil {
+		return ctrl.Result{}, errors.NewOperatorError(fmt.Errorf("workspace is nil"), true, true)
 	}
 
 	if accountWorkspace.Status.Phase != kcpcorev1alpha.LogicalClusterPhaseReady {
 		log.Info().Msg("workspace is not ready yet, retry")
-		delay := r.limiter.When(cn)
-		return ctrl.Result{RequeueAfter: delay}, nil
+		return ctrl.Result{RequeueAfter: r.limiter.When(cn)}, nil
 	}
-
-	// Prepare context to work in workspace
-	wsCtx := kontext.WithCluster(ctx, logicalcluster.Name(accountWorkspace.Spec.Cluster))
 
 	// Retrieve logical cluster
 	currentWorkspacePath, currentWorkspaceUrl, err := r.retrieveCurrentWorkspacePath(accountWorkspace)
@@ -104,7 +118,7 @@ func (r *AccountInfoSubroutine) Process(ctx context.Context, ro runtimeobject.Ru
 
 	if instance.Spec.Type == v1alpha1.AccountTypeOrg {
 		accountInfo := &v1alpha1.AccountInfo{ObjectMeta: v1.ObjectMeta{Name: DefaultAccountInfoName}}
-		_, err = controllerutil.CreateOrPatch(wsCtx, r.client, accountInfo, func() error {
+		_, err = controllerutil.CreateOrPatch(ctx, clusterClient, accountInfo, func() error {
 			// the .Spec.FGA.Store.ID is set from an external workspace initializer
 			accountInfo.Spec.Account = selfAccountLocation
 			accountInfo.Spec.ParentAccount = nil
@@ -120,7 +134,7 @@ func (r *AccountInfoSubroutine) Process(ctx context.Context, ro runtimeobject.Ru
 		return ctrl.Result{}, nil
 	}
 
-	parentAccountInfo, exists, err := r.retrieveAccountInfo(ctx, log)
+	parentAccountInfo, exists, err := r.retrieveAccountInfo(ctx, clusterClient, log)
 	if err != nil {
 		return ctrl.Result{}, errors.NewOperatorError(err, true, true)
 	}
@@ -130,7 +144,7 @@ func (r *AccountInfoSubroutine) Process(ctx context.Context, ro runtimeobject.Ru
 	}
 
 	accountInfo := &v1alpha1.AccountInfo{ObjectMeta: v1.ObjectMeta{Name: DefaultAccountInfoName}}
-	_, err = controllerutil.CreateOrUpdate(wsCtx, r.client, accountInfo, func() error {
+	_, err = controllerutil.CreateOrUpdate(ctx, clusterClient, accountInfo, func() error {
 		accountInfo.Spec.Account = selfAccountLocation
 		accountInfo.Spec.ParentAccount = &parentAccountInfo.Spec.Account
 		accountInfo.Spec.Organization = parentAccountInfo.Spec.Organization
@@ -145,9 +159,9 @@ func (r *AccountInfoSubroutine) Process(ctx context.Context, ro runtimeobject.Ru
 	return ctrl.Result{}, nil
 }
 
-func (r *AccountInfoSubroutine) retrieveAccountInfo(ctx context.Context, log *logger.Logger) (*v1alpha1.AccountInfo, bool, error) {
+func (r *AccountInfoSubroutine) retrieveAccountInfo(ctx context.Context, cl client.Client, log *logger.Logger) (*v1alpha1.AccountInfo, bool, error) {
 	accountInfo := &v1alpha1.AccountInfo{}
-	err := r.client.Get(ctx, client.ObjectKey{Name: "account"}, accountInfo)
+	err := cl.Get(ctx, client.ObjectKey{Name: "account"}, accountInfo)
 	if err != nil {
 		if kerrors.IsNotFound(err) {
 			log.Info().Msg("accountInfo does not yet exist, retry")
