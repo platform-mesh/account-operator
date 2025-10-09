@@ -24,7 +24,6 @@ import (
 	mclifecycle "github.com/platform-mesh/golang-commons/controller/lifecycle/multicluster"
 	lifecyclesubroutine "github.com/platform-mesh/golang-commons/controller/lifecycle/subroutine"
 	"github.com/platform-mesh/golang-commons/logger"
-	"k8s.io/apimachinery/pkg/runtime"
 	"k8s.io/client-go/rest"
 	ctrl "sigs.k8s.io/controller-runtime"
 	"sigs.k8s.io/controller-runtime/pkg/client"
@@ -50,7 +49,6 @@ type AccountReconciler struct {
 	mcMgr       mcmanager.Manager
 	fgaClient   openfgav1.OpenFGAServiceClient
 	baseConfig  *rest.Config
-	scheme      *runtime.Scheme
 	serverCA    string
 	subroutines []lifecyclesubroutine.Subroutine
 	lifecycle   *mclifecycle.LifecycleManager
@@ -60,10 +58,9 @@ func NewAccountReconciler(log *logger.Logger, mgr mcmanager.Manager, cfg config.
 	localMgr := mgr.GetLocalManager()
 	localCfg := rest.CopyConfig(localMgr.GetConfig())
 	localClient := localMgr.GetClient()
-	scheme := localMgr.GetScheme()
 	serverCA := string(localCfg.CAData)
 
-	subs := buildAccountSubroutines(cfg, mgr, localClient, localCfg, scheme, serverCA, fgaClient)
+	subs := buildAccountSubroutines(cfg, mgr, localClient, localCfg, serverCA, fgaClient)
 	lc := mclifecycle.NewLifecycleManager(subs, operatorName, accountReconcilerName, mgr, log)
 	lc.WithConditionManagement()
 
@@ -73,7 +70,6 @@ func NewAccountReconciler(log *logger.Logger, mgr mcmanager.Manager, cfg config.
 		mcMgr:       mgr,
 		fgaClient:   fgaClient,
 		baseConfig:  localCfg,
-		scheme:      scheme,
 		serverCA:    serverCA,
 		subroutines: subs,
 		lifecycle:   lc,
@@ -100,14 +96,13 @@ func buildAccountSubroutines(
 	clusterGetter subroutines.ClusterClientGetter,
 	localClient client.Client,
 	baseConfig *rest.Config,
-	scheme *runtime.Scheme,
 	serverCA string,
 	fgaClient openfgav1.OpenFGAServiceClient,
 ) []lifecyclesubroutine.Subroutine {
 	subs := make([]lifecyclesubroutine.Subroutine, 0, 4)
 
 	if cfg.Subroutines.WorkspaceType.Enabled {
-		subs = append(subs, subroutines.NewWorkspaceTypeSubroutine(baseConfig, scheme))
+		subs = append(subs, subroutines.NewWorkspaceTypeSubroutine(baseConfig, localClient))
 	}
 
 	if cfg.Subroutines.Workspace.Enabled {

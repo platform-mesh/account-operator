@@ -33,9 +33,8 @@ type WorkspaceSubroutine struct {
 	clusterGetter ClusterClientGetter
 	limiter       workqueue.TypedRateLimiter[ClusteredName]
 	baseConfig    *rest.Config
-
-	mu         sync.Mutex
-	orgsClient client.Client
+	mu            sync.Mutex
+	orgsClient    client.Client
 }
 
 func NewWorkspaceSubroutine(clusterGetter ClusterClientGetter, localClient client.Client, baseConfig *rest.Config) *WorkspaceSubroutine {

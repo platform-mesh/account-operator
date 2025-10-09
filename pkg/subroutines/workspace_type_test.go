@@ -140,7 +140,7 @@ func (suite *WorkspaceTypeSubroutineTestSuite) TestFinalizeSkipsForNonOrg() {
 
 func (suite *WorkspaceTypeSubroutineTestSuite) TestGetOrgsClientInvalidBaseConfig() {
 	// Invalid host triggers error path in createOrganizationRestConfig
-	sub := NewWorkspaceTypeSubroutine(&rest.Config{Host: "http://%zz"}, suite.scheme)
+	sub := NewWorkspaceTypeSubroutine(&rest.Config{Host: "http://%zz"}, nil)
 	cl, err := sub.getOrgsClient()
 	suite.Nil(cl)
 	suite.NotNil(err)
@@ -160,7 +160,9 @@ func (suite *WorkspaceTypeSubroutineTestSuite) TestGetOrgsClientCachesClient() {
 }
 
 func (suite *WorkspaceTypeSubroutineTestSuite) TestGetOrgsClientBuildsWithValidHost() {
-	sub := NewWorkspaceTypeSubroutine(&rest.Config{Host: "http://example.com"}, suite.scheme)
+	// Provide a local client so the subroutine can reuse its scheme when constructing the orgs client
+	lc := fake.NewClientBuilder().WithScheme(suite.scheme).Build()
+	sub := NewWorkspaceTypeSubroutine(&rest.Config{Host: "http://example.com"}, lc)
 	cl, err := sub.getOrgsClient()
 	suite.NoError(err)
 	suite.NotNil(cl)

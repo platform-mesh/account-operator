@@ -12,7 +12,6 @@ import (
 	"github.com/platform-mesh/golang-commons/logger"
 	kerrors "k8s.io/apimachinery/pkg/api/errors"
 	metav1 "k8s.io/apimachinery/pkg/apis/meta/v1"
-	"k8s.io/apimachinery/pkg/runtime"
 	"k8s.io/client-go/rest"
 	ctrl "sigs.k8s.io/controller-runtime"
 	"sigs.k8s.io/controller-runtime/pkg/client"
@@ -35,8 +34,7 @@ var _ subroutine.Subroutine = &WorkspaceTypeSubroutine{}
 
 type WorkspaceTypeSubroutine struct {
 	baseConfig *rest.Config
-	scheme     *runtime.Scheme
-
+	client     client.Client
 	mu         sync.Mutex
 	orgsClient client.Client
 }
@@ -122,8 +120,8 @@ func (w *WorkspaceTypeSubroutine) Finalizers(_ runtimeobject.RuntimeObject) []st
 	return []string{workspaceTypeSubroutineFinalizer}
 }
 
-func NewWorkspaceTypeSubroutine(baseConfig *rest.Config, scheme *runtime.Scheme) *WorkspaceTypeSubroutine {
-	return &WorkspaceTypeSubroutine{baseConfig: baseConfig, scheme: scheme}
+func NewWorkspaceTypeSubroutine(baseConfig *rest.Config, localClient client.Client) *WorkspaceTypeSubroutine {
+	return &WorkspaceTypeSubroutine{baseConfig: baseConfig, client: localClient}
 }
 
 func NewWorkspaceTypeSubroutineWithClient(orgsClient client.Client) *WorkspaceTypeSubroutine {
@@ -147,8 +145,8 @@ func (w *WorkspaceTypeSubroutine) getOrgsClient() (client.Client, error) {
 	}
 
 	options := client.Options{}
-	if w.scheme != nil {
-		options.Scheme = w.scheme
+	if w.client != nil {
+		options.Scheme = w.client.Scheme()
 	}
 
 	orgsClient, err := client.New(clientCfg, options)

@@ -59,7 +59,7 @@ func TestBuildSubroutines_AllEnabled(t *testing.T) {
 	utilruntime.Must(corev1alpha1.AddToScheme(scheme))
 	mockFGA := mocks.NewOpenFGAServiceClient(t)
 	fakeClient := fake.NewClientBuilder().WithScheme(scheme).WithObjects(&corev1alpha1.Account{ObjectMeta: metav1.ObjectMeta{Name: "dummy"}}).Build()
-	subs := buildAccountSubroutines(cfg, nil, fakeClient, &rest.Config{}, scheme, "", mockFGA)
+	subs := buildAccountSubroutines(cfg, nil, fakeClient, &rest.Config{}, "", mockFGA)
 
 	if len(subs) != 4 {
 		t.Fatalf("expected 4 subroutines, got %d", len(subs))
@@ -78,7 +78,7 @@ func TestBuildSubroutines_DisabledAll(t *testing.T) {
 	utilruntime.Must(corev1.AddToScheme(scheme))
 	utilruntime.Must(corev1alpha1.AddToScheme(scheme))
 	fakeClient := fake.NewClientBuilder().WithScheme(scheme).Build()
-	subs := buildAccountSubroutines(cfg, nil, fakeClient, &rest.Config{}, scheme, "", nil)
+	subs := buildAccountSubroutines(cfg, nil, fakeClient, &rest.Config{}, "", nil)
 	if len(subs) != 0 {
 		t.Fatalf("expected 0 subroutines, got %d", len(subs))
 	}
@@ -92,7 +92,7 @@ func TestBuildSubroutines_Partial(t *testing.T) {
 	utilruntime.Must(corev1.AddToScheme(scheme))
 	utilruntime.Must(corev1alpha1.AddToScheme(scheme))
 	fakeClient := fake.NewClientBuilder().WithScheme(scheme).Build()
-	subs := buildAccountSubroutines(cfg, nil, fakeClient, &rest.Config{}, scheme, "", nil)
+	subs := buildAccountSubroutines(cfg, nil, fakeClient, &rest.Config{}, "", nil)
 	if len(subs) != 2 {
 		t.Fatalf("expected 2 subroutines, got %d", len(subs))
 	}
