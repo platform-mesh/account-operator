@@ -3,7 +3,6 @@ package subroutines
 import (
 	"context"
 	"fmt"
-	"sync"
 
 	kcptenancyv1alpha "github.com/kcp-dev/kcp/sdk/apis/tenancy/v1alpha1"
 	"github.com/platform-mesh/golang-commons/controller/lifecycle/runtimeobject"
@@ -33,10 +32,8 @@ const (
 var _ subroutine.Subroutine = &WorkspaceTypeSubroutine{}
 
 type WorkspaceTypeSubroutine struct {
-	baseConfig *rest.Config
-	client     client.Client
-	mu         sync.Mutex
 	orgsClient client.Client
+	initErr    error
 }
 
 func (w *WorkspaceTypeSubroutine) Process(ctx context.Context, ro runtimeobject.RuntimeObject) (ctrl.Result, errors.OperatorError) {
@@ -121,7 +118,30 @@ func (w *WorkspaceTypeSubroutine) Finalizers(_ runtimeobject.RuntimeObject) []st
 }
 
 func NewWorkspaceTypeSubroutine(baseConfig *rest.Config, localClient client.Client) *WorkspaceTypeSubroutine {
-	return &WorkspaceTypeSubroutine{baseConfig: baseConfig, client: localClient}
+	w := &WorkspaceTypeSubroutine{}
+	if baseConfig == nil {
+		w.initErr = fmt.Errorf("workspace type subroutine: base config not provided")
+		return w
+	}
+
+	clientCfg, err := createOrganizationRestConfig(baseConfig)
+	if err != nil {
+		w.initErr = err
+		return w
+	}
+
+	options := client.Options{}
+	if localClient != nil {
+		options.Scheme = localClient.Scheme()
+	}
+
+	orgsClient, err := client.New(clientCfg, options)
+	if err != nil {
+		w.initErr = err
+		return w
+	}
+	w.orgsClient = orgsClient
+	return w
 }
 
 func NewWorkspaceTypeSubroutineWithClient(orgsClient client.Client) *WorkspaceTypeSubroutine {
@@ -129,33 +149,13 @@ func NewWorkspaceTypeSubroutineWithClient(orgsClient client.Client) *WorkspaceTy
 }
 
 func (w *WorkspaceTypeSubroutine) getOrgsClient() (client.Client, error) {
-	w.mu.Lock()
-	defer w.mu.Unlock()
-
 	if w.orgsClient != nil {
 		return w.orgsClient, nil
 	}
-	if w.baseConfig == nil {
-		return nil, fmt.Errorf("workspace type subroutine: base config not provided")
+	if w.initErr != nil {
+		return nil, w.initErr
 	}
-
-	clientCfg, err := createOrganizationRestConfig(w.baseConfig)
-	if err != nil {
-		return nil, err
-	}
-
-	options := client.Options{}
-	if w.client != nil {
-		options.Scheme = w.client.Scheme()
-	}
-
-	orgsClient, err := client.New(clientCfg, options)
-	if err != nil {
-		return nil, err
-	}
-
-	w.orgsClient = orgsClient
-	return w.orgsClient, nil
+	return nil, fmt.Errorf("workspace type subroutine: orgs client not initialized")
 }
 
 func generateOrgWorkspaceType(instance *v1alpha1.Account, orgWorkspaceTypeName, accountWorkspaceTypeName string) kcptenancyv1alpha.WorkspaceType {
