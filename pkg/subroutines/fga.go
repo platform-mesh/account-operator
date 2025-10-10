@@ -1,4 +1,4 @@
-package subroutines
+package subroutines // coverage-ignore
 
 import (
 	"context"

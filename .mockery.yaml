@@ -24,3 +24,7 @@ packages:
     config:
       include-interface-regex: Cluster
       filename: mock_K8Cluster.go
+  sigs.k8s.io/multicluster-runtime/pkg/manager:
+    config:
+      include-interface-regex: Manager
+      filename: mock_MCManager.go

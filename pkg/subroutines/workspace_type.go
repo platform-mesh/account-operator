@@ -25,6 +25,7 @@ const (
 	rootAccountWorkspaceTypeName          = "account"
 	rootAccountWorkspaceTypeWorkspacePath = "root"
 	rootOrgsWorkspaceTypeName             = "orgs"
+	orgsWorkspacePath                     = "root:orgs"
 )
 
 var _ subroutine.Subroutine = &WorkspaceTypeSubroutine{}

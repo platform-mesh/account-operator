@@ -1,4 +1,4 @@
-package subroutines
+package workspace
 
 import (
 	"context"
@@ -16,7 +16,6 @@ import (
 	ctrl "sigs.k8s.io/controller-runtime"
 	"sigs.k8s.io/controller-runtime/pkg/client"
 	"sigs.k8s.io/controller-runtime/pkg/controller/controllerutil"
-	mccontext "sigs.k8s.io/multicluster-runtime/pkg/context"
 	mcmanager "sigs.k8s.io/multicluster-runtime/pkg/manager"
 
 	corev1alpha1 "github.com/platform-mesh/account-operator/api/v1alpha1"
@@ -37,10 +36,9 @@ type WorkspaceSubroutine struct {
 }
 
 func NewWorkspaceSubroutine(mgr mcmanager.Manager, orgsClient client.Client) *WorkspaceSubroutine {
-	exp := workqueue.NewTypedItemExponentialFailureRateLimiter[clusteredname.ClusteredName](1*time.Second, 120*time.Second)
 	return &WorkspaceSubroutine{
 		mgr:        mgr,
-		limiter:    exp,
+		limiter:    workqueue.NewTypedItemExponentialFailureRateLimiter[clusteredname.ClusteredName](1*time.Second, 120*time.Second),
 		orgsClient: orgsClient,
 	}
 }
@@ -53,10 +51,7 @@ func (r *WorkspaceSubroutine) Finalize(ctx context.Context, ro runtimeobject.Run
 	instance := ro.(*corev1alpha1.Account)
 	cn := clusteredname.MustGetClusteredName(ctx, ro)
 
-	clusterName, ok := mccontext.ClusterFrom(ctx)
-	if !ok {
-		return ctrl.Result{}, errors.NewOperatorError(fmt.Errorf("cluster client not available: ensure context carries cluster information"), true, true)
-	}
+	clusterName := cn.ClusterID.String()
 
 	cluster, err := r.mgr.GetCluster(ctx, clusterName)
 	if err != nil {
@@ -92,24 +87,24 @@ func (r *WorkspaceSubroutine) Process(ctx context.Context, ro runtimeobject.Runt
 	instance := ro.(*corev1alpha1.Account)
 	cn := clusteredname.MustGetClusteredName(ctx, ro)
 
-	clusterName, ok := mccontext.ClusterFrom(ctx)
-	if !ok {
-		return ctrl.Result{}, errors.NewOperatorError(fmt.Errorf("cluster client not available: ensure context carries cluster information"), true, true)
-	}
+	clusterName := cn.ClusterID.String()
 
 	clusterRef, err := r.mgr.GetCluster(ctx, clusterName)
 	if err != nil {
 		return ctrl.Result{}, errors.NewOperatorError(err, true, true)
 	}
+
 	clusterClient := clusterRef.GetClient()
 
-	workspaceTypeName := generateOrganizationWorkspaceTypeName(instance.Name)
+	workspaceTypeName := fmt.Sprintf("%s-org", instance.Name)
 	if instance.Spec.Type == corev1alpha1.AccountTypeAccount {
+
 		accountInfo := &corev1alpha1.AccountInfo{}
-		if err := clusterClient.Get(ctx, client.ObjectKey{Name: accountinfo.DefaultAccountInfoName, Namespace: instance.Namespace}, accountInfo); err != nil {
+		if err := clusterClient.Get(ctx, client.ObjectKey{Name: accountinfo.DefaultAccountInfoName}, accountInfo); err != nil {
 			if kerrors.IsNotFound(err) {
 				return ctrl.Result{RequeueAfter: r.limiter.When(cn)}, nil
 			}
+
 			return ctrl.Result{}, errors.NewOperatorError(err, true, true)
 		}
 
@@ -117,7 +112,7 @@ func (r *WorkspaceSubroutine) Process(ctx context.Context, ro runtimeobject.Runt
 			return ctrl.Result{RequeueAfter: r.limiter.When(cn)}, nil
 		}
 
-		workspaceTypeName = generateAccountWorkspaceTypeName(accountInfo.Spec.Organization.Name)
+		workspaceTypeName = fmt.Sprintf("%s-acc", accountInfo.Spec.Organization.Name)
 	}
 
 	ready, err := r.checkWorkspaceTypeReady(ctx, workspaceTypeName)
@@ -145,6 +140,7 @@ func (r *WorkspaceSubroutine) Process(ctx context.Context, ro runtimeobject.Runt
 	return ctrl.Result{}, nil
 }
 
+// TODO: could potentially work without the orgsClient when we look up the orgs workspaceid on startup
 func (r *WorkspaceSubroutine) checkWorkspaceTypeReady(ctx context.Context, workspaceTypeName string) (bool, error) {
 	wst := &kcptenancyv1alpha.WorkspaceType{}
 	if err := r.orgsClient.Get(ctx, client.ObjectKey{Name: workspaceTypeName}, wst); err != nil {
