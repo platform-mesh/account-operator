@@ -93,7 +93,7 @@ func (s *FGASubroutineTestSuite) TestProcessRetriesUntilWorkspaceReady() {
 	lim := workqueue.NewTypedItemExponentialFailureRateLimiter[ClusteredName](1*time.Millisecond, 1*time.Millisecond)
 	sub := &FGASubroutine{
 		client:          cl,
-		clusterGetter:   fakeClusterGetter{cluster: &fakeCluster{client: cl}},
+		mgr:             fakeClusterGetter{cluster: &fakeCluster{client: cl}},
 		fgaClient:       mockFGA,
 		creatorRelation: "member",
 		parentRelation:  "parent",
@@ -170,7 +170,7 @@ func (s *FGASubroutineTestSuite) TestProcessErrorOnWriterFailure() {
 	lim := workqueue.NewTypedItemExponentialFailureRateLimiter[ClusteredName](1*time.Millisecond, 1*time.Millisecond)
 	sub := &FGASubroutine{
 		client:          cl,
-		clusterGetter:   fakeClusterGetter{cluster: &fakeCluster{client: cl}},
+		mgr:             fakeClusterGetter{cluster: &fakeCluster{client: cl}},
 		fgaClient:       mockFGA,
 		creatorRelation: "member",
 		parentRelation:  "parent",

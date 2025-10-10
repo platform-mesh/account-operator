@@ -65,7 +65,7 @@ func (s *AccountInfoSubroutineTestSuite) TestProcessOrganizationCreatesAccountIn
 	cl := s.newClient(acc, ws)
 
 	getter := fakeClusterGetter{cluster: &fakeCluster{client: cl}}
-	sub := NewAccountInfoSubroutine(getter, nil, "FAKE-CA")
+	sub := NewAccountInfoSubroutine(getter, "CA")
 	res, opErr := sub.Process(s.ctx, acc)
 	// should succeed immediately for org
 	s.Nil(opErr)
@@ -84,7 +84,7 @@ func (s *AccountInfoSubroutineTestSuite) TestProcessWorkspaceNotReadyRetries() {
 	ws := newWorkspace("org-b", string(kcpcorev1alpha.LogicalClusterPhaseScheduling), "cluster-org-b", "https://host/root:orgs/org-b")
 	cl := s.newClient(acc, ws)
 	getter := fakeClusterGetter{cluster: &fakeCluster{client: cl}}
-	sub := NewAccountInfoSubroutine(getter, nil, "CA")
+	sub := NewAccountInfoSubroutine(getter, "CA")
 	res, opErr := sub.Process(s.ctx, acc)
 	s.Nil(opErr)
 	s.True(res.RequeueAfter > 0)
@@ -106,7 +106,7 @@ func (s *AccountInfoSubroutineTestSuite) TestProcessAccountInheritsParent() {
 
 	cl := s.newClient(orgAcc, orgWs, parentInfo, acc, accWs)
 	getter := fakeClusterGetter{cluster: &fakeCluster{client: cl}}
-	sub := NewAccountInfoSubroutine(getter, nil, "CA")
+	sub := NewAccountInfoSubroutine(getter, "CA")
 
 	res, opErr := sub.Process(s.ctx, acc)
 	s.Nil(opErr)
@@ -128,7 +128,7 @@ func (s *AccountInfoSubroutineTestSuite) TestProcessAccountParentMissing() {
 	accWs := newWorkspace("acc-missing", string(kcpcorev1alpha.LogicalClusterPhaseReady), "cluster-acc-missing", "https://host/root:orgs/org-missing/acc-missing")
 	cl := s.newClient(orgAcc, orgWs, acc, accWs) // intentionally no AccountInfo object
 	getter := fakeClusterGetter{cluster: &fakeCluster{client: cl}}
-	sub := NewAccountInfoSubroutine(getter, nil, "CA")
+	sub := NewAccountInfoSubroutine(getter, "CA")
 	_, opErr := sub.Process(s.ctx, acc)
 	s.NotNil(opErr)
 }
@@ -138,7 +138,7 @@ func (s *AccountInfoSubroutineTestSuite) TestProcessUsesClusterGetter() {
 	ws := newWorkspace("org-getter", string(kcpcorev1alpha.LogicalClusterPhaseReady), "cluster-org-getter", "https://host/root:orgs/org-getter")
 	client := s.newClient(acc, ws)
 	getter := fakeClusterGetter{cluster: &fakeCluster{client: client}}
-	sub := NewAccountInfoSubroutine(getter, nil, "CA")
+	sub := NewAccountInfoSubroutine(getter, "CA")
 	ctx := mccontext.WithCluster(s.ctx, "cluster-org-getter")
 	res, opErr := sub.Process(ctx, acc)
 	s.Nil(opErr)
@@ -148,7 +148,7 @@ func (s *AccountInfoSubroutineTestSuite) TestProcessUsesClusterGetter() {
 func (s *AccountInfoSubroutineTestSuite) TestProcessClusterGetterError() {
 	acc := &corev1alpha1.Account{ObjectMeta: metav1.ObjectMeta{Name: "org-getter-err", Annotations: map[string]string{"kcp.io/cluster": "root"}}, Spec: corev1alpha1.AccountSpec{Type: corev1alpha1.AccountTypeOrg}}
 	getter := fakeClusterGetter{err: errors.New("boom")}
-	sub := NewAccountInfoSubroutine(getter, nil, "CA")
+	sub := NewAccountInfoSubroutine(getter, "CA")
 	ctx := mccontext.WithCluster(s.ctx, "cluster")
 	_, opErr := sub.Process(ctx, acc)
 	s.NotNil(opErr)
@@ -157,12 +157,10 @@ func (s *AccountInfoSubroutineTestSuite) TestProcessClusterGetterError() {
 // Test Finalize behavior waiting for other finalizers
 func (s *AccountInfoSubroutineTestSuite) TestFinalizeDelaysUntilLast() {
 	acc := &corev1alpha1.Account{ObjectMeta: metav1.ObjectMeta{Name: "org-d", Finalizers: []string{"x", "y"}, Annotations: map[string]string{"kcp.io/cluster": "root"}}, Spec: corev1alpha1.AccountSpec{Type: corev1alpha1.AccountTypeOrg}}
-	ws := newWorkspace("org-d", string(kcpcorev1alpha.LogicalClusterPhaseReady), "cluster-org-d", "https://host/root:orgs/org-d")
-	cl := s.newClient(acc, ws)
 
 	// custom limiter to make deterministic timing
 	lim := workqueue.NewTypedItemExponentialFailureRateLimiter[ClusteredName](1*time.Millisecond, 1*time.Millisecond)
-	sub := &AccountInfoSubroutine{client: cl, serverCA: "CA", limiter: lim}
+	sub := &AccountInfoSubroutine{serverCA: "CA", limiter: lim}
 
 	res, opErr := sub.Finalize(s.ctx, acc)
 	s.Nil(opErr)
@@ -176,7 +174,7 @@ func (s *AccountInfoSubroutineTestSuite) TestFinalizeDelaysUntilLast() {
 }
 
 func (s *AccountInfoSubroutineTestSuite) TestFinalizeNilRuntimeObject() {
-	sub := NewAccountInfoSubroutine(fakeClusterGetter{cluster: &fakeCluster{}}, nil, "CA")
+	sub := NewAccountInfoSubroutine(fakeClusterGetter{cluster: &fakeCluster{}}, "CA")
 	_, opErr := sub.Finalize(s.ctx, nil)
 	s.NotNil(opErr)
 }

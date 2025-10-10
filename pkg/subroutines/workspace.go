@@ -3,7 +3,6 @@ package subroutines
 import (
 	"context"
 	"fmt"
-	"sync"
 	"time"
 
 	kcptenancyv1alpha "github.com/kcp-dev/kcp/sdk/apis/tenancy/v1alpha1"
@@ -13,12 +12,12 @@ import (
 	"github.com/platform-mesh/golang-commons/errors"
 	kerrors "k8s.io/apimachinery/pkg/api/errors"
 	metav1 "k8s.io/apimachinery/pkg/apis/meta/v1"
-	"k8s.io/client-go/rest"
 	"k8s.io/client-go/util/workqueue"
 	ctrl "sigs.k8s.io/controller-runtime"
 	"sigs.k8s.io/controller-runtime/pkg/client"
 	"sigs.k8s.io/controller-runtime/pkg/controller/controllerutil"
 	mccontext "sigs.k8s.io/multicluster-runtime/pkg/context"
+	mcmanager "sigs.k8s.io/multicluster-runtime/pkg/manager"
 
 	corev1alpha1 "github.com/platform-mesh/account-operator/api/v1alpha1"
 )
@@ -26,25 +25,22 @@ import (
 const (
 	WorkspaceSubroutineName      = "WorkspaceSubroutine"
 	WorkspaceSubroutineFinalizer = "account.core.platform-mesh.io/finalizer"
+	orgsWorkspacePath            = "root:orgs"
 )
 
 type WorkspaceSubroutine struct {
-	client        client.Client
-	clusterGetter ClusterClientGetter
-	limiter       workqueue.TypedRateLimiter[ClusteredName]
-	baseConfig    *rest.Config
-	mu            sync.Mutex
-	orgsClient    client.Client
+	mgr        mcmanager.Manager
+	limiter    workqueue.TypedRateLimiter[ClusteredName]
+	orgsClient client.Client
 }
 
-func NewWorkspaceSubroutine(clusterGetter ClusterClientGetter, localClient client.Client, baseConfig *rest.Config) *WorkspaceSubroutine {
+func NewWorkspaceSubroutine(mgr mcmanager.Manager, orgsClient client.Client) *WorkspaceSubroutine {
 	exp := workqueue.NewTypedItemExponentialFailureRateLimiter[ClusteredName](1*time.Second, 120*time.Second)
-	return &WorkspaceSubroutine{client: localClient, clusterGetter: clusterGetter, limiter: exp, baseConfig: baseConfig}
-}
-
-// NewWorkspaceSubroutineForTesting creates a new WorkspaceSubroutine for unit tests.
-func NewWorkspaceSubroutineForTesting(client client.Client, limiter workqueue.TypedRateLimiter[ClusteredName]) *WorkspaceSubroutine {
-	return &WorkspaceSubroutine{client: client, limiter: limiter}
+	return &WorkspaceSubroutine{
+		mgr:        mgr,
+		limiter:    exp,
+		orgsClient: orgsClient,
+	}
 }
 
 func (r *WorkspaceSubroutine) GetName() string {
@@ -60,11 +56,12 @@ func (r *WorkspaceSubroutine) Finalize(ctx context.Context, ro runtimeobject.Run
 		return ctrl.Result{}, errors.NewOperatorError(fmt.Errorf("cluster client not available: ensure context carries cluster information"), true, true)
 	}
 
-	clusterRef, err := r.clusterGetter.GetCluster(ctx, clusterName)
+	cluster, err := r.mgr.GetCluster(ctx, clusterName)
 	if err != nil {
 		return ctrl.Result{}, errors.NewOperatorError(err, true, true)
 	}
-	clusterClient := clusterRef.GetClient()
+
+	clusterClient := cluster.GetClient()
 
 	ws := kcptenancyv1alpha.Workspace{}
 	if err := clusterClient.Get(ctx, client.ObjectKey{Name: instance.Name}, &ws); err != nil {
@@ -98,7 +95,7 @@ func (r *WorkspaceSubroutine) Process(ctx context.Context, ro runtimeobject.Runt
 		return ctrl.Result{}, errors.NewOperatorError(fmt.Errorf("cluster client not available: ensure context carries cluster information"), true, true)
 	}
 
-	clusterRef, err := r.clusterGetter.GetCluster(ctx, clusterName)
+	clusterRef, err := r.mgr.GetCluster(ctx, clusterName)
 	if err != nil {
 		return ctrl.Result{}, errors.NewOperatorError(err, true, true)
 	}
@@ -113,9 +110,11 @@ func (r *WorkspaceSubroutine) Process(ctx context.Context, ro runtimeobject.Runt
 			}
 			return ctrl.Result{}, errors.NewOperatorError(err, true, true)
 		}
+
 		if accountInfo.Spec.Organization.Name == "" {
 			return ctrl.Result{RequeueAfter: r.limiter.When(cn)}, nil
 		}
+
 		workspaceTypeName = generateAccountWorkspaceTypeName(accountInfo.Spec.Organization.Name)
 	}
 
@@ -133,6 +132,7 @@ func (r *WorkspaceSubroutine) Process(ctx context.Context, ro runtimeobject.Runt
 			Name: kcptenancyv1alpha.WorkspaceTypeName(workspaceTypeName),
 			Path: orgsWorkspacePath,
 		}
+
 		return controllerutil.SetOwnerReference(instance, createdWorkspace, clusterClient.Scheme())
 	})
 	if err != nil {
@@ -144,47 +144,13 @@ func (r *WorkspaceSubroutine) Process(ctx context.Context, ro runtimeobject.Runt
 }
 
 func (r *WorkspaceSubroutine) checkWorkspaceTypeReady(ctx context.Context, workspaceTypeName string) (bool, error) {
-	orgsClient, err := r.getOrgsClient()
-	if err != nil {
-		return false, err
-	}
-
 	wst := &kcptenancyv1alpha.WorkspaceType{}
-	if err := orgsClient.Get(ctx, client.ObjectKey{Name: workspaceTypeName}, wst); err != nil {
+	if err := r.orgsClient.Get(ctx, client.ObjectKey{Name: workspaceTypeName}, wst); err != nil {
 		if kerrors.IsNotFound(err) {
 			return false, nil
 		}
+
 		return false, err
 	}
 	return conditionshelper.IsTrue(wst, conditionsapi.ReadyCondition), nil
-}
-
-func (r *WorkspaceSubroutine) getOrgsClient() (client.Client, error) {
-	r.mu.Lock()
-	defer r.mu.Unlock()
-
-	if r.orgsClient != nil {
-		return r.orgsClient, nil
-	}
-	if r.baseConfig == nil {
-		return nil, fmt.Errorf("workspace subroutine: base config not provided")
-	}
-
-	clientCfg, err := createOrganizationRestConfig(r.baseConfig)
-	if err != nil {
-		return nil, err
-	}
-
-	options := client.Options{}
-	if r.client != nil {
-		options.Scheme = r.client.Scheme()
-	}
-
-	orgsClient, err := client.New(clientCfg, options)
-	if err != nil {
-		return nil, err
-	}
-
-	r.orgsClient = orgsClient
-	return r.orgsClient, nil
 }

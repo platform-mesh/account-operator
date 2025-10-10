@@ -51,7 +51,7 @@ func (s *WorkspaceTypeErrorSuite) SetupSuite() {
 func (s *WorkspaceTypeErrorSuite) TestProcessErrorPath() {
 	base := fake.NewClientBuilder().WithScheme(s.scheme).Build()
 	fc := &failingClient{Client: base}
-	sub := NewWorkspaceTypeSubroutineWithClient(fc)
+	sub := NewWorkspaceTypeSubroutine(fc)
 	acc := &corev1alpha1.Account{ObjectMeta: metav1.ObjectMeta{Name: "err-org"}, Spec: corev1alpha1.AccountSpec{Type: corev1alpha1.AccountTypeOrg}}
 	_, opErr := sub.Process(s.ctx, acc)
 	s.NotNil(opErr)
@@ -60,7 +60,7 @@ func (s *WorkspaceTypeErrorSuite) TestProcessErrorPath() {
 
 func (s *WorkspaceTypeErrorSuite) TestFinalizeNotFoundIsIgnored() {
 	base := fake.NewClientBuilder().WithScheme(s.scheme).Build()
-	sub := NewWorkspaceTypeSubroutineWithClient(base)
+	sub := NewWorkspaceTypeSubroutine(base)
 	acc := &corev1alpha1.Account{ObjectMeta: metav1.ObjectMeta{Name: "final-org"}, Spec: corev1alpha1.AccountSpec{Type: corev1alpha1.AccountTypeOrg}}
 	res, opErr := sub.Finalize(s.ctx, acc)
 	s.Nil(opErr)
@@ -71,7 +71,7 @@ func (s *WorkspaceTypeErrorSuite) TestFinalizeDeletionErrorsAreRetried() {
 	// Fails on any delete with a generic error; should return retryable error
 	base := fake.NewClientBuilder().WithScheme(s.scheme).Build()
 	fd := &failingDeleteClient{Client: base}
-	sub := NewWorkspaceTypeSubroutineWithClient(fd)
+	sub := NewWorkspaceTypeSubroutine(fd)
 	acc := &corev1alpha1.Account{ObjectMeta: metav1.ObjectMeta{Name: "final-err"}, Spec: corev1alpha1.AccountSpec{Type: corev1alpha1.AccountTypeOrg}}
 	_, opErr := sub.Finalize(s.ctx, acc)
 	s.NotNil(opErr)
@@ -81,7 +81,7 @@ func (s *WorkspaceTypeErrorSuite) TestFinalizeDeletionErrorsAreRetried() {
 func (s *WorkspaceTypeErrorSuite) TestProcessCreatesAndUpdates() {
 	// Ensure both create and subsequent update path work
 	cl := fake.NewClientBuilder().WithScheme(s.scheme).Build()
-	sub := NewWorkspaceTypeSubroutineWithClient(cl)
+	sub := NewWorkspaceTypeSubroutine(cl)
 	acc := &corev1alpha1.Account{ObjectMeta: metav1.ObjectMeta{Name: "org-create"}, Spec: corev1alpha1.AccountSpec{Type: corev1alpha1.AccountTypeOrg}}
 	_, opErr := sub.Process(s.ctx, acc)
 	s.Nil(opErr)
@@ -113,7 +113,7 @@ func (f *failingDeleteClient) Delete(ctx context.Context, obj client.Object, opt
 
 func (s *WorkspaceTypeErrorSuite) TestFinalizeSecondDeleteErrorIsRetried() {
 	cd := &conditionalDeleteClient{Client: fake.NewClientBuilder().WithScheme(s.scheme).Build()}
-	sub := NewWorkspaceTypeSubroutineWithClient(cd)
+	sub := NewWorkspaceTypeSubroutine(cd)
 	acc := &corev1alpha1.Account{ObjectMeta: metav1.ObjectMeta{Name: "final-org"}, Spec: corev1alpha1.AccountSpec{Type: corev1alpha1.AccountTypeOrg}}
 	_, opErr := sub.Finalize(s.ctx, acc)
 	s.NotNil(opErr)
@@ -139,7 +139,7 @@ func (sfc *selectiveFailGetClient) Get(ctx context.Context, key client.ObjectKey
 func (s *WorkspaceTypeErrorSuite) TestProcessErrorOnAccountWorkspaceType() {
 	base := fake.NewClientBuilder().WithScheme(s.scheme).Build()
 	sfc := &selectiveFailGetClient{Client: base}
-	sub := NewWorkspaceTypeSubroutineWithClient(sfc)
+	sub := NewWorkspaceTypeSubroutine(sfc)
 	acc := &corev1alpha1.Account{ObjectMeta: metav1.ObjectMeta{Name: "err-branch"}, Spec: corev1alpha1.AccountSpec{Type: corev1alpha1.AccountTypeOrg}}
 	_, opErr := sub.Process(s.ctx, acc)
 	s.NotNil(opErr)

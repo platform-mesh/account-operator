@@ -14,7 +14,6 @@ import (
 	metav1 "k8s.io/apimachinery/pkg/apis/meta/v1"
 	"k8s.io/apimachinery/pkg/runtime"
 	utilruntime "k8s.io/apimachinery/pkg/util/runtime"
-	"k8s.io/client-go/rest"
 	"sigs.k8s.io/controller-runtime/pkg/client"
 	"sigs.k8s.io/controller-runtime/pkg/client/fake"
 
@@ -50,7 +49,7 @@ func (suite *WorkspaceTypeSubroutineTestSuite) SetupSuite() {
 
 func (suite *WorkspaceTypeSubroutineTestSuite) newSubroutine() (*WorkspaceTypeSubroutine, client.Client) {
 	cl := fake.NewClientBuilder().WithScheme(suite.scheme).Build()
-	return NewWorkspaceTypeSubroutineWithClient(cl), cl
+	return NewWorkspaceTypeSubroutine(cl), cl
 }
 
 func (suite *WorkspaceTypeSubroutineTestSuite) TestProcessCreatesWorkspaceTypesForOrg() {
@@ -82,7 +81,7 @@ func (suite *WorkspaceTypeSubroutineTestSuite) TestProcessSkipsAccounts() {
 }
 
 func (suite *WorkspaceTypeSubroutineTestSuite) TestProcessReturnsErrorWhenClientMissing() {
-	subroutine := NewWorkspaceTypeSubroutine(nil, nil)
+	subroutine := NewWorkspaceTypeSubroutine(nil)
 	account := &corev1alpha1.Account{ObjectMeta: metav1.ObjectMeta{Name: "test-org"}, Spec: corev1alpha1.AccountSpec{Type: corev1alpha1.AccountTypeOrg}}
 
 	_, opErr := subroutine.Process(suite.ctx, account)
@@ -122,7 +121,7 @@ func (suite *WorkspaceTypeSubroutineTestSuite) TestFinalizeSkipsAccounts() {
 }
 
 func (suite *WorkspaceTypeSubroutineTestSuite) TestFinalizeReturnsErrorWhenClientMissing() {
-	subroutine := NewWorkspaceTypeSubroutine(nil, nil)
+	subroutine := NewWorkspaceTypeSubroutine(nil)
 	account := &corev1alpha1.Account{ObjectMeta: metav1.ObjectMeta{Name: "test-org"}, Spec: corev1alpha1.AccountSpec{Type: corev1alpha1.AccountTypeOrg}}
 
 	_, opErr := subroutine.Finalize(suite.ctx, account)
@@ -137,35 +136,3 @@ func (suite *WorkspaceTypeSubroutineTestSuite) TestFinalizeSkipsForNonOrg() {
 	suite.Nil(opErr)
 	suite.Zero(res.RequeueAfter)
 }
-
-func (suite *WorkspaceTypeSubroutineTestSuite) TestGetOrgsClientInvalidBaseConfig() {
-	// Invalid host triggers error path in createOrganizationRestConfig
-	sub := NewWorkspaceTypeSubroutine(&rest.Config{Host: "http://%zz"}, nil)
-	cl, err := sub.getOrgsClient()
-	suite.Nil(cl)
-	suite.NotNil(err)
-}
-
-func (suite *WorkspaceTypeSubroutineTestSuite) TestGetOrgsClientCachesClient() {
-	// When orgsClient already present, it should be returned without error
-	cl := fake.NewClientBuilder().WithScheme(suite.scheme).Build()
-	sub := NewWorkspaceTypeSubroutineWithClient(cl)
-	cl1, err1 := sub.getOrgsClient()
-	suite.NoError(err1)
-	suite.Equal(cl, cl1)
-	// Second call returns cached client
-	cl2, err2 := sub.getOrgsClient()
-	suite.NoError(err2)
-	suite.Equal(cl1, cl2)
-}
-
-func (suite *WorkspaceTypeSubroutineTestSuite) TestGetOrgsClientBuildsWithValidHost() {
-	// Provide a local client so the subroutine can reuse its scheme when constructing the orgs client
-	lc := fake.NewClientBuilder().WithScheme(suite.scheme).Build()
-	sub := NewWorkspaceTypeSubroutine(&rest.Config{Host: "http://example.com"}, lc)
-	cl, err := sub.getOrgsClient()
-	suite.NoError(err)
-	suite.NotNil(cl)
-}
-
-// (intentionally skipped error injection test; covered in separate error suite)

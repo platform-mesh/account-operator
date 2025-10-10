@@ -3,20 +3,14 @@ package subroutines
 import (
 	"context"
 	"fmt"
-	"net/url"
 
 	kcptenancyv1alpha "github.com/kcp-dev/kcp/sdk/apis/tenancy/v1alpha1"
 	"github.com/platform-mesh/golang-commons/errors"
 	"github.com/platform-mesh/golang-commons/logger"
 	kerrors "k8s.io/apimachinery/pkg/api/errors"
-	"k8s.io/client-go/rest"
 	"sigs.k8s.io/controller-runtime/pkg/client"
 
 	"github.com/platform-mesh/account-operator/api/v1alpha1"
-)
-
-const (
-	orgsWorkspacePath = "root:orgs"
 )
 
 func generateAccountWorkspaceTypeName(organizationName string) string {
@@ -52,17 +46,4 @@ func retrieveWorkspace(ctx context.Context, instance *v1alpha1.Account, c client
 		return nil, errors.Wrap(err, msg)
 	}
 	return ws, nil
-}
-
-func createOrganizationRestConfig(cfg *rest.Config) (*rest.Config, error) {
-	parsedUrl, err := url.Parse(cfg.Host)
-	if err != nil {
-		return nil, err
-	}
-	copyConfig := rest.CopyConfig(cfg)
-	protocolHost := fmt.Sprintf("%s://%s", parsedUrl.Scheme, parsedUrl.Host)
-	copyConfig.Host = fmt.Sprintf("%s/clusters/%s", protocolHost, orgsWorkspacePath)
-	// Remove cluster aware round tripper to avoid redirect issues
-	copyConfig.WrapTransport = nil
-	return copyConfig, nil
 }

@@ -3,6 +3,7 @@ package controller_test
 import (
 	"context"
 	"fmt"
+	"net/url"
 	"os"
 	"strconv"
 	"testing"
@@ -56,6 +57,23 @@ type AccountTestSuite struct {
 
 func TestAccountTestSuite(t *testing.T) {
 	suite.Run(t, new(AccountTestSuite))
+}
+
+func buildOrgsClient(mgr mcmanager.Manager) (client.Client, error) {
+	cfg := rest.CopyConfig(mgr.GetLocalManager().GetConfig())
+
+	parsed, err := url.Parse(cfg.Host)
+	if err != nil {
+		return nil, err
+	}
+
+	parsed.Path = "/clusters/root:orgs"
+
+	cfg.Host = parsed.String()
+
+	return client.New(cfg, client.Options{
+		Scheme: mgr.GetLocalManager().GetScheme(),
+	})
 }
 
 func (suite *AccountTestSuite) SetupSuite() {
@@ -119,8 +137,11 @@ func (suite *AccountTestSuite) SetupSuite() {
 	suite.multiClusterManager, err = mcmanager.New(providerCfg, suite.provider, mcOpts)
 	suite.Require().NoError(err)
 
+	orgsClient, err := buildOrgsClient(suite.multiClusterManager)
+	suite.Require().NoError(err)
+
 	mockClient := mocks.NewOpenFGAServiceClient(suite.T())
-	accountReconciler := controller.NewAccountReconciler(log, suite.multiClusterManager, cfg, mockClient)
+	accountReconciler := controller.NewAccountReconciler(log, suite.multiClusterManager, cfg, orgsClient, mockClient)
 
 	dCfg := &platformmeshconfig.CommonServiceConfig{}
 	suite.Require().NoError(accountReconciler.SetupWithManager(suite.multiClusterManager, dCfg, log))
@@ -132,11 +153,6 @@ func (suite *AccountTestSuite) SetupSuite() {
 	testDataConfig.Host = fmt.Sprintf("%s:%s", suite.rootConfig.Host, "orgs:root-org")
 
 	suite.kubernetesClient, err = client.New(testDataConfig, client.Options{Scheme: suite.scheme})
-	suite.Require().NoError(err)
-
-	orgsConfig := rest.CopyConfig(suite.rootConfig)
-	orgsConfig.Host = fmt.Sprintf("%s:%s", suite.rootConfig.Host, "orgs")
-	orgsClient, err := client.New(orgsConfig, client.Options{})
 	suite.Require().NoError(err)
 
 	suite.Require().NoError(suite.testEnv.WaitForWorkspaceWithTimeout(orgsClient, "root-org", testEnvLogger, time.Minute))

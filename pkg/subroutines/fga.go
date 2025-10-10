@@ -18,25 +18,25 @@ import (
 	ctrl "sigs.k8s.io/controller-runtime"
 	"sigs.k8s.io/controller-runtime/pkg/client"
 	mccontext "sigs.k8s.io/multicluster-runtime/pkg/context"
+	mcmanager "sigs.k8s.io/multicluster-runtime/pkg/manager"
 
 	"github.com/platform-mesh/account-operator/api/v1alpha1"
 )
 
 type FGASubroutine struct {
 	fgaClient       openfgav1.OpenFGAServiceClient
-	client          client.Client
-	clusterGetter   ClusterClientGetter
+	mgr             mcmanager.Manager
 	objectType      string
 	parentRelation  string
 	creatorRelation string
-	limiter         workqueue.TypedRateLimiter[ClusteredName]
+
+	limiter workqueue.TypedRateLimiter[ClusteredName]
 }
 
-func NewFGASubroutine(clusterGetter ClusterClientGetter, cl client.Client, fgaClient openfgav1.OpenFGAServiceClient, creatorRelation, parentRelation, objectType string) *FGASubroutine {
+func NewFGASubroutine(mgr mcmanager.Manager, fgaClient openfgav1.OpenFGAServiceClient, creatorRelation, parentRelation, objectType string) *FGASubroutine {
 	exp := workqueue.NewTypedItemExponentialFailureRateLimiter[ClusteredName](1*time.Second, 120*time.Second)
 	return &FGASubroutine{
-		client:          cl,
-		clusterGetter:   clusterGetter,
+		mgr:             mgr,
 		fgaClient:       fgaClient,
 		creatorRelation: creatorRelation,
 		parentRelation:  parentRelation,
@@ -57,7 +57,7 @@ func (e *FGASubroutine) Process(ctx context.Context, ro runtimeobject.RuntimeObj
 		return ctrl.Result{}, errors.NewOperatorError(fmt.Errorf("cluster client not available: ensure context carries cluster information"), true, true)
 	}
 
-	clusterRef, err := e.clusterGetter.GetCluster(ctx, clusterName)
+	clusterRef, err := e.mgr.GetCluster(ctx, clusterName)
 	if err != nil {
 		return ctrl.Result{}, errors.NewOperatorError(err, true, true)
 	}
@@ -73,7 +73,13 @@ func (e *FGASubroutine) Process(ctx context.Context, ro runtimeobject.RuntimeObj
 		return ctrl.Result{RequeueAfter: e.limiter.When(cn)}, nil
 	}
 
-	accountInfo, err := e.getAccountInfo(ctx, clusterClient)
+	accountCluster, err := e.mgr.GetCluster(ctx, accountWorkspace.Spec.Cluster)
+	if err != nil {
+		return ctrl.Result{}, errors.NewOperatorError(err, true, true)
+	}
+	accountClusterClient := accountCluster.GetClient()
+
+	accountInfo, err := e.getAccountInfo(ctx, accountClusterClient)
 	if err != nil {
 		log.Error().Err(err).Msg("Couldn't get Store Id")
 		return ctrl.Result{}, errors.NewOperatorError(err, true, true)
@@ -164,7 +170,7 @@ func (e *FGASubroutine) Finalize(ctx context.Context, runtimeObj runtimeobject.R
 			return ctrl.Result{}, errors.NewOperatorError(fmt.Errorf("cluster client not available: ensure context carries cluster information"), true, true)
 		}
 
-		clusterRef, err := e.clusterGetter.GetCluster(ctx, clusterName)
+		clusterRef, err := e.mgr.GetCluster(ctx, clusterName)
 		if err != nil {
 			return ctrl.Result{}, errors.NewOperatorError(err, true, true)
 		}

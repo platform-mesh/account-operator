@@ -13,7 +13,6 @@ import (
 	kerrors "k8s.io/apimachinery/pkg/api/errors"
 	metav1 "k8s.io/apimachinery/pkg/apis/meta/v1"
 	"k8s.io/apimachinery/pkg/runtime/schema"
-	"k8s.io/client-go/rest"
 	"sigs.k8s.io/controller-runtime/pkg/client"
 
 	corev1alpha1 "github.com/platform-mesh/account-operator/api/v1alpha1"
@@ -186,76 +185,6 @@ func (suite *CommonTestSuite) TestRetrieveWorkspace_GetError() {
 	suite.Nil(result)
 	suite.Contains(err.Error(), "workspace does not exist")
 	suite.clientMock.AssertExpectations(suite.T())
-}
-
-// Test createOrganizationRestConfig function
-func TestCreateOrganizationRestConfig(t *testing.T) {
-	tests := []struct {
-		name         string
-		inputHost    string
-		expectedHost string
-	}{
-		{
-			name:         "https host",
-			inputHost:    "https://api.example.com",
-			expectedHost: "https://api.example.com/clusters/root:orgs",
-		},
-		{
-			name:         "http host",
-			inputHost:    "http://localhost:8080",
-			expectedHost: "http://localhost:8080/clusters/root:orgs",
-		},
-		{
-			name:         "host with path",
-			inputHost:    "https://api.example.com/path",
-			expectedHost: "https://api.example.com/clusters/root:orgs",
-		},
-		{
-			name:         "host with port",
-			inputHost:    "https://api.example.com:443",
-			expectedHost: "https://api.example.com:443/clusters/root:orgs",
-		},
-	}
-
-	for _, tt := range tests {
-		t.Run(tt.name, func(t *testing.T) {
-			// Given
-			originalConfig := &rest.Config{
-				Host:        tt.inputHost,
-				BearerToken: "test-token",
-				TLSClientConfig: rest.TLSClientConfig{
-					Insecure: true,
-				},
-			}
-
-			// When
-			result, err := createOrganizationRestConfig(originalConfig)
-
-			// Then
-			assert.NoError(t, err)
-			assert.Equal(t, tt.expectedHost, result.Host)
-			assert.Equal(t, originalConfig.BearerToken, result.BearerToken)
-			assert.Equal(t, originalConfig.TLSClientConfig, result.TLSClientConfig)
-			assert.Nil(t, result.WrapTransport, "WrapTransport should be nil to avoid redirect issues")
-
-			// Verify original config is not modified
-			assert.Equal(t, tt.inputHost, originalConfig.Host)
-		})
-	}
-}
-
-func TestCreateOrganizationRestConfig_InvalidURL(t *testing.T) {
-	// Given
-	invalidConfig := &rest.Config{
-		Host: "://invalid-url",
-	}
-
-	// When
-	result, err := createOrganizationRestConfig(invalidConfig)
-
-	// Then
-	assert.Error(t, err)
-	assert.Nil(t, result)
 }
 
 // Additional coverage: retrieveWorkspace should error on nil inputs

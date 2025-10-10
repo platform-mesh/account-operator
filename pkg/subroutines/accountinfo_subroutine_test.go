@@ -20,15 +20,19 @@ import (
 func newSchemeForAccountInfo(t *testing.T) *runtime.Scheme {
 	t.Helper()
 	scheme := runtime.NewScheme()
+
 	if err := corev1alpha1.AddToScheme(scheme); err != nil {
 		t.Fatal(err)
 	}
+
 	if err := kcpcorev1alpha.AddToScheme(scheme); err != nil {
 		t.Fatal(err)
 	}
+
 	if err := kcptenancyv1alpha.AddToScheme(scheme); err != nil {
 		t.Fatal(err)
 	}
+
 	return scheme
 }
 
@@ -41,10 +45,9 @@ func TestAccountInfoProcessOrgCreatesInfo(t *testing.T) {
 	ws.Status.Phase = kcpcorev1alpha.LogicalClusterPhaseReady
 	cl := fake.NewClientBuilder().WithScheme(scheme).WithObjects(acc, ws).Build()
 	sub := &AccountInfoSubroutine{
-		client:        cl,
-		clusterGetter: fakeClusterGetter{cluster: &fakeCluster{client: cl}},
-		serverCA:      "ca",
-		limiter:       workqueue.NewTypedItemExponentialFailureRateLimiter[ClusteredName](1, 1),
+		mgr:      fakeClusterGetter{cluster: &fakeCluster{client: cl}},
+		serverCA: "ca",
+		limiter:  workqueue.NewTypedItemExponentialFailureRateLimiter[ClusteredName](1, 1),
 	}
 	ctx := mccontext.WithCluster(context.Background(), "cluster-test")
 	_, opErr := sub.Process(ctx, acc)
@@ -77,10 +80,9 @@ func TestAccountInfoProcessAccountCreatesInfoFromParent(t *testing.T) {
 	parent.Spec.FGA.Store.Id = "store-parent"
 	cl := fake.NewClientBuilder().WithScheme(scheme).WithObjects(acc, ws, parent).Build()
 	sub := &AccountInfoSubroutine{
-		client:        cl,
-		clusterGetter: fakeClusterGetter{cluster: &fakeCluster{client: cl}},
-		serverCA:      "cacert",
-		limiter:       workqueue.NewTypedItemExponentialFailureRateLimiter[ClusteredName](1, 1),
+		mgr:      fakeClusterGetter{cluster: &fakeCluster{client: cl}},
+		serverCA: "cacert",
+		limiter:  workqueue.NewTypedItemExponentialFailureRateLimiter[ClusteredName](1, 1),
 	}
 	ctx := mccontext.WithCluster(context.Background(), "cluster-test")
 	_, opErr := sub.Process(ctx, acc)
@@ -108,10 +110,9 @@ func TestAccountInfoProcessWorkspaceNotReadyStaticLimiter(t *testing.T) {
 	ws.Status.Phase = kcpcorev1alpha.LogicalClusterPhaseInitializing
 	cl := fake.NewClientBuilder().WithScheme(scheme).WithObjects(acc, ws).Build()
 	sub := &AccountInfoSubroutine{
-		client:        cl,
-		clusterGetter: fakeClusterGetter{cluster: &fakeCluster{client: cl}},
-		serverCA:      "ca",
-		limiter:       staticLimiter{delay: time.Second},
+		mgr:      fakeClusterGetter{cluster: &fakeCluster{client: cl}},
+		serverCA: "ca",
+		limiter:  staticLimiter{delay: time.Second},
 	}
 	ctx := mccontext.WithCluster(context.Background(), "cluster-test")
 	res, opErr := sub.Process(ctx, acc)
@@ -132,10 +133,9 @@ func TestAccountInfoProcessMissingOriginClusterAnnotation(t *testing.T) {
 	ws.Status.Phase = kcpcorev1alpha.LogicalClusterPhaseReady
 	cl := fake.NewClientBuilder().WithScheme(scheme).WithObjects(acc, ws).Build()
 	sub := &AccountInfoSubroutine{
-		client:        cl,
-		clusterGetter: fakeClusterGetter{cluster: &fakeCluster{client: cl}},
-		serverCA:      "ca",
-		limiter:       staticLimiter{delay: time.Second},
+		mgr:      fakeClusterGetter{cluster: &fakeCluster{client: cl}},
+		serverCA: "ca",
+		limiter:  staticLimiter{delay: time.Second},
 	}
 	ctx := mccontext.WithCluster(context.Background(), "cluster-test")
 	_, opErr := sub.Process(ctx, acc)
@@ -151,7 +151,7 @@ func (s *AccountInfoSubroutineTestSuite) TestProcessErrorsOnMissingOriginCluster
 	ws := newWorkspace("org-missing-origin", string(kcpcorev1alpha.LogicalClusterPhaseReady), "cluster-org", "https://host/root:org-missing-origin")
 	cl := s.newClient(acc, ws)
 	getter := fakeClusterGetter{cluster: &fakeCluster{client: cl}}
-	sub := NewAccountInfoSubroutine(getter, nil, "CA")
+	sub := NewAccountInfoSubroutine(getter, "CA")
 	_, opErr := sub.Process(s.ctx, acc)
 	s.NotNil(opErr)
 }
