@@ -2,43 +2,21 @@ package subroutines
 
 import (
 	"context"
+	"fmt"
 	"testing"
-
-	kcpcorev1alpha1 "github.com/kcp-dev/kcp/sdk/apis/core/v1alpha1"
-	pmconfig "github.com/platform-mesh/golang-commons/config"
-	"k8s.io/apimachinery/pkg/types"
-	"sigs.k8s.io/controller-runtime/pkg/client"
-	"sigs.k8s.io/controller-runtime/pkg/kontext"
 
 	openfgav1 "github.com/openfga/api/proto/openfga/v1"
 	"github.com/stretchr/testify/assert"
 	"github.com/stretchr/testify/mock"
-	"google.golang.org/grpc/codes"
-	"google.golang.org/grpc/status"
 	metav1 "k8s.io/apimachinery/pkg/apis/meta/v1"
 	"k8s.io/utils/ptr"
+	ctrl "sigs.k8s.io/controller-runtime"
+	"sigs.k8s.io/controller-runtime/pkg/client"
+	"sigs.k8s.io/controller-runtime/pkg/kontext"
 
 	"github.com/platform-mesh/account-operator/api/v1alpha1"
-	"github.com/platform-mesh/account-operator/internal/config"
 	"github.com/platform-mesh/account-operator/pkg/subroutines/mocks"
 )
-
-type fgaError struct {
-	code codes.Code
-	msg  string
-}
-
-func (e fgaError) Error() string { return e.msg }
-func (e fgaError) GRPCStatus() *status.Status {
-	return status.New(e.code, e.msg)
-}
-
-func newFgaError(c openfgav1.ErrorCode, m string) *fgaError {
-	return &fgaError{
-		code: codes.Code(c),
-		msg:  m,
-	}
-}
 
 func TestFGASubroutine_GetName(t *testing.T) {
 	routine := NewFGASubroutine(nil, nil, "", "", "")
@@ -50,766 +28,162 @@ func TestFGASubroutine_Finalizers(t *testing.T) {
 	assert.Equal(t, []string{"account.core.platform-mesh.io/fga"}, routine.Finalizers())
 }
 
-func TestFGASubroutine_Process(t *testing.T) {
-	creator := "test-creator"
-	defaultContext := pmconfig.SetConfigInContext(context.Background(), config.OperatorConfig{})
-	testCases := []struct {
-		name          string
-		expectedError bool
-		expectedPanic bool
-		account       *v1alpha1.Account
-		ctx           context.Context
-		setupMocks    func(*mocks.OpenFGAServiceClient, *mocks.Client)
-	}{
-		{
-			name:          "should_fail_if_no_cluster_in_context",
-			ctx:           defaultContext,
-			expectedPanic: true,
-			account: &v1alpha1.Account{
-				Spec: v1alpha1.AccountSpec{
-					Type: v1alpha1.AccountTypeOrg,
-				},
-				Status: v1alpha1.AccountStatus{
-					Conditions: []metav1.Condition{
-						{
-							Type:   "FGASubroutine_Ready",
-							Status: metav1.ConditionTrue,
-						},
-					},
-				},
-			},
-		},
-		{
-			name: "should_skip_processing_if_subroutine_ran_before",
-			ctx:  kontext.WithCluster(defaultContext, "some-cluster"),
-			account: &v1alpha1.Account{
-				Spec: v1alpha1.AccountSpec{
-					Type: v1alpha1.AccountTypeOrg,
-				},
-				Status: v1alpha1.AccountStatus{
-					Conditions: []metav1.Condition{
-						{
-							Type:   "FGASubroutine_Ready",
-							Status: metav1.ConditionTrue,
-						},
-					},
-				},
-			},
-			setupMocks: func(openFGAServiceClientMock *mocks.OpenFGAServiceClient, clientMock *mocks.Client) {
-				mockGetWorkspaceByName(clientMock, kcpcorev1alpha1.LogicalClusterPhaseReady, "root:platform-mesh:orgs:root-org").Once()
-				clientMock.EXPECT().Get(mock.Anything, mock.Anything, mock.Anything).RunAndReturn(func(ctx context.Context, nn types.NamespacedName, o client.Object, opts ...client.GetOption) error {
-
-					account := o.(*v1alpha1.AccountInfo)
-
-					*account = v1alpha1.AccountInfo{
-						ObjectMeta: metav1.ObjectMeta{
-							Name: "root-org",
-						},
-						Spec: v1alpha1.AccountInfoSpec{
-							Organization: v1alpha1.AccountLocation{
-								Name:               "root-org",
-								GeneratedClusterId: "root-org",
-								Path:               "root:platform-mesh:org:root-org",
-								URL:                "http://example.com/clusters/root:platform-mesh:org:root-org",
-								Type:               v1alpha1.AccountTypeOrg,
-							},
-							Account: v1alpha1.AccountLocation{
-								Name:               "root-org",
-								GeneratedClusterId: "root-org",
-								Path:               "root:platform-mesh:org:root-org",
-								URL:                "http://example.com/clusters/root:platform-mesh:org:root-org",
-								Type:               v1alpha1.AccountTypeOrg,
-							},
-							FGA: v1alpha1.FGAInfo{Store: v1alpha1.StoreInfo{Id: "123123"}},
-						},
-					}
-
-					return nil
-				}).Once()
-			},
-		},
-		{
-			name:          "should_fail_if_get_store_id_fails",
-			ctx:           kontext.WithCluster(defaultContext, "some-cluster"),
-			expectedError: true,
-			account: &v1alpha1.Account{
-				ObjectMeta: metav1.ObjectMeta{
-					Name:      "test-account",
-					Namespace: "test-namespace",
-				},
-			},
-			setupMocks: func(openFGAServiceClientMock *mocks.OpenFGAServiceClient, clientMock *mocks.Client) {
-				mockGetWorkspaceByName(clientMock, kcpcorev1alpha1.LogicalClusterPhaseReady, "root:platform-mesh:orgs:root-org")
-				clientMock.EXPECT().Get(mock.Anything, mock.Anything, mock.Anything).RunAndReturn(func(ctx context.Context, nn types.NamespacedName, o client.Object, opts ...client.GetOption) error {
-					account := o.(*v1alpha1.AccountInfo)
-
-					*account = v1alpha1.AccountInfo{
-						ObjectMeta: metav1.ObjectMeta{
-							Name: "root-org",
-						},
-						Spec: v1alpha1.AccountInfoSpec{
-							Organization: v1alpha1.AccountLocation{
-								Name: "root-org",
-								Path: "root:platform-mesh:org:root-org",
-								URL:  "http://example.com/clusters/root:platform-mesh:org:root-org",
-								Type: v1alpha1.AccountTypeOrg,
-							},
-							Account: v1alpha1.AccountLocation{
-								Name: "root-org",
-								Path: "root:platform-mesh:org:root-org",
-								URL:  "http://example.com/clusters/root:platform-mesh:org:root-org",
-								Type: v1alpha1.AccountTypeOrg,
-							},
-						},
-					}
-
-					return nil
-				}).Once()
-			},
-		},
-		{
-			name:          "should_fail_if_get_parent_account_fails",
-			ctx:           kontext.WithCluster(defaultContext, "some-cluster"),
-			expectedError: true,
-			account: &v1alpha1.Account{
-				ObjectMeta: metav1.ObjectMeta{
-					Name:      "test-account",
-					Namespace: "test-namespace",
-				},
-			},
-			setupMocks: func(openFGAServiceClientMock *mocks.OpenFGAServiceClient, clientMock *mocks.Client) {
-				mockGetWorkspaceByName(clientMock, kcpcorev1alpha1.LogicalClusterPhaseReady, "root:platform-mesh:orgs:root-org")
-				clientMock.EXPECT().Get(mock.Anything, mock.Anything, mock.Anything).Return(assert.AnError)
-			},
-		},
-		{
-			name:          "should_fail_if_write_fails",
-			ctx:           kontext.WithCluster(defaultContext, "some-cluster"),
-			expectedError: true,
-			account: &v1alpha1.Account{
-				ObjectMeta: metav1.ObjectMeta{
-					Name:      "test-account",
-					Namespace: "test-namespace",
-				},
-				Spec: v1alpha1.AccountSpec{
-					Type: v1alpha1.AccountTypeAccount,
-				},
-			},
-			setupMocks: func(openFGAServiceClientMock *mocks.OpenFGAServiceClient, clientMock *mocks.Client) {
-				mockGetWorkspaceByName(clientMock, kcpcorev1alpha1.LogicalClusterPhaseReady, "root:platform-mesh:orgs:root-org").Once()
-				clientMock.EXPECT().Get(mock.Anything, mock.Anything, mock.Anything).RunAndReturn(func(ctx context.Context, nn types.NamespacedName, o client.Object, opts ...client.GetOption) error {
-
-					account := o.(*v1alpha1.AccountInfo)
-
-					*account = v1alpha1.AccountInfo{
-						ObjectMeta: metav1.ObjectMeta{
-							Name: "root-org",
-						},
-						Spec: v1alpha1.AccountInfoSpec{
-							Organization: v1alpha1.AccountLocation{
-								Name:               "root-org",
-								GeneratedClusterId: "root-org",
-								Path:               "root:platform-mesh:org:root-org",
-								URL:                "http://example.com/clusters/root:platform-mesh:org:root-org",
-								Type:               v1alpha1.AccountTypeOrg,
-							},
-							ParentAccount: &v1alpha1.AccountLocation{
-								Name:               "root-org",
-								GeneratedClusterId: "root-org",
-								Path:               "root:platform-mesh:org:root-org",
-								URL:                "http://example.com/clusters/root:platform-mesh:org:root-org",
-								Type:               v1alpha1.AccountTypeOrg,
-							},
-							Account: v1alpha1.AccountLocation{
-								Name:               "test-account",
-								GeneratedClusterId: "test-account-id",
-							},
-							FGA: v1alpha1.FGAInfo{Store: v1alpha1.StoreInfo{Id: "123123"}},
-						},
-					}
-
-					return nil
-				}).Once()
-				openFGAServiceClientMock.EXPECT().Write(mock.Anything, mock.Anything).Return(nil, assert.AnError)
-			},
-		},
-		{
-			name: "should_ignore_error_if_duplicate_write_error",
-			ctx:  kontext.WithCluster(defaultContext, "some-cluster"),
-			account: &v1alpha1.Account{
-				ObjectMeta: metav1.ObjectMeta{
-					Name:      "test-account",
-					Namespace: "test-namespace",
-				},
-				Spec: v1alpha1.AccountSpec{
-					Type: v1alpha1.AccountTypeAccount,
-				},
-			},
-			setupMocks: func(openFGAServiceClientMock *mocks.OpenFGAServiceClient, clientMock *mocks.Client) {
-				mockGetWorkspaceByName(clientMock, kcpcorev1alpha1.LogicalClusterPhaseReady, "root:platform-mesh:orgs:root-org").Once()
-				clientMock.EXPECT().Get(mock.Anything, mock.Anything, mock.Anything).RunAndReturn(func(ctx context.Context, nn types.NamespacedName, o client.Object, opts ...client.GetOption) error {
-
-					account := o.(*v1alpha1.AccountInfo)
-
-					*account = v1alpha1.AccountInfo{
-						ObjectMeta: metav1.ObjectMeta{
-							Name: "root-org",
-						},
-						Spec: v1alpha1.AccountInfoSpec{
-							Organization: v1alpha1.AccountLocation{
-								Name:               "root-org",
-								GeneratedClusterId: "root-org",
-								Path:               "root:platform-mesh:org:root-org",
-								URL:                "http://example.com/clusters/root:platform-mesh:org:root-org",
-								Type:               v1alpha1.AccountTypeOrg,
-							},
-							ParentAccount: &v1alpha1.AccountLocation{
-								Name:               "root-org",
-								GeneratedClusterId: "root-org",
-								Path:               "root:platform-mesh:org:root-org",
-								URL:                "http://example.com/clusters/root:platform-mesh:org:root-org",
-								Type:               v1alpha1.AccountTypeOrg,
-							},
-							Account: v1alpha1.AccountLocation{
-								Name:               "test-account",
-								GeneratedClusterId: "test-account-id",
-							},
-							FGA: v1alpha1.FGAInfo{Store: v1alpha1.StoreInfo{Id: "123123"}},
-						},
-					}
-
-					return nil
-				}).Once()
-				openFGAServiceClientMock.EXPECT().
-					Write(mock.Anything, mock.Anything).
-					Return(nil, newFgaError(openfgav1.ErrorCode_write_failed_due_to_invalid_input, "error"))
-			},
-		},
-		{
-			name: "should_succeed",
-			ctx:  kontext.WithCluster(defaultContext, "some-cluster"),
-			account: &v1alpha1.Account{
-				ObjectMeta: metav1.ObjectMeta{
-					Name:      "test-account",
-					Namespace: "test-namespace",
-				},
-				Spec: v1alpha1.AccountSpec{
-					Type: v1alpha1.AccountTypeAccount,
-				}},
-			setupMocks: func(openFGAServiceClientMock *mocks.OpenFGAServiceClient, clientMock *mocks.Client) {
-				mockGetWorkspaceByName(clientMock, kcpcorev1alpha1.LogicalClusterPhaseReady, "root:platform-mesh:orgs:root-org").Once()
-				clientMock.EXPECT().Get(mock.Anything, mock.Anything, mock.Anything).RunAndReturn(func(ctx context.Context, nn types.NamespacedName, o client.Object, opts ...client.GetOption) error {
-
-					account := o.(*v1alpha1.AccountInfo)
-
-					*account = v1alpha1.AccountInfo{
-						ObjectMeta: metav1.ObjectMeta{
-							Name: "root-org",
-						},
-						Spec: v1alpha1.AccountInfoSpec{
-							Organization: v1alpha1.AccountLocation{
-								Name:               "root-org",
-								GeneratedClusterId: "root-org",
-								Path:               "root:platform-mesh:org:root-org",
-								URL:                "http://example.com/clusters/root:platform-mesh:org:root-org",
-								Type:               v1alpha1.AccountTypeOrg,
-							},
-							ParentAccount: &v1alpha1.AccountLocation{
-								Name:               "root-org",
-								GeneratedClusterId: "root-org",
-								Path:               "root:platform-mesh:org:root-org",
-								URL:                "http://example.com/clusters/root:platform-mesh:org:root-org",
-								Type:               v1alpha1.AccountTypeOrg,
-							},
-							Account: v1alpha1.AccountLocation{
-								Name:               "test-account",
-								GeneratedClusterId: "test-account-id",
-							},
-							FGA: v1alpha1.FGAInfo{Store: v1alpha1.StoreInfo{Id: "123123"}},
-						},
-					}
-
-					return nil
-				}).Once()
-				openFGAServiceClientMock.EXPECT().
-					Write(mock.Anything, mock.Anything).
-					Return(&openfgav1.WriteResponse{}, nil)
-			},
-		},
-		{
-			name: "should_succeed_with_creator_for_sa",
-			ctx:  kontext.WithCluster(defaultContext, "some-cluster"),
-			account: &v1alpha1.Account{
-				ObjectMeta: metav1.ObjectMeta{
-					Name:      "test-account",
-					Namespace: "test-namespace",
-				},
-				Spec: v1alpha1.AccountSpec{
-					Type:    v1alpha1.AccountTypeAccount,
-					Creator: ptr.To("system:serviceaccount:some-namespace:some-service-account"),
-				},
-			},
-			setupMocks: func(openFGAServiceClientMock *mocks.OpenFGAServiceClient, clientMock *mocks.Client) {
-				mockGetWorkspaceByName(clientMock, kcpcorev1alpha1.LogicalClusterPhaseReady, "root:platform-mesh:orgs:root-org").Once()
-				clientMock.EXPECT().Get(mock.Anything, mock.Anything, mock.Anything).RunAndReturn(func(ctx context.Context, nn types.NamespacedName, o client.Object, opts ...client.GetOption) error {
-
-					account := o.(*v1alpha1.AccountInfo)
-
-					*account = v1alpha1.AccountInfo{
-						ObjectMeta: metav1.ObjectMeta{
-							Name: "root-org",
-						},
-						Spec: v1alpha1.AccountInfoSpec{
-							Organization: v1alpha1.AccountLocation{
-								Name:               "root-org",
-								GeneratedClusterId: "root-org",
-								Path:               "root:platform-mesh:org:root-org",
-								URL:                "http://example.com/clusters/root:platform-mesh:org:root-org",
-								Type:               v1alpha1.AccountTypeOrg,
-							},
-							ParentAccount: &v1alpha1.AccountLocation{
-								Name:               "root-org",
-								GeneratedClusterId: "root-org",
-								Path:               "root:platform-mesh:org:root-org",
-								URL:                "http://example.com/clusters/root:platform-mesh:org:root-org",
-								Type:               v1alpha1.AccountTypeOrg,
-							},
-							Account: v1alpha1.AccountLocation{
-								Name:               "test-account",
-								GeneratedClusterId: "test-account-id",
-							},
-							FGA: v1alpha1.FGAInfo{Store: v1alpha1.StoreInfo{Id: "123123"}},
-						},
-					}
-
-					return nil
-				}).Once()
-				openFGAServiceClientMock.EXPECT().
-					Write(mock.Anything, mock.Anything).
-					Return(&openfgav1.WriteResponse{}, nil)
-
-				openFGAServiceClientMock.EXPECT().
-					Write(mock.Anything, mock.MatchedBy(func(req *openfgav1.WriteRequest) bool {
-						// Check for partial match
-						return len(req.Writes.TupleKeys) == 1 && req.Writes.TupleKeys[0].User == "user:system.serviceaccount.some-namespace.some-service-account"
-					})).
-					Return(&openfgav1.WriteResponse{}, nil)
-			},
-		},
-		{
-			name:          "should_fail_with_creator_in_sa_range",
-			ctx:           kontext.WithCluster(defaultContext, "some-cluster"),
-			expectedError: true,
-			account: &v1alpha1.Account{
-				ObjectMeta: metav1.ObjectMeta{
-					Name:      "test-account",
-					Namespace: "test-namespace",
-				},
-				Spec: v1alpha1.AccountSpec{
-					Creator: ptr.To("system.serviceaccount.some-namespace.some-service-account"),
-				},
-			},
-			setupMocks: func(openFGAServiceClientMock *mocks.OpenFGAServiceClient, clientMock *mocks.Client) {
-				mockGetWorkspaceByName(clientMock, kcpcorev1alpha1.LogicalClusterPhaseReady, "root:platform-mesh:orgs:root-org").Once()
-				clientMock.EXPECT().Get(mock.Anything, mock.Anything, mock.Anything).RunAndReturn(func(ctx context.Context, nn types.NamespacedName, o client.Object, opts ...client.GetOption) error {
-
-					account := o.(*v1alpha1.AccountInfo)
-
-					*account = v1alpha1.AccountInfo{
-						ObjectMeta: metav1.ObjectMeta{
-							Name: "root-org",
-						},
-						Spec: v1alpha1.AccountInfoSpec{
-							Organization: v1alpha1.AccountLocation{
-								Name: "root-org",
-								Path: "root:platform-mesh:org:root-org",
-								URL:  "http://example.com/clusters/root:platform-mesh:org:root-org",
-								Type: v1alpha1.AccountTypeOrg,
-							},
-							ParentAccount: &v1alpha1.AccountLocation{
-								Name: "root-org",
-								Path: "root:platform-mesh:org:root-org",
-								URL:  "http://example.com/clusters/root:platform-mesh:org:root-org",
-								Type: v1alpha1.AccountTypeOrg,
-							},
-							Account: v1alpha1.AccountLocation{
-								Name: "root-org",
-								Path: "root:platform-mesh:org:root-org",
-								URL:  "http://example.com/clusters/root:platform-mesh:org:root-org",
-								Type: v1alpha1.AccountTypeOrg,
-							},
-							FGA: v1alpha1.FGAInfo{Store: v1alpha1.StoreInfo{Id: "123123"}},
-						},
-					}
-
-					return nil
-				}).Once()
-				clientMock.EXPECT().Get(mock.Anything, mock.Anything, mock.Anything).Return(nil)
-			},
-		},
-		{
-			name: "should_succeed_with_creator",
-			ctx:  kontext.WithCluster(defaultContext, "some-cluster"),
-			account: &v1alpha1.Account{
-				ObjectMeta: metav1.ObjectMeta{
-					Name:      "test-account",
-					Namespace: "test-namespace",
-				},
-				Spec: v1alpha1.AccountSpec{
-					Type:    v1alpha1.AccountTypeOrg,
-					Creator: &creator,
-				},
-			},
-			setupMocks: func(openFGAServiceClientMock *mocks.OpenFGAServiceClient, clientMock *mocks.Client) {
-				mockGetWorkspaceByName(clientMock, kcpcorev1alpha1.LogicalClusterPhaseReady, "root:platform-mesh:orgs:root-org").Once()
-				clientMock.EXPECT().Get(mock.Anything, mock.Anything, mock.Anything).RunAndReturn(func(ctx context.Context, nn types.NamespacedName, o client.Object, opts ...client.GetOption) error {
-
-					account := o.(*v1alpha1.AccountInfo)
-
-					*account = v1alpha1.AccountInfo{
-						ObjectMeta: metav1.ObjectMeta{
-							Name: "root-org",
-						},
-						Spec: v1alpha1.AccountInfoSpec{
-							Organization: v1alpha1.AccountLocation{
-								Name:               "root-org",
-								GeneratedClusterId: "root-org",
-								Path:               "root:platform-mesh:org:root-org",
-								URL:                "http://example.com/clusters/root:platform-mesh:org:root-org",
-								Type:               v1alpha1.AccountTypeOrg,
-							},
-							ParentAccount: &v1alpha1.AccountLocation{
-								Name:               "root-org",
-								GeneratedClusterId: "root-org",
-								Path:               "root:platform-mesh:org:root-org",
-								URL:                "http://example.com/clusters/root:platform-mesh:org:root-org",
-								Type:               v1alpha1.AccountTypeOrg,
-							},
-							Account: v1alpha1.AccountLocation{
-								Name:               "test-account",
-								GeneratedClusterId: "test-account-id",
-							},
-							FGA: v1alpha1.FGAInfo{Store: v1alpha1.StoreInfo{Id: "123123"}},
-						},
-					}
-
-					return nil
-				}).Once()
-
-				openFGAServiceClientMock.EXPECT().
-					Write(mock.Anything, mock.Anything).
-					Return(&openfgav1.WriteResponse{}, nil)
-			},
-		},
+func TestFGASubroutine_Process_NoOp(t *testing.T) {
+	account := &v1alpha1.Account{
+		ObjectMeta: metav1.ObjectMeta{Name: "test-account"},
 	}
 
-	for _, test := range testCases {
-		t.Run(test.name, func(t *testing.T) {
+	clientMock := mocks.NewClient(t)
+	fgaMock := mocks.NewOpenFGAServiceClient(t)
+	routine := NewFGASubroutine(clientMock, fgaMock, "owner", "parent", "core_platform-mesh_io_account")
 
-			openFGAClient := mocks.NewOpenFGAServiceClient(t)
+	res, err := routine.Process(context.Background(), account)
+	assert.Nil(t, err)
+	assert.Equal(t, ctrl.Result{}, res)
 
-			clientMock := mocks.NewClient(t)
-
-			if test.setupMocks != nil {
-				test.setupMocks(openFGAClient, clientMock)
-			}
-
-			routine := NewFGASubroutine(clientMock, openFGAClient, "owner", "parent", "account")
-
-			if test.expectedPanic {
-				assert.Panics(t, func() {
-					_, _ = routine.Process(test.ctx, test.account)
-				})
-				clientMock.AssertExpectations(t)
-			} else {
-				_, err := routine.Process(test.ctx, test.account)
-				if test.expectedError {
-					assert.NotNil(t, err)
-				} else {
-					assert.Nil(t, err)
-				}
-				clientMock.AssertExpectations(t)
-			}
-
-		})
-	}
+	fgaMock.AssertNotCalled(t, "Write", mock.Anything, mock.Anything)
+	clientMock.AssertNotCalled(t, "Get", mock.Anything, mock.Anything, mock.Anything)
 }
 
-func TestCreatorSubroutine_Finalize(t *testing.T) {
-	creator := "test-creator"
+func TestFGASubroutine_Finalize_SkipsForOrganizations(t *testing.T) {
+	account := &v1alpha1.Account{
+		ObjectMeta: metav1.ObjectMeta{Name: "org-account"},
+		Spec:       v1alpha1.AccountSpec{Type: v1alpha1.AccountTypeOrg},
+	}
 
-	testCases := []struct {
-		name          string
-		expectedError bool
-		account       *v1alpha1.Account
-		setupMocks    func(*mocks.OpenFGAServiceClient, *mocks.Client)
-	}{
-		{
-			name:          "should_fail_if_get_store_id_fails",
-			expectedError: true,
-			account: &v1alpha1.Account{
-				ObjectMeta: metav1.ObjectMeta{
-					Name:      "test-account",
-					Namespace: "test-namespace",
-				},
-			},
-			setupMocks: func(openFGAServiceClientMock *mocks.OpenFGAServiceClient, clientMock *mocks.Client) {
-				clientMock.EXPECT().Get(mock.Anything, mock.Anything, mock.Anything).RunAndReturn(func(ctx context.Context, nn types.NamespacedName, o client.Object, opts ...client.GetOption) error {
-					account := o.(*v1alpha1.AccountInfo)
+	clientMock := mocks.NewClient(t)
+	fgaMock := mocks.NewOpenFGAServiceClient(t)
+	routine := NewFGASubroutine(clientMock, fgaMock, "owner", "parent", "core_platform-mesh_io_account")
 
-					*account = v1alpha1.AccountInfo{
-						ObjectMeta: metav1.ObjectMeta{
-							Name: "root-org",
-						},
-						Spec: v1alpha1.AccountInfoSpec{
-							Organization: v1alpha1.AccountLocation{
-								Name: "root-org",
-								Path: "root:platform-mesh:org:root-org",
-								URL:  "http://example.com/clusters/root:platform-mesh:org:root-org",
-								Type: v1alpha1.AccountTypeOrg,
-							},
-							Account: v1alpha1.AccountLocation{
-								Name: "root-org",
-								Path: "root:platform-mesh:org:root-org",
-								URL:  "http://example.com/clusters/root:platform-mesh:org:root-org",
-								Type: v1alpha1.AccountTypeOrg,
-							},
-						},
-					}
+	res, err := routine.Finalize(context.Background(), account)
+	assert.Nil(t, err)
+	assert.Equal(t, ctrl.Result{}, res)
 
-					return nil
-				}).Once()
-			},
-		},
-		{
-			name:          "should_fail_if_get_parent_account_fails",
-			expectedError: true,
-			account: &v1alpha1.Account{
-				ObjectMeta: metav1.ObjectMeta{
-					Name:      "test-account",
-					Namespace: "test-namespace",
-				},
-			},
-			setupMocks: func(openFGAServiceClientMock *mocks.OpenFGAServiceClient, clientMock *mocks.Client) {
-				clientMock.EXPECT().Get(mock.Anything, mock.Anything, mock.Anything).Return(assert.AnError)
-			},
-		},
-		{
-			name:          "should_fail_if_write_fails",
-			expectedError: true,
-			account: &v1alpha1.Account{
-				ObjectMeta: metav1.ObjectMeta{
-					Name:      "test-account",
-					Namespace: "test-namespace",
-				},
-			},
-			setupMocks: func(openFGAServiceClientMock *mocks.OpenFGAServiceClient, clientMock *mocks.Client) {
-				clientMock.EXPECT().Get(mock.Anything, mock.Anything, mock.Anything).RunAndReturn(func(ctx context.Context, nn types.NamespacedName, o client.Object, opts ...client.GetOption) error {
+	fgaMock.AssertNotCalled(t, "Write", mock.Anything, mock.Anything)
+	clientMock.AssertNotCalled(t, "Get", mock.Anything, mock.Anything, mock.Anything)
+}
 
-					account := o.(*v1alpha1.AccountInfo)
-
-					*account = v1alpha1.AccountInfo{
-						ObjectMeta: metav1.ObjectMeta{
-							Name: "root-org",
-						},
-						Spec: v1alpha1.AccountInfoSpec{
-							Organization: v1alpha1.AccountLocation{
-								Name: "root-org",
-								Path: "root:platform-mesh:org:root-org",
-								URL:  "http://example.com/clusters/root:platform-mesh:org:root-org",
-								Type: v1alpha1.AccountTypeOrg,
-							},
-							ParentAccount: &v1alpha1.AccountLocation{
-								Name: "root-org",
-								Path: "root:platform-mesh:org:root-org",
-								URL:  "http://example.com/clusters/root:platform-mesh:org:root-org",
-								Type: v1alpha1.AccountTypeOrg,
-							},
-							Account: v1alpha1.AccountLocation{
-								Name: "root-org",
-								Path: "root:platform-mesh:org:root-org",
-								URL:  "http://example.com/clusters/root:platform-mesh:org:root-org",
-								Type: v1alpha1.AccountTypeOrg,
-							},
-							FGA: v1alpha1.FGAInfo{Store: v1alpha1.StoreInfo{Id: "123123"}},
-						},
-					}
-
-					return nil
-				}).Once()
-				openFGAServiceClientMock.EXPECT().
-					Write(mock.Anything, mock.Anything).
-					Return(nil, assert.AnError)
-
-			},
-		},
-		{
-			name: "should_ignore_error_if_duplicate_write_error",
-			account: &v1alpha1.Account{
-				ObjectMeta: metav1.ObjectMeta{
-					Name:      "test-account",
-					Namespace: "test-namespace",
-				},
-			},
-			setupMocks: func(openFGAServiceClientMock *mocks.OpenFGAServiceClient, clientMock *mocks.Client) {
-				clientMock.EXPECT().Get(mock.Anything, mock.Anything, mock.Anything).RunAndReturn(func(ctx context.Context, nn types.NamespacedName, o client.Object, opts ...client.GetOption) error {
-
-					account := o.(*v1alpha1.AccountInfo)
-
-					*account = v1alpha1.AccountInfo{
-						ObjectMeta: metav1.ObjectMeta{
-							Name: "root-org",
-						},
-						Spec: v1alpha1.AccountInfoSpec{
-							Organization: v1alpha1.AccountLocation{
-								Name: "root-org",
-								Path: "root:platform-mesh:org:root-org",
-								URL:  "http://example.com/clusters/root:platform-mesh:org:root-org",
-								Type: v1alpha1.AccountTypeOrg,
-							},
-							ParentAccount: &v1alpha1.AccountLocation{
-								Name: "root-org",
-								Path: "root:platform-mesh:org:root-org",
-								URL:  "http://example.com/clusters/root:platform-mesh:org:root-org",
-								Type: v1alpha1.AccountTypeOrg,
-							},
-							Account: v1alpha1.AccountLocation{
-								Name: "root-org",
-								Path: "root:platform-mesh:org:root-org",
-								URL:  "http://example.com/clusters/root:platform-mesh:org:root-org",
-								Type: v1alpha1.AccountTypeOrg,
-							},
-							FGA: v1alpha1.FGAInfo{Store: v1alpha1.StoreInfo{Id: "123123"}},
-						},
-					}
-
-					return nil
-				}).Once()
-				openFGAServiceClientMock.EXPECT().
-					Write(mock.Anything, mock.Anything).
-					Return(nil, newFgaError(openfgav1.ErrorCode_write_failed_due_to_invalid_input, "error"))
-			},
-		},
-		{
-			name: "should_succeed",
-			account: &v1alpha1.Account{
-				ObjectMeta: metav1.ObjectMeta{
-					Name:      "test-account",
-					Namespace: "test-namespace",
-				},
-			},
-			setupMocks: func(openFGAServiceClientMock *mocks.OpenFGAServiceClient, clientMock *mocks.Client) {
-				clientMock.EXPECT().Get(mock.Anything, mock.Anything, mock.Anything).RunAndReturn(func(ctx context.Context, nn types.NamespacedName, o client.Object, opts ...client.GetOption) error {
-
-					account := o.(*v1alpha1.AccountInfo)
-
-					*account = v1alpha1.AccountInfo{
-						ObjectMeta: metav1.ObjectMeta{
-							Name: "root-org",
-						},
-						Spec: v1alpha1.AccountInfoSpec{
-							Organization: v1alpha1.AccountLocation{
-								Name: "root-org",
-								Path: "root:platform-mesh:org:root-org",
-								URL:  "http://example.com/clusters/root:platform-mesh:org:root-org",
-								Type: v1alpha1.AccountTypeOrg,
-							},
-							ParentAccount: &v1alpha1.AccountLocation{
-								Name: "root-org",
-								Path: "root:platform-mesh:org:root-org",
-								URL:  "http://example.com/clusters/root:platform-mesh:org:root-org",
-								Type: v1alpha1.AccountTypeOrg,
-							},
-							Account: v1alpha1.AccountLocation{
-								Name: "root-org",
-								Path: "root:platform-mesh:org:root-org",
-								URL:  "http://example.com/clusters/root:platform-mesh:org:root-org",
-								Type: v1alpha1.AccountTypeOrg,
-							},
-							FGA: v1alpha1.FGAInfo{Store: v1alpha1.StoreInfo{Id: "123123"}},
-						},
-					}
-
-					return nil
-				}).Once()
-
-				openFGAServiceClientMock.EXPECT().
-					Write(mock.Anything, mock.Anything).
-					Return(&openfgav1.WriteResponse{}, nil)
-			},
-		},
-		{
-			name: "should_succeed_with_creator",
-			account: &v1alpha1.Account{
-				ObjectMeta: metav1.ObjectMeta{
-					Name:      "test-account",
-					Namespace: "test-namespace",
-				},
-				Spec: v1alpha1.AccountSpec{
-					Creator: &creator,
-				},
-			},
-			setupMocks: func(openFGAServiceClientMock *mocks.OpenFGAServiceClient, clientMock *mocks.Client) {
-				clientMock.EXPECT().Get(mock.Anything, mock.Anything, mock.Anything).RunAndReturn(func(ctx context.Context, nn types.NamespacedName, o client.Object, opts ...client.GetOption) error {
-
-					account := o.(*v1alpha1.AccountInfo)
-
-					*account = v1alpha1.AccountInfo{
-						ObjectMeta: metav1.ObjectMeta{
-							Name: "root-org",
-						},
-						Spec: v1alpha1.AccountInfoSpec{
-							Organization: v1alpha1.AccountLocation{
-								Name: "root-org",
-								Path: "root:platform-mesh:org:root-org",
-								URL:  "http://example.com/clusters/root:platform-mesh:org:root-org",
-								Type: v1alpha1.AccountTypeOrg,
-							},
-							ParentAccount: &v1alpha1.AccountLocation{
-								Name: "root-org",
-								Path: "root:platform-mesh:org:root-org",
-								URL:  "http://example.com/clusters/root:platform-mesh:org:root-org",
-								Type: v1alpha1.AccountTypeOrg,
-							},
-							Account: v1alpha1.AccountLocation{
-								Name: "root-org",
-								Path: "root:platform-mesh:org:root-org",
-								URL:  "http://example.com/clusters/root:platform-mesh:org:root-org",
-								Type: v1alpha1.AccountTypeOrg,
-							},
-							FGA: v1alpha1.FGAInfo{Store: v1alpha1.StoreInfo{Id: "123123"}},
-						},
-					}
-
-					return nil
-				}).Once()
-
-				openFGAServiceClientMock.EXPECT().
-					Write(mock.Anything, mock.Anything).
-					Return(&openfgav1.WriteResponse{}, nil).Times(3)
-			},
+func TestFGASubroutine_Finalize_RemovesTuplesForAccounts(t *testing.T) {
+	account := &v1alpha1.Account{
+		ObjectMeta: metav1.ObjectMeta{Name: "team-account"},
+		Spec: v1alpha1.AccountSpec{
+			Type:    v1alpha1.AccountTypeAccount,
+			Creator: ptr.To("system:serviceaccount:tenant:creator"),
 		},
 	}
-	defaultContext := pmconfig.SetConfigInContext(context.Background(), config.OperatorConfig{})
-	for _, test := range testCases {
-		t.Run(test.name, func(t *testing.T) {
 
-			openFGAClient := mocks.NewOpenFGAServiceClient(t)
-			k8sClient := mocks.NewClient(t)
+	clientMock := mocks.NewClient(t)
+	fgaMock := mocks.NewOpenFGAServiceClient(t)
 
-			if test.setupMocks != nil {
-				test.setupMocks(openFGAClient, k8sClient)
+	clientMock.EXPECT().
+		Get(mock.Anything, mock.Anything, mock.Anything).
+		RunAndReturn(func(ctx context.Context, key client.ObjectKey, obj client.Object, opts ...client.GetOption) error {
+			accountInfo := obj.(*v1alpha1.AccountInfo)
+			*accountInfo = v1alpha1.AccountInfo{
+				Spec: v1alpha1.AccountInfoSpec{
+					FGA: v1alpha1.FGAInfo{
+						Store: v1alpha1.StoreInfo{Id: "store-id"},
+					},
+					Account: v1alpha1.AccountLocation{
+						Name:            account.Name,
+						OriginClusterId: "origin-cluster",
+					},
+					ParentAccount: &v1alpha1.AccountLocation{
+						OriginClusterId: "parent-cluster",
+					},
+				},
 			}
+			return nil
+		}).Once()
 
-			routine := NewFGASubroutine(k8sClient, openFGAClient, "owner", "parent", "account")
-			ctx := kontext.WithCluster(defaultContext, "abcdefghi")
-			_, err := routine.Finalize(ctx, test.account)
-			if test.expectedError {
-				assert.NotNil(t, err)
-			} else {
-				assert.Nil(t, err)
-			}
+	expectedParentUser := fmt.Sprintf("core_platform-mesh_io_account:%s/%s", "parent-cluster", account.Name)
+	expectedAccountObject := fmt.Sprintf("core_platform-mesh_io_account:%s/%s", "origin-cluster", account.Name)
+	expectedOwnerObject := fmt.Sprintf("role:core_platform-mesh_io_account/%s/%s/owner", "origin-cluster", account.Name)
+	expectedOwnerUser := fmt.Sprintf("role:core_platform-mesh_io_account/%s/%s/owner#assignee", "origin-cluster", account.Name)
 
-		})
+	fgaMock.EXPECT().
+		Write(mock.Anything, mock.MatchedBy(func(req *openfgav1.WriteRequest) bool {
+			return req.StoreId == "store-id" &&
+				req.Deletes != nil &&
+				len(req.Deletes.TupleKeys) == 1 &&
+				req.Deletes.TupleKeys[0].User == expectedParentUser &&
+				req.Deletes.TupleKeys[0].Relation == "parent" &&
+				req.Deletes.TupleKeys[0].Object == expectedAccountObject
+		})).
+		Return(&openfgav1.WriteResponse{}, nil).Once()
+
+	fgaMock.EXPECT().
+		Write(mock.Anything, mock.MatchedBy(func(req *openfgav1.WriteRequest) bool {
+			return req.StoreId == "store-id" &&
+				req.Deletes != nil &&
+				len(req.Deletes.TupleKeys) == 1 &&
+				req.Deletes.TupleKeys[0].User == "user:system.serviceaccount.tenant.creator" &&
+				req.Deletes.TupleKeys[0].Relation == "assignee" &&
+				req.Deletes.TupleKeys[0].Object == expectedOwnerObject
+		})).
+		Return(&openfgav1.WriteResponse{}, nil).Once()
+
+	fgaMock.EXPECT().
+		Write(mock.Anything, mock.MatchedBy(func(req *openfgav1.WriteRequest) bool {
+			return req.StoreId == "store-id" &&
+				req.Deletes != nil &&
+				len(req.Deletes.TupleKeys) == 1 &&
+				req.Deletes.TupleKeys[0].User == expectedOwnerUser &&
+				req.Deletes.TupleKeys[0].Relation == "owner" &&
+				req.Deletes.TupleKeys[0].Object == expectedAccountObject
+		})).
+		Return(&openfgav1.WriteResponse{}, nil).Once()
+
+	routine := NewFGASubroutine(clientMock, fgaMock, "owner", "parent", "core_platform-mesh_io_account")
+	ctx := kontext.WithCluster(context.Background(), "child-cluster")
+
+	res, err := routine.Finalize(ctx, account)
+	assert.Nil(t, err)
+	assert.Equal(t, ctrl.Result{}, res)
+}
+
+func TestFGASubroutine_Finalize_ReturnsErrorWhenStoreMissing(t *testing.T) {
+	account := &v1alpha1.Account{
+		ObjectMeta: metav1.ObjectMeta{Name: "team-account"},
+		Spec:       v1alpha1.AccountSpec{Type: v1alpha1.AccountTypeAccount},
 	}
+
+	clientMock := mocks.NewClient(t)
+	clientMock.EXPECT().
+		Get(mock.Anything, mock.Anything, mock.Anything).
+		RunAndReturn(func(ctx context.Context, key client.ObjectKey, obj client.Object, opts ...client.GetOption) error {
+			accountInfo := obj.(*v1alpha1.AccountInfo)
+			*accountInfo = v1alpha1.AccountInfo{
+				Spec: v1alpha1.AccountInfoSpec{
+					FGA: v1alpha1.FGAInfo{Store: v1alpha1.StoreInfo{Id: ""}},
+				},
+			}
+			return nil
+		}).Once()
+
+	fgaMock := mocks.NewOpenFGAServiceClient(t)
+	routine := NewFGASubroutine(clientMock, fgaMock, "owner", "parent", "core_platform-mesh_io_account")
+
+	_, err := routine.Finalize(context.Background(), account)
+	assert.NotNil(t, err)
+}
+
+func TestFGASubroutine_Finalize_PropagatesGetError(t *testing.T) {
+	account := &v1alpha1.Account{
+		ObjectMeta: metav1.ObjectMeta{Name: "team-account"},
+		Spec:       v1alpha1.AccountSpec{Type: v1alpha1.AccountTypeAccount},
+	}
+
+	clientMock := mocks.NewClient(t)
+	clientMock.EXPECT().
+		Get(mock.Anything, mock.Anything, mock.Anything).
+		RunAndReturn(func(ctx context.Context, key client.ObjectKey, obj client.Object, opts ...client.GetOption) error {
+			return assert.AnError
+		}).Once()
+
+	fgaMock := mocks.NewOpenFGAServiceClient(t)
+	routine := NewFGASubroutine(clientMock, fgaMock, "owner", "parent", "core_platform-mesh_io_account")
+
+	_, err := routine.Finalize(context.Background(), account)
+	assert.NotNil(t, err)
 }
