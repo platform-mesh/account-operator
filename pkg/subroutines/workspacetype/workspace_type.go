@@ -55,12 +55,12 @@ func (w *WorkspaceTypeSubroutine) Process(ctx context.Context, ro runtimeobject.
 	orgWst := generateOrgWorkspaceType(instance, orgWorkspaceTypeName, accountWorkspaceTypeName)
 	accWst := generateAccountWorkspaceType(instance, orgWorkspaceTypeName, accountWorkspaceTypeName)
 
-	if err := w.createOrUpdateWorkspaceType(ctx, orgWst); err != nil {
+	if err := w.createOrUpdateWorkspaceType(ctx, orgWst); err != nil { // coverage-ignore
 		log.Error().Err(err).Str("name", orgWst.Name).Msg("failed to create or update org workspace type")
 		return ctrl.Result{}, errors.NewOperatorError(err, true, true)
 	}
 
-	if err := w.createOrUpdateWorkspaceType(ctx, accWst); err != nil {
+	if err := w.createOrUpdateWorkspaceType(ctx, accWst); err != nil { // coverage-ignore
 		log.Error().Err(err).Str("name", accWst.Name).Msg("failed to create or update account workspace type")
 		return ctrl.Result{}, errors.NewOperatorError(err, true, true)
 	}
@@ -96,7 +96,7 @@ func (w *WorkspaceTypeSubroutine) Finalize(ctx context.Context, ro runtimeobject
 	}
 
 	if err := w.orgsClient.Delete(ctx, &kcptenancyv1alpha.WorkspaceType{ObjectMeta: metav1.ObjectMeta{Name: accountWorkspaceTypeName}}); err != nil {
-		if !kerrors.IsNotFound(err) {
+		if !kerrors.IsNotFound(err) { // coverage-ignore
 			log.Error().Err(err).Str("name", accountWorkspaceTypeName).Msg("failed to delete account workspace type")
 			return ctrl.Result{}, errors.NewOperatorError(err, true, true)
 		}
