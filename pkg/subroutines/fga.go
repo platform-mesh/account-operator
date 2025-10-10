@@ -8,6 +8,7 @@ import (
 	"time"
 
 	kcpcorev1alpha "github.com/kcp-dev/kcp/sdk/apis/core/v1alpha1"
+	kcptenancyv1alpha "github.com/kcp-dev/kcp/sdk/apis/tenancy/v1alpha1"
 	openfgav1 "github.com/openfga/api/proto/openfga/v1"
 	"github.com/platform-mesh/golang-commons/controller/lifecycle/runtimeobject"
 	"github.com/platform-mesh/golang-commons/errors"
@@ -18,36 +19,37 @@ import (
 	ctrl "sigs.k8s.io/controller-runtime"
 	"sigs.k8s.io/controller-runtime/pkg/client"
 	mccontext "sigs.k8s.io/multicluster-runtime/pkg/context"
+	mcmanager "sigs.k8s.io/multicluster-runtime/pkg/manager"
 
 	"github.com/platform-mesh/account-operator/api/v1alpha1"
+	"github.com/platform-mesh/account-operator/pkg/clusteredname"
+	"github.com/platform-mesh/account-operator/pkg/subroutines/accountinfo"
 )
 
 type FGASubroutine struct {
 	fgaClient       openfgav1.OpenFGAServiceClient
-	client          client.Client
-	clusterGetter   ClusterClientGetter
+	mgr             mcmanager.Manager
 	objectType      string
 	parentRelation  string
 	creatorRelation string
-	limiter         workqueue.TypedRateLimiter[ClusteredName]
+
+	limiter workqueue.TypedRateLimiter[clusteredname.ClusteredName]
 }
 
-func NewFGASubroutine(clusterGetter ClusterClientGetter, cl client.Client, fgaClient openfgav1.OpenFGAServiceClient, creatorRelation, parentRelation, objectType string) *FGASubroutine {
-	exp := workqueue.NewTypedItemExponentialFailureRateLimiter[ClusteredName](1*time.Second, 120*time.Second)
+func NewFGASubroutine(mgr mcmanager.Manager, fgaClient openfgav1.OpenFGAServiceClient, creatorRelation, parentRelation, objectType string) *FGASubroutine {
 	return &FGASubroutine{
-		client:          cl,
-		clusterGetter:   clusterGetter,
+		mgr:             mgr,
 		fgaClient:       fgaClient,
 		creatorRelation: creatorRelation,
 		parentRelation:  parentRelation,
 		objectType:      objectType,
-		limiter:         exp,
+		limiter:         workqueue.NewTypedItemExponentialFailureRateLimiter[clusteredname.ClusteredName](1*time.Second, 120*time.Second),
 	}
 }
 
 func (e *FGASubroutine) Process(ctx context.Context, ro runtimeobject.RuntimeObject) (ctrl.Result, errors.OperatorError) {
 	account := ro.(*v1alpha1.Account)
-	cn := MustGetClusteredName(ctx, ro)
+	cn := clusteredname.MustGetClusteredName(ctx, ro)
 
 	log := logger.LoadLoggerFromContext(ctx)
 	log.Debug().Msg("Starting creator subroutine process() function")
@@ -57,14 +59,14 @@ func (e *FGASubroutine) Process(ctx context.Context, ro runtimeobject.RuntimeObj
 		return ctrl.Result{}, errors.NewOperatorError(fmt.Errorf("cluster client not available: ensure context carries cluster information"), true, true)
 	}
 
-	clusterRef, err := e.clusterGetter.GetCluster(ctx, clusterName)
+	clusterRef, err := e.mgr.GetCluster(ctx, clusterName)
 	if err != nil {
 		return ctrl.Result{}, errors.NewOperatorError(err, true, true)
 	}
 	clusterClient := clusterRef.GetClient()
 
-	accountWorkspace, err := retrieveWorkspace(ctx, account, clusterClient, log)
-	if err != nil {
+	accountWorkspace := &kcptenancyv1alpha.Workspace{}
+	if err := clusterClient.Get(ctx, client.ObjectKey{Name: account.Name}, accountWorkspace); err != nil {
 		return ctrl.Result{}, errors.NewOperatorError(err, true, true)
 	}
 
@@ -73,7 +75,13 @@ func (e *FGASubroutine) Process(ctx context.Context, ro runtimeobject.RuntimeObj
 		return ctrl.Result{RequeueAfter: e.limiter.When(cn)}, nil
 	}
 
-	accountInfo, err := e.getAccountInfo(ctx, clusterClient)
+	accountCluster, err := e.mgr.GetCluster(ctx, accountWorkspace.Spec.Cluster)
+	if err != nil {
+		return ctrl.Result{}, errors.NewOperatorError(err, true, true)
+	}
+	accountClusterClient := accountCluster.GetClient()
+
+	accountInfo, err := e.getAccountInfo(ctx, accountClusterClient)
 	if err != nil {
 		log.Error().Err(err).Msg("Couldn't get Store Id")
 		return ctrl.Result{}, errors.NewOperatorError(err, true, true)
@@ -164,7 +172,7 @@ func (e *FGASubroutine) Finalize(ctx context.Context, runtimeObj runtimeobject.R
 			return ctrl.Result{}, errors.NewOperatorError(fmt.Errorf("cluster client not available: ensure context carries cluster information"), true, true)
 		}
 
-		clusterRef, err := e.clusterGetter.GetCluster(ctx, clusterName)
+		clusterRef, err := e.mgr.GetCluster(ctx, clusterName)
 		if err != nil {
 			return ctrl.Result{}, errors.NewOperatorError(err, true, true)
 		}
@@ -234,7 +242,7 @@ func (e *FGASubroutine) Finalize(ctx context.Context, runtimeObj runtimeobject.R
 
 func (e *FGASubroutine) getAccountInfo(ctx context.Context, cl client.Client) (*v1alpha1.AccountInfo, error) {
 	accountInfo := &v1alpha1.AccountInfo{}
-	err := cl.Get(ctx, client.ObjectKey{Name: DefaultAccountInfoName}, accountInfo)
+	err := cl.Get(ctx, client.ObjectKey{Name: accountinfo.DefaultAccountInfoName}, accountInfo)
 	if err != nil {
 		return nil, err
 	}

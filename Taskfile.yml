@@ -1,6 +1,5 @@
 version: '3'
 
-dotenv: ['.taskenv', '.secret/.env', '{{.HOME}}/.env' ]
 vars:
   LOCAL_BIN: bin
   CONTROLLER_TOOLS_VERSION: v0.19.0
@@ -49,22 +48,6 @@ tasks:
       - "{{.LOCAL_BIN}}/controller-gen object:headerFile=hack/boilerplate.go.txt paths=./..."
       - "{{.LOCAL_BIN}}/apigen --input-dir {{.CRD_DIRECTORY}} --output-dir ./config/resources"
       - "{{.LOCAL_BIN}}/apigen --input-dir {{.CRD_DIRECTORY}} --output-dir {{ .TEST_SETUP_DIRECTORY }}"
-  generate-mocks:
-    desc: Regenerate mocks and enforce OpenFGA import alias
-    cmds:
-      - GOTOOLCHAIN=go1.24.5+auto go generate ./pkg/subroutines
-      - |
-        bash -lc '
-        FILE="pkg/subroutines/mocks/mock_OpenFGAServiceClient.go";
-        if [ -f "$FILE" ]; then
-          # Only add alias if missing (import without alias on a dedicated line)
-          if grep -qE "^[[:space:]]*\"github.com/openfga/api/proto/openfga/v1\"$" "$FILE"; then
-            perl -0777 -i -pe "s/(^\s*)\"github.com\\/openfga\\/api\\/proto\\/openfga\\/v1\"/\${1}openfgav1 \"github.com\\/openfga\\/api\\/proto\\/openfga\\/v1\"/m" "$FILE";
-          fi;
-        fi'
-  build:
-    cmds:
-      - go build ./...
   docker-build:
     cmds:
       - docker build .
