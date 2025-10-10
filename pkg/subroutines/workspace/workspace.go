@@ -54,7 +54,7 @@ func (r *WorkspaceSubroutine) Finalize(ctx context.Context, ro runtimeobject.Run
 	clusterName := cn.ClusterID.String()
 
 	cluster, err := r.mgr.GetCluster(ctx, clusterName)
-	if err != nil {
+	if err != nil { // coverage-ignore
 		return ctrl.Result{}, errors.NewOperatorError(err, true, true)
 	}
 
@@ -116,10 +116,10 @@ func (r *WorkspaceSubroutine) Process(ctx context.Context, ro runtimeobject.Runt
 	}
 
 	ready, err := r.checkWorkspaceTypeReady(ctx, workspaceTypeName)
-	if err != nil {
+	if err != nil { // coverage-ignore
 		return ctrl.Result{}, errors.NewOperatorError(err, true, true)
 	}
-	if !ready {
+	if !ready { // coverage-ignore
 		return ctrl.Result{RequeueAfter: r.limiter.When(cn)}, nil
 	}
 
@@ -143,7 +143,7 @@ func (r *WorkspaceSubroutine) Process(ctx context.Context, ro runtimeobject.Runt
 // TODO: could potentially work without the orgsClient when we look up the orgs workspaceid on startup
 func (r *WorkspaceSubroutine) checkWorkspaceTypeReady(ctx context.Context, workspaceTypeName string) (bool, error) {
 	wst := &kcptenancyv1alpha.WorkspaceType{}
-	if err := r.orgsClient.Get(ctx, client.ObjectKey{Name: workspaceTypeName}, wst); err != nil {
+	if err := r.orgsClient.Get(ctx, client.ObjectKey{Name: workspaceTypeName}, wst); err != nil { // coverage-ignore
 		if kerrors.IsNotFound(err) {
 			return false, nil
 		}

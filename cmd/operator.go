@@ -175,7 +175,6 @@ func RunController(_ *cobra.Command, _ []string) { // coverage-ignore
 		log.Fatal().Err(err).Msg("unable to set up ready check")
 	}
 
-	// Start APIExport provider in background goroutine (critical for multicluster runtime)
 	log.Info().Msg("starting APIExport provider")
 	go func() {
 		if err := provider.Run(ctx, mgr); err != nil {
