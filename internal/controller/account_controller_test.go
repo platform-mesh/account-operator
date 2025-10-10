@@ -31,7 +31,7 @@ import (
 	"github.com/platform-mesh/account-operator/api/v1alpha1"
 	"github.com/platform-mesh/account-operator/internal/config"
 	"github.com/platform-mesh/account-operator/internal/controller"
-	"github.com/platform-mesh/account-operator/pkg/subroutines"
+	"github.com/platform-mesh/account-operator/pkg/subroutines/accountinfo"
 	"github.com/platform-mesh/account-operator/pkg/subroutines/mocks"
 	"github.com/platform-mesh/account-operator/pkg/testing/kcpenvtest"
 )
@@ -247,7 +247,7 @@ func (suite *AccountTestSuite) TestAccountInfoCreationForOrganization() {
 
 	accountInfo := &v1alpha1.AccountInfo{}
 	suite.Assert().Eventually(func() bool {
-		if err := suite.kubernetesClient.Get(testContext, client.ObjectKey{Name: subroutines.DefaultAccountInfoName}, accountInfo); err != nil {
+		if err := suite.kubernetesClient.Get(testContext, client.ObjectKey{Name: accountinfo.DefaultAccountInfoName}, accountInfo); err != nil {
 			return false
 		}
 		return accountInfo.Spec.Account.Type == v1alpha1.AccountTypeOrg

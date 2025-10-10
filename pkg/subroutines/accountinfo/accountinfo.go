@@ -1,4 +1,4 @@
-package subroutines
+package accountinfo
 
 import (
 	"context"
@@ -18,10 +18,10 @@ import (
 	ctrl "sigs.k8s.io/controller-runtime"
 	"sigs.k8s.io/controller-runtime/pkg/client"
 	"sigs.k8s.io/controller-runtime/pkg/controller/controllerutil"
-	mccontext "sigs.k8s.io/multicluster-runtime/pkg/context"
 	mcmanager "sigs.k8s.io/multicluster-runtime/pkg/manager"
 
 	"github.com/platform-mesh/account-operator/api/v1alpha1"
+	"github.com/platform-mesh/account-operator/pkg/clusteredname"
 )
 
 var _ subroutine.Subroutine = (*AccountInfoSubroutine)(nil)
@@ -29,16 +29,17 @@ var _ subroutine.Subroutine = (*AccountInfoSubroutine)(nil)
 const (
 	AccountInfoSubroutineName = "AccountInfoSubroutine"
 	DefaultAccountInfoName    = "account"
+	AccountInfoFinalizer      = "account.core.platform-mesh.io/info"
 )
 
 type AccountInfoSubroutine struct {
 	mgr      mcmanager.Manager
 	serverCA string
-	limiter  workqueue.TypedRateLimiter[ClusteredName]
+	limiter  workqueue.TypedRateLimiter[clusteredname.ClusteredName]
 }
 
-func NewAccountInfoSubroutine(mgr mcmanager.Manager, serverCA string) *AccountInfoSubroutine {
-	exp := workqueue.NewTypedItemExponentialFailureRateLimiter[ClusteredName](1*time.Second, 120*time.Second)
+func New(mgr mcmanager.Manager, serverCA string) *AccountInfoSubroutine {
+	exp := workqueue.NewTypedItemExponentialFailureRateLimiter[clusteredname.ClusteredName](1*time.Second, 120*time.Second)
 	return &AccountInfoSubroutine{mgr: mgr, serverCA: serverCA, limiter: exp}
 }
 
@@ -46,8 +47,12 @@ func (r *AccountInfoSubroutine) GetName() string {
 	return AccountInfoSubroutineName
 }
 
+func (r *AccountInfoSubroutine) Finalizers(_ runtimeobject.RuntimeObject) []string { // coverage-ignore
+	return []string{AccountInfoFinalizer}
+}
+
 func (r *AccountInfoSubroutine) Finalize(ctx context.Context, ro runtimeobject.RuntimeObject) (ctrl.Result, errors.OperatorError) {
-	cn := MustGetClusteredName(ctx, ro)
+	cn := clusteredname.MustGetClusteredName(ctx, ro)
 
 	// The account info object is relevant input for other finalizers, removing the accountinfo finalizer at last
 	if len(ro.GetFinalizers()) > 1 {
@@ -58,30 +63,20 @@ func (r *AccountInfoSubroutine) Finalize(ctx context.Context, ro runtimeobject.R
 	return ctrl.Result{}, nil
 }
 
-func (r *AccountInfoSubroutine) Finalizers(_ runtimeobject.RuntimeObject) []string { // coverage-ignore
-	return []string{"account.core.platform-mesh.io/info"}
-}
-
 func (r *AccountInfoSubroutine) Process(ctx context.Context, ro runtimeobject.RuntimeObject) (ctrl.Result, errors.OperatorError) {
 	instance := ro.(*v1alpha1.Account)
 
 	log := logger.LoadLoggerFromContext(ctx)
-	cn := MustGetClusteredName(ctx, ro)
+	cn := clusteredname.MustGetClusteredName(ctx, ro)
 
-	// select workspace for account
-	clusterName, ok := mccontext.ClusterFrom(ctx)
-	if !ok {
-		return ctrl.Result{}, errors.NewOperatorError(fmt.Errorf("cluster client not available: ensure context carries cluster information"), true, true)
-	}
-
-	clusterRef, err := r.mgr.GetCluster(ctx, clusterName)
+	clusterRef, err := r.mgr.GetCluster(ctx, string(cn.ClusterID))
 	if err != nil {
 		return ctrl.Result{}, errors.NewOperatorError(err, true, true)
 	}
 	clusterClient := clusterRef.GetClient()
 
-	accountWorkspace, err := retrieveWorkspace(ctx, instance, clusterClient, log)
-	if err != nil {
+	accountWorkspace := &kcptenancyv1alpha.Workspace{}
+	if err := clusterClient.Get(ctx, client.ObjectKey{Name: instance.Name}, accountWorkspace); err != nil {
 		return ctrl.Result{}, errors.NewOperatorError(err, true, true)
 	}
 
@@ -99,7 +94,7 @@ func (r *AccountInfoSubroutine) Process(ctx context.Context, ro runtimeobject.Ru
 	selfAccountLocation := v1alpha1.AccountLocation{
 		Name:               instance.Name,
 		GeneratedClusterId: accountWorkspace.Spec.Cluster,
-		OriginClusterId:    clusterName, // TODO: verify if this is correct
+		OriginClusterId:    string(cn.ClusterID),
 		Type:               instance.Spec.Type,
 		Path:               currentWorkspacePath,
 		URL:                currentWorkspaceUrl,
@@ -159,6 +154,7 @@ func (r *AccountInfoSubroutine) retrieveAccountInfo(ctx context.Context, cl clie
 	accountInfo := &v1alpha1.AccountInfo{}
 	err := cl.Get(ctx, client.ObjectKey{Name: "account"}, accountInfo)
 	if err != nil {
+		// TODO: I would like to challenge this distinction as we anyway retry on all errors
 		if kerrors.IsNotFound(err) {
 			log.Info().Msg("accountInfo does not yet exist, retry")
 			return nil, false, nil

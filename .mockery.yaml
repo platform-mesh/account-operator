@@ -20,3 +20,7 @@ packages:
     config:
       include-interface-regex: Client
       filename: mock_K8Service.go
+  sigs.k8s.io/controller-runtime/pkg/cluster:
+    config:
+      include-interface-regex: Cluster
+      filename: mock_K8Cluster.go

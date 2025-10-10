@@ -21,6 +21,7 @@ import (
 	corev1alpha1 "github.com/platform-mesh/account-operator/api/v1alpha1"
 	"github.com/platform-mesh/account-operator/internal/config"
 	"github.com/platform-mesh/account-operator/pkg/subroutines"
+	"github.com/platform-mesh/account-operator/pkg/subroutines/accountinfo"
 )
 
 const (
@@ -50,7 +51,7 @@ func NewAccountReconciler(log *logger.Logger, mgr mcmanager.Manager, cfg config.
 	}
 
 	if cfg.Subroutines.AccountInfo.Enabled {
-		subs = append(subs, subroutines.NewAccountInfoSubroutine(mgr, serverCA))
+		subs = append(subs, accountinfo.New(mgr, serverCA))
 	}
 
 	if cfg.Subroutines.FGA.Enabled {

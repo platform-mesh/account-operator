@@ -20,6 +20,8 @@ import (
 	mcmanager "sigs.k8s.io/multicluster-runtime/pkg/manager"
 
 	corev1alpha1 "github.com/platform-mesh/account-operator/api/v1alpha1"
+	"github.com/platform-mesh/account-operator/pkg/clusteredname"
+	"github.com/platform-mesh/account-operator/pkg/subroutines/accountinfo"
 )
 
 const (
@@ -30,12 +32,12 @@ const (
 
 type WorkspaceSubroutine struct {
 	mgr        mcmanager.Manager
-	limiter    workqueue.TypedRateLimiter[ClusteredName]
+	limiter    workqueue.TypedRateLimiter[clusteredname.ClusteredName]
 	orgsClient client.Client
 }
 
 func NewWorkspaceSubroutine(mgr mcmanager.Manager, orgsClient client.Client) *WorkspaceSubroutine {
-	exp := workqueue.NewTypedItemExponentialFailureRateLimiter[ClusteredName](1*time.Second, 120*time.Second)
+	exp := workqueue.NewTypedItemExponentialFailureRateLimiter[clusteredname.ClusteredName](1*time.Second, 120*time.Second)
 	return &WorkspaceSubroutine{
 		mgr:        mgr,
 		limiter:    exp,
@@ -49,7 +51,7 @@ func (r *WorkspaceSubroutine) GetName() string {
 
 func (r *WorkspaceSubroutine) Finalize(ctx context.Context, ro runtimeobject.RuntimeObject) (ctrl.Result, errors.OperatorError) {
 	instance := ro.(*corev1alpha1.Account)
-	cn := MustGetClusteredName(ctx, ro)
+	cn := clusteredname.MustGetClusteredName(ctx, ro)
 
 	clusterName, ok := mccontext.ClusterFrom(ctx)
 	if !ok {
@@ -88,7 +90,7 @@ func (r *WorkspaceSubroutine) Finalizers(_ runtimeobject.RuntimeObject) []string
 
 func (r *WorkspaceSubroutine) Process(ctx context.Context, ro runtimeobject.RuntimeObject) (ctrl.Result, errors.OperatorError) {
 	instance := ro.(*corev1alpha1.Account)
-	cn := MustGetClusteredName(ctx, ro)
+	cn := clusteredname.MustGetClusteredName(ctx, ro)
 
 	clusterName, ok := mccontext.ClusterFrom(ctx)
 	if !ok {
@@ -104,7 +106,7 @@ func (r *WorkspaceSubroutine) Process(ctx context.Context, ro runtimeobject.Runt
 	workspaceTypeName := generateOrganizationWorkspaceTypeName(instance.Name)
 	if instance.Spec.Type == corev1alpha1.AccountTypeAccount {
 		accountInfo := &corev1alpha1.AccountInfo{}
-		if err := clusterClient.Get(ctx, client.ObjectKey{Name: DefaultAccountInfoName, Namespace: instance.Namespace}, accountInfo); err != nil {
+		if err := clusterClient.Get(ctx, client.ObjectKey{Name: accountinfo.DefaultAccountInfoName, Namespace: instance.Namespace}, accountInfo); err != nil {
 			if kerrors.IsNotFound(err) {
 				return ctrl.Result{RequeueAfter: r.limiter.When(cn)}, nil
 			}

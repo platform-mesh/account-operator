@@ -8,6 +8,7 @@ import (
 	"time"
 
 	kcpcorev1alpha "github.com/kcp-dev/kcp/sdk/apis/core/v1alpha1"
+	kcptenancyv1alpha "github.com/kcp-dev/kcp/sdk/apis/tenancy/v1alpha1"
 	openfgav1 "github.com/openfga/api/proto/openfga/v1"
 	"github.com/platform-mesh/golang-commons/controller/lifecycle/runtimeobject"
 	"github.com/platform-mesh/golang-commons/errors"
@@ -21,6 +22,8 @@ import (
 	mcmanager "sigs.k8s.io/multicluster-runtime/pkg/manager"
 
 	"github.com/platform-mesh/account-operator/api/v1alpha1"
+	"github.com/platform-mesh/account-operator/pkg/clusteredname"
+	"github.com/platform-mesh/account-operator/pkg/subroutines/accountinfo"
 )
 
 type FGASubroutine struct {
@@ -30,11 +33,11 @@ type FGASubroutine struct {
 	parentRelation  string
 	creatorRelation string
 
-	limiter workqueue.TypedRateLimiter[ClusteredName]
+	limiter workqueue.TypedRateLimiter[clusteredname.ClusteredName]
 }
 
 func NewFGASubroutine(mgr mcmanager.Manager, fgaClient openfgav1.OpenFGAServiceClient, creatorRelation, parentRelation, objectType string) *FGASubroutine {
-	exp := workqueue.NewTypedItemExponentialFailureRateLimiter[ClusteredName](1*time.Second, 120*time.Second)
+	exp := workqueue.NewTypedItemExponentialFailureRateLimiter[clusteredname.ClusteredName](1*time.Second, 120*time.Second)
 	return &FGASubroutine{
 		mgr:             mgr,
 		fgaClient:       fgaClient,
@@ -47,7 +50,7 @@ func NewFGASubroutine(mgr mcmanager.Manager, fgaClient openfgav1.OpenFGAServiceC
 
 func (e *FGASubroutine) Process(ctx context.Context, ro runtimeobject.RuntimeObject) (ctrl.Result, errors.OperatorError) {
 	account := ro.(*v1alpha1.Account)
-	cn := MustGetClusteredName(ctx, ro)
+	cn := clusteredname.MustGetClusteredName(ctx, ro)
 
 	log := logger.LoadLoggerFromContext(ctx)
 	log.Debug().Msg("Starting creator subroutine process() function")
@@ -63,8 +66,8 @@ func (e *FGASubroutine) Process(ctx context.Context, ro runtimeobject.RuntimeObj
 	}
 	clusterClient := clusterRef.GetClient()
 
-	accountWorkspace, err := retrieveWorkspace(ctx, account, clusterClient, log)
-	if err != nil {
+	accountWorkspace := &kcptenancyv1alpha.Workspace{}
+	if err := clusterClient.Get(ctx, client.ObjectKey{Name: account.Name}, accountWorkspace); err != nil {
 		return ctrl.Result{}, errors.NewOperatorError(err, true, true)
 	}
 
@@ -240,7 +243,7 @@ func (e *FGASubroutine) Finalize(ctx context.Context, runtimeObj runtimeobject.R
 
 func (e *FGASubroutine) getAccountInfo(ctx context.Context, cl client.Client) (*v1alpha1.AccountInfo, error) {
 	accountInfo := &v1alpha1.AccountInfo{}
-	err := cl.Get(ctx, client.ObjectKey{Name: DefaultAccountInfoName}, accountInfo)
+	err := cl.Get(ctx, client.ObjectKey{Name: accountinfo.DefaultAccountInfoName}, accountInfo)
 	if err != nil {
 		return nil, err
 	}
