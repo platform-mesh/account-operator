@@ -23,6 +23,7 @@ import (
 	"github.com/platform-mesh/account-operator/pkg/subroutines"
 	"github.com/platform-mesh/account-operator/pkg/subroutines/accountinfo"
 	"github.com/platform-mesh/account-operator/pkg/subroutines/workspace"
+	"github.com/platform-mesh/account-operator/pkg/subroutines/workspacetype"
 )
 
 const (
@@ -44,11 +45,11 @@ func NewAccountReconciler(log *logger.Logger, mgr mcmanager.Manager, cfg config.
 	subs := []lifecyclesubroutine.Subroutine{}
 
 	if cfg.Subroutines.WorkspaceType.Enabled {
-		subs = append(subs, subroutines.NewWorkspaceTypeSubroutine(orgsClient))
+		subs = append(subs, workspacetype.New(orgsClient))
 	}
 
 	if cfg.Subroutines.Workspace.Enabled {
-		subs = append(subs, workspace.NewWorkspaceSubroutine(mgr, orgsClient))
+		subs = append(subs, workspace.New(mgr, orgsClient))
 	}
 
 	if cfg.Subroutines.AccountInfo.Enabled {

@@ -35,7 +35,7 @@ type WorkspaceSubroutine struct {
 	orgsClient client.Client
 }
 
-func NewWorkspaceSubroutine(mgr mcmanager.Manager, orgsClient client.Client) *WorkspaceSubroutine {
+func New(mgr mcmanager.Manager, orgsClient client.Client) *WorkspaceSubroutine {
 	return &WorkspaceSubroutine{
 		mgr:        mgr,
 		limiter:    workqueue.NewTypedItemExponentialFailureRateLimiter[clusteredname.ClusteredName](1*time.Second, 120*time.Second),

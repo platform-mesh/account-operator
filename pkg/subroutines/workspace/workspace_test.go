@@ -24,12 +24,12 @@ import (
 )
 
 func TestGetName(t *testing.T) {
-	s := workspace.NewWorkspaceSubroutine(nil, nil)
+	s := workspace.New(nil, nil)
 	assert.Equal(t, workspace.WorkspaceSubroutineName, s.GetName())
 }
 
 func TestFinalizers(t *testing.T) {
-	s := workspace.NewWorkspaceSubroutine(nil, nil)
+	s := workspace.New(nil, nil)
 	assert.Equal(t, []string{workspace.WorkspaceSubroutineFinalizer}, s.Finalizers(nil))
 }
 
@@ -107,7 +107,7 @@ func TestFinalize(t *testing.T) {
 				test.k8sMocks(client)
 			}
 
-			s := workspace.NewWorkspaceSubroutine(mgr, nil)
+			s := workspace.New(mgr, nil)
 
 			ctx := t.Context()
 
@@ -276,7 +276,7 @@ func TestProcess(t *testing.T) {
 				test.k8sMocks(client)
 			}
 
-			s := workspace.NewWorkspaceSubroutine(mgr, orgsClient)
+			s := workspace.New(mgr, orgsClient)
 
 			ctx := t.Context()
 			ctx = mccontext.WithCluster(ctx, "test")

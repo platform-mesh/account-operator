@@ -1,4 +1,4 @@
-package subroutines // coverage-ignore
+package subroutines
 
 import (
 	"context"
@@ -37,14 +37,13 @@ type FGASubroutine struct {
 }
 
 func NewFGASubroutine(mgr mcmanager.Manager, fgaClient openfgav1.OpenFGAServiceClient, creatorRelation, parentRelation, objectType string) *FGASubroutine {
-	exp := workqueue.NewTypedItemExponentialFailureRateLimiter[clusteredname.ClusteredName](1*time.Second, 120*time.Second)
 	return &FGASubroutine{
 		mgr:             mgr,
 		fgaClient:       fgaClient,
 		creatorRelation: creatorRelation,
 		parentRelation:  parentRelation,
 		objectType:      objectType,
-		limiter:         exp,
+		limiter:         workqueue.NewTypedItemExponentialFailureRateLimiter[clusteredname.ClusteredName](1*time.Second, 120*time.Second),
 	}
 }
 

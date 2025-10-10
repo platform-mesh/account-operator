@@ -1,7 +1,8 @@
-package subroutines
+package workspacetype
 
 import (
 	"context"
+	"fmt"
 
 	kcptenancyv1alpha "github.com/kcp-dev/kcp/sdk/apis/tenancy/v1alpha1"
 	"github.com/platform-mesh/golang-commons/controller/lifecycle/runtimeobject"
@@ -18,14 +19,14 @@ import (
 )
 
 const (
-	workspaceTypeSubroutineName           = "WorkspaceTypeSubroutine"
-	workspaceTypeSubroutineFinalizer      = "workspacetype.core.platform-mesh.io/finalizer"
-	rootOrgWorkspaceTypeName              = "org"
-	rootOrgWorkspaceTypeWorkspacePath     = "root"
-	rootAccountWorkspaceTypeName          = "account"
-	rootAccountWorkspaceTypeWorkspacePath = "root"
-	rootOrgsWorkspaceTypeName             = "orgs"
-	orgsWorkspacePath                     = "root:orgs"
+	WorkspaceTypeSubroutineName      = "WorkspaceTypeSubroutine"
+	WorkspaceTypeSubroutineFinalizer = "workspacetype.core.platform-mesh.io/finalizer"
+
+	rootOrgWorkspaceTypeName     = "org"
+	rootWorkspace                = "root"
+	rootAccountWorkspaceTypeName = "account"
+	rootOrgsWorkspaceTypeName    = "orgs"
+	orgsWorkspacePath            = "root:orgs"
 )
 
 var _ subroutine.Subroutine = &WorkspaceTypeSubroutine{}
@@ -34,7 +35,7 @@ type WorkspaceTypeSubroutine struct {
 	orgsClient client.Client
 }
 
-func NewWorkspaceTypeSubroutine(orgsClient client.Client) *WorkspaceTypeSubroutine {
+func New(orgsClient client.Client) *WorkspaceTypeSubroutine {
 	return &WorkspaceTypeSubroutine{
 		orgsClient: orgsClient,
 	}
@@ -48,8 +49,8 @@ func (w *WorkspaceTypeSubroutine) Process(ctx context.Context, ro runtimeobject.
 		return ctrl.Result{}, nil
 	}
 
-	orgWorkspaceTypeName := generateOrganizationWorkspaceTypeName(instance.Name)
-	accountWorkspaceTypeName := generateAccountWorkspaceTypeName(instance.Name)
+	orgWorkspaceTypeName := fmt.Sprintf("%s-org", instance.Name)
+	accountWorkspaceTypeName := fmt.Sprintf("%s-acc", instance.Name)
 
 	orgWst := generateOrgWorkspaceType(instance, orgWorkspaceTypeName, accountWorkspaceTypeName)
 	accWst := generateAccountWorkspaceType(instance, orgWorkspaceTypeName, accountWorkspaceTypeName)
@@ -84,8 +85,8 @@ func (w *WorkspaceTypeSubroutine) Finalize(ctx context.Context, ro runtimeobject
 		return ctrl.Result{}, nil
 	}
 
-	orgWorkspaceTypeName := generateOrganizationWorkspaceTypeName(instance.Name)
-	accountWorkspaceTypeName := generateAccountWorkspaceTypeName(instance.Name)
+	orgWorkspaceTypeName := fmt.Sprintf("%s-org", instance.Name)
+	accountWorkspaceTypeName := fmt.Sprintf("%s-acc", instance.Name)
 
 	if err := w.orgsClient.Delete(ctx, &kcptenancyv1alpha.WorkspaceType{ObjectMeta: metav1.ObjectMeta{Name: orgWorkspaceTypeName}}); err != nil {
 		if !kerrors.IsNotFound(err) {
@@ -105,11 +106,11 @@ func (w *WorkspaceTypeSubroutine) Finalize(ctx context.Context, ro runtimeobject
 }
 
 func (w *WorkspaceTypeSubroutine) GetName() string {
-	return workspaceTypeSubroutineName
+	return WorkspaceTypeSubroutineName
 }
 
 func (w *WorkspaceTypeSubroutine) Finalizers(_ runtimeobject.RuntimeObject) []string {
-	return []string{workspaceTypeSubroutineFinalizer}
+	return []string{WorkspaceTypeSubroutineFinalizer}
 }
 
 func generateOrgWorkspaceType(instance *v1alpha1.Account, orgWorkspaceTypeName, accountWorkspaceTypeName string) kcptenancyv1alpha.WorkspaceType {
@@ -120,7 +121,7 @@ func generateOrgWorkspaceType(instance *v1alpha1.Account, orgWorkspaceTypeName, 
 				With: []kcptenancyv1alpha.WorkspaceTypeReference{
 					{
 						Name: rootOrgWorkspaceTypeName,
-						Path: rootOrgWorkspaceTypeWorkspacePath,
+						Path: rootWorkspace,
 					},
 				},
 			},
@@ -132,7 +133,7 @@ func generateOrgWorkspaceType(instance *v1alpha1.Account, orgWorkspaceTypeName, 
 				Types: []kcptenancyv1alpha.WorkspaceTypeReference{
 					{
 						Name: rootOrgsWorkspaceTypeName,
-						Path: rootOrgWorkspaceTypeWorkspacePath,
+						Path: rootWorkspace,
 					},
 				},
 			},
@@ -161,7 +162,7 @@ func generateAccountWorkspaceType(instance *v1alpha1.Account, orgWorkspaceTypeNa
 				With: []kcptenancyv1alpha.WorkspaceTypeReference{
 					{
 						Name: rootAccountWorkspaceTypeName,
-						Path: rootAccountWorkspaceTypeWorkspacePath,
+						Path: rootWorkspace,
 					},
 				},
 			},
