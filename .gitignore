@@ -33,4 +33,4 @@ go.work
 .DS_Store
 kcp.log
 coverage.html
-.gocache
+.gocache/
