@@ -3,6 +3,7 @@ package controller_test
 import (
 	"context"
 	"fmt"
+	"net/url"
 	"os"
 	"strconv"
 	"testing"
@@ -30,7 +31,7 @@ import (
 	"github.com/platform-mesh/account-operator/api/v1alpha1"
 	"github.com/platform-mesh/account-operator/internal/config"
 	"github.com/platform-mesh/account-operator/internal/controller"
-	"github.com/platform-mesh/account-operator/pkg/subroutines"
+	"github.com/platform-mesh/account-operator/pkg/subroutines/accountinfo"
 	"github.com/platform-mesh/account-operator/pkg/subroutines/mocks"
 	"github.com/platform-mesh/account-operator/pkg/testing/kcpenvtest"
 )
@@ -56,6 +57,23 @@ type AccountTestSuite struct {
 
 func TestAccountTestSuite(t *testing.T) {
 	suite.Run(t, new(AccountTestSuite))
+}
+
+func buildOrgsClient(mgr mcmanager.Manager) (client.Client, error) {
+	cfg := rest.CopyConfig(mgr.GetLocalManager().GetConfig())
+
+	parsed, err := url.Parse(cfg.Host)
+	if err != nil {
+		return nil, err
+	}
+
+	parsed.Path = "/clusters/root:orgs"
+
+	cfg.Host = parsed.String()
+
+	return client.New(cfg, client.Options{
+		Scheme: mgr.GetLocalManager().GetScheme(),
+	})
 }
 
 func (suite *AccountTestSuite) SetupSuite() {
@@ -119,8 +137,11 @@ func (suite *AccountTestSuite) SetupSuite() {
 	suite.multiClusterManager, err = mcmanager.New(providerCfg, suite.provider, mcOpts)
 	suite.Require().NoError(err)
 
+	orgsClient, err := buildOrgsClient(suite.multiClusterManager)
+	suite.Require().NoError(err)
+
 	mockClient := mocks.NewOpenFGAServiceClient(suite.T())
-	accountReconciler := controller.NewAccountReconciler(log, suite.multiClusterManager, cfg, mockClient)
+	accountReconciler := controller.NewAccountReconciler(log, suite.multiClusterManager, cfg, orgsClient, mockClient)
 
 	dCfg := &platformmeshconfig.CommonServiceConfig{}
 	suite.Require().NoError(accountReconciler.SetupWithManager(suite.multiClusterManager, dCfg, log))
@@ -132,11 +153,6 @@ func (suite *AccountTestSuite) SetupSuite() {
 	testDataConfig.Host = fmt.Sprintf("%s:%s", suite.rootConfig.Host, "orgs:root-org")
 
 	suite.kubernetesClient, err = client.New(testDataConfig, client.Options{Scheme: suite.scheme})
-	suite.Require().NoError(err)
-
-	orgsConfig := rest.CopyConfig(suite.rootConfig)
-	orgsConfig.Host = fmt.Sprintf("%s:%s", suite.rootConfig.Host, "orgs")
-	orgsClient, err := client.New(orgsConfig, client.Options{})
 	suite.Require().NoError(err)
 
 	suite.Require().NoError(suite.testEnv.WaitForWorkspaceWithTimeout(orgsClient, "root-org", testEnvLogger, time.Minute))
@@ -231,7 +247,7 @@ func (suite *AccountTestSuite) TestAccountInfoCreationForOrganization() {
 
 	accountInfo := &v1alpha1.AccountInfo{}
 	suite.Assert().Eventually(func() bool {
-		if err := suite.kubernetesClient.Get(testContext, client.ObjectKey{Name: subroutines.DefaultAccountInfoName}, accountInfo); err != nil {
+		if err := suite.kubernetesClient.Get(testContext, client.ObjectKey{Name: accountinfo.DefaultAccountInfoName}, accountInfo); err != nil {
 			return false
 		}
 		return accountInfo.Spec.Account.Type == v1alpha1.AccountTypeOrg

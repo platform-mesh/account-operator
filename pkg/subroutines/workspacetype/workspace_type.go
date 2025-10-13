@@ -1,8 +1,7 @@
-package subroutines
+package workspacetype
 
 import (
 	"context"
-	"fmt"
 
 	kcptenancyv1alpha "github.com/kcp-dev/kcp/sdk/apis/tenancy/v1alpha1"
 	"github.com/platform-mesh/golang-commons/controller/lifecycle/runtimeobject"
@@ -11,29 +10,35 @@ import (
 	"github.com/platform-mesh/golang-commons/logger"
 	kerrors "k8s.io/apimachinery/pkg/api/errors"
 	metav1 "k8s.io/apimachinery/pkg/apis/meta/v1"
-	"k8s.io/client-go/rest"
 	ctrl "sigs.k8s.io/controller-runtime"
 	"sigs.k8s.io/controller-runtime/pkg/client"
 	"sigs.k8s.io/controller-runtime/pkg/controller/controllerutil"
 
 	"github.com/platform-mesh/account-operator/api/v1alpha1"
+	"github.com/platform-mesh/account-operator/pkg/subroutines/util"
 )
 
 const (
-	workspaceTypeSubroutineName           = "WorkspaceTypeSubroutine"
-	workspaceTypeSubroutineFinalizer      = "workspacetype.core.platform-mesh.io/finalizer"
-	rootOrgWorkspaceTypeName              = "org"
-	rootOrgWorkspaceTypeWorkspacePath     = "root"
-	rootAccountWorkspaceTypeName          = "account"
-	rootAccountWorkspaceTypeWorkspacePath = "root"
-	rootOrgsWorkspaceTypeName             = "orgs"
+	WorkspaceTypeSubroutineName      = "WorkspaceTypeSubroutine"
+	WorkspaceTypeSubroutineFinalizer = "workspacetype.core.platform-mesh.io/finalizer"
+
+	rootOrgWorkspaceTypeName     = "org"
+	rootWorkspace                = "root"
+	rootAccountWorkspaceTypeName = "account"
+	rootOrgsWorkspaceTypeName    = "orgs"
+	orgsWorkspacePath            = "root:orgs"
 )
 
 var _ subroutine.Subroutine = &WorkspaceTypeSubroutine{}
 
 type WorkspaceTypeSubroutine struct {
 	orgsClient client.Client
-	initErr    error
+}
+
+func New(orgsClient client.Client) *WorkspaceTypeSubroutine {
+	return &WorkspaceTypeSubroutine{
+		orgsClient: orgsClient,
+	}
 }
 
 func (w *WorkspaceTypeSubroutine) Process(ctx context.Context, ro runtimeobject.RuntimeObject) (ctrl.Result, errors.OperatorError) {
@@ -44,17 +49,18 @@ func (w *WorkspaceTypeSubroutine) Process(ctx context.Context, ro runtimeobject.
 		return ctrl.Result{}, nil
 	}
 
-	orgWorkspaceTypeName := generateOrganizationWorkspaceTypeName(instance.Name)
-	accountWorkspaceTypeName := generateAccountWorkspaceTypeName(instance.Name)
+	orgWorkspaceTypeName := util.GetOrgWorkspaceTypeName(instance.Name)
+	accountWorkspaceTypeName := util.GetAccountWorkspaceTypeName(instance.Name)
+
 	orgWst := generateOrgWorkspaceType(instance, orgWorkspaceTypeName, accountWorkspaceTypeName)
 	accWst := generateAccountWorkspaceType(instance, orgWorkspaceTypeName, accountWorkspaceTypeName)
 
-	if err := w.createOrUpdateWorkspaceType(ctx, orgWst); err != nil {
+	if err := w.createOrUpdateWorkspaceType(ctx, orgWst); err != nil { // coverage-ignore
 		log.Error().Err(err).Str("name", orgWst.Name).Msg("failed to create or update org workspace type")
 		return ctrl.Result{}, errors.NewOperatorError(err, true, true)
 	}
 
-	if err := w.createOrUpdateWorkspaceType(ctx, accWst); err != nil {
+	if err := w.createOrUpdateWorkspaceType(ctx, accWst); err != nil { // coverage-ignore
 		log.Error().Err(err).Str("name", accWst.Name).Msg("failed to create or update account workspace type")
 		return ctrl.Result{}, errors.NewOperatorError(err, true, true)
 	}
@@ -63,13 +69,9 @@ func (w *WorkspaceTypeSubroutine) Process(ctx context.Context, ro runtimeobject.
 }
 
 func (w *WorkspaceTypeSubroutine) createOrUpdateWorkspaceType(ctx context.Context, desiredWst kcptenancyv1alpha.WorkspaceType) error {
-	orgsClient, err := w.getOrgsClient()
-	if err != nil {
-		return err
-	}
 
 	wst := &kcptenancyv1alpha.WorkspaceType{ObjectMeta: metav1.ObjectMeta{Name: desiredWst.Name}}
-	_, err = controllerutil.CreateOrUpdate(ctx, orgsClient, wst, func() error {
+	_, err := controllerutil.CreateOrUpdate(ctx, w.orgsClient, wst, func() error {
 		wst.Spec = desiredWst.Spec
 		return nil
 	})
@@ -83,24 +85,18 @@ func (w *WorkspaceTypeSubroutine) Finalize(ctx context.Context, ro runtimeobject
 		return ctrl.Result{}, nil
 	}
 
-	orgsClient, err := w.getOrgsClient()
-	if err != nil {
-		log.Error().Err(err).Msg("failed to get orgs client")
-		return ctrl.Result{}, errors.NewOperatorError(err, true, true)
-	}
+	orgWorkspaceTypeName := util.GetOrgWorkspaceTypeName(instance.Name)
+	accountWorkspaceTypeName := util.GetAccountWorkspaceTypeName(instance.Name)
 
-	orgWorkspaceTypeName := generateOrganizationWorkspaceTypeName(instance.Name)
-	accountWorkspaceTypeName := generateAccountWorkspaceTypeName(instance.Name)
-
-	if err := orgsClient.Delete(ctx, &kcptenancyv1alpha.WorkspaceType{ObjectMeta: metav1.ObjectMeta{Name: orgWorkspaceTypeName}}); err != nil {
+	if err := w.orgsClient.Delete(ctx, &kcptenancyv1alpha.WorkspaceType{ObjectMeta: metav1.ObjectMeta{Name: orgWorkspaceTypeName}}); err != nil {
 		if !kerrors.IsNotFound(err) {
 			log.Error().Err(err).Str("name", orgWorkspaceTypeName).Msg("failed to delete org workspace type")
 			return ctrl.Result{}, errors.NewOperatorError(err, true, true)
 		}
 	}
 
-	if err := orgsClient.Delete(ctx, &kcptenancyv1alpha.WorkspaceType{ObjectMeta: metav1.ObjectMeta{Name: accountWorkspaceTypeName}}); err != nil {
-		if !kerrors.IsNotFound(err) {
+	if err := w.orgsClient.Delete(ctx, &kcptenancyv1alpha.WorkspaceType{ObjectMeta: metav1.ObjectMeta{Name: accountWorkspaceTypeName}}); err != nil {
+		if !kerrors.IsNotFound(err) { // coverage-ignore
 			log.Error().Err(err).Str("name", accountWorkspaceTypeName).Msg("failed to delete account workspace type")
 			return ctrl.Result{}, errors.NewOperatorError(err, true, true)
 		}
@@ -110,52 +106,11 @@ func (w *WorkspaceTypeSubroutine) Finalize(ctx context.Context, ro runtimeobject
 }
 
 func (w *WorkspaceTypeSubroutine) GetName() string {
-	return workspaceTypeSubroutineName
+	return WorkspaceTypeSubroutineName
 }
 
 func (w *WorkspaceTypeSubroutine) Finalizers(_ runtimeobject.RuntimeObject) []string {
-	return []string{workspaceTypeSubroutineFinalizer}
-}
-
-func NewWorkspaceTypeSubroutine(baseConfig *rest.Config, localClient client.Client) *WorkspaceTypeSubroutine {
-	w := &WorkspaceTypeSubroutine{}
-	if baseConfig == nil {
-		w.initErr = fmt.Errorf("workspace type subroutine: base config not provided")
-		return w
-	}
-
-	clientCfg, err := createOrganizationRestConfig(baseConfig)
-	if err != nil {
-		w.initErr = err
-		return w
-	}
-
-	options := client.Options{}
-	if localClient != nil {
-		options.Scheme = localClient.Scheme()
-	}
-
-	orgsClient, err := client.New(clientCfg, options)
-	if err != nil {
-		w.initErr = err
-		return w
-	}
-	w.orgsClient = orgsClient
-	return w
-}
-
-func NewWorkspaceTypeSubroutineWithClient(orgsClient client.Client) *WorkspaceTypeSubroutine {
-	return &WorkspaceTypeSubroutine{orgsClient: orgsClient}
-}
-
-func (w *WorkspaceTypeSubroutine) getOrgsClient() (client.Client, error) {
-	if w.orgsClient != nil {
-		return w.orgsClient, nil
-	}
-	if w.initErr != nil {
-		return nil, w.initErr
-	}
-	return nil, fmt.Errorf("workspace type subroutine: orgs client not initialized")
+	return []string{WorkspaceTypeSubroutineFinalizer}
 }
 
 func generateOrgWorkspaceType(instance *v1alpha1.Account, orgWorkspaceTypeName, accountWorkspaceTypeName string) kcptenancyv1alpha.WorkspaceType {
@@ -164,19 +119,30 @@ func generateOrgWorkspaceType(instance *v1alpha1.Account, orgWorkspaceTypeName, 
 		Spec: kcptenancyv1alpha.WorkspaceTypeSpec{
 			Extend: kcptenancyv1alpha.WorkspaceTypeExtension{
 				With: []kcptenancyv1alpha.WorkspaceTypeReference{
-					{Name: rootOrgWorkspaceTypeName, Path: rootOrgWorkspaceTypeWorkspacePath},
+					{
+						Name: rootOrgWorkspaceTypeName,
+						Path: rootWorkspace,
+					},
 				},
 			},
 			DefaultChildWorkspaceType: &kcptenancyv1alpha.WorkspaceTypeReference{
-				Name: kcptenancyv1alpha.WorkspaceTypeName(accountWorkspaceTypeName), Path: orgsWorkspacePath},
+				Name: kcptenancyv1alpha.WorkspaceTypeName(accountWorkspaceTypeName),
+				Path: orgsWorkspacePath,
+			},
 			LimitAllowedParents: &kcptenancyv1alpha.WorkspaceTypeSelector{
 				Types: []kcptenancyv1alpha.WorkspaceTypeReference{
-					{Name: rootOrgsWorkspaceTypeName, Path: rootOrgWorkspaceTypeWorkspacePath},
+					{
+						Name: rootOrgsWorkspaceTypeName,
+						Path: rootWorkspace,
+					},
 				},
 			},
 			LimitAllowedChildren: &kcptenancyv1alpha.WorkspaceTypeSelector{
 				Types: []kcptenancyv1alpha.WorkspaceTypeReference{
-					{Name: kcptenancyv1alpha.WorkspaceTypeName(accountWorkspaceTypeName), Path: orgsWorkspacePath},
+					{
+						Name: kcptenancyv1alpha.WorkspaceTypeName(accountWorkspaceTypeName),
+						Path: orgsWorkspacePath,
+					},
 				},
 			},
 			AuthenticationConfigurations: []kcptenancyv1alpha.AuthenticationConfigurationReference{
@@ -194,20 +160,32 @@ func generateAccountWorkspaceType(instance *v1alpha1.Account, orgWorkspaceTypeNa
 		Spec: kcptenancyv1alpha.WorkspaceTypeSpec{
 			Extend: kcptenancyv1alpha.WorkspaceTypeExtension{
 				With: []kcptenancyv1alpha.WorkspaceTypeReference{
-					{Name: rootAccountWorkspaceTypeName, Path: rootAccountWorkspaceTypeWorkspacePath},
+					{
+						Name: rootAccountWorkspaceTypeName,
+						Path: rootWorkspace,
+					},
 				},
 			},
 			DefaultChildWorkspaceType: &kcptenancyv1alpha.WorkspaceTypeReference{
 				Name: kcptenancyv1alpha.WorkspaceTypeName(accountWorkspaceTypeName), Path: orgsWorkspacePath},
 			LimitAllowedParents: &kcptenancyv1alpha.WorkspaceTypeSelector{
 				Types: []kcptenancyv1alpha.WorkspaceTypeReference{
-					{Name: kcptenancyv1alpha.WorkspaceTypeName(orgWorkspaceTypeName), Path: orgsWorkspacePath},
-					{Name: kcptenancyv1alpha.WorkspaceTypeName(accountWorkspaceTypeName), Path: orgsWorkspacePath},
+					{
+						Name: kcptenancyv1alpha.WorkspaceTypeName(orgWorkspaceTypeName),
+						Path: orgsWorkspacePath,
+					},
+					{
+						Name: kcptenancyv1alpha.WorkspaceTypeName(accountWorkspaceTypeName),
+						Path: orgsWorkspacePath,
+					},
 				},
 			},
 			LimitAllowedChildren: &kcptenancyv1alpha.WorkspaceTypeSelector{
 				Types: []kcptenancyv1alpha.WorkspaceTypeReference{
-					{Name: kcptenancyv1alpha.WorkspaceTypeName(accountWorkspaceTypeName), Path: orgsWorkspacePath},
+					{
+						Name: kcptenancyv1alpha.WorkspaceTypeName(accountWorkspaceTypeName),
+						Path: orgsWorkspacePath,
+					},
 				},
 			},
 			AuthenticationConfigurations: []kcptenancyv1alpha.AuthenticationConfigurationReference{

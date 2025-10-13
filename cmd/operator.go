@@ -19,11 +19,10 @@ package cmd
 import (
 	"context"
 	"crypto/tls"
-	"fmt"
 	"net/http"
+	"net/url"
 	"strings"
 
-	apisv1alpha1 "github.com/kcp-dev/kcp/sdk/apis/apis/v1alpha1"
 	"github.com/kcp-dev/multicluster-provider/apiexport"
 	openfgav1 "github.com/openfga/api/proto/openfga/v1"
 	platformmeshcontext "github.com/platform-mesh/golang-commons/context"
@@ -53,12 +52,6 @@ var operatorCmd = &cobra.Command{
 	Run:   RunController,
 }
 
-var (
-	enableLeaderElection bool
-	secureMetrics        bool
-	enableHTTP2          bool
-)
-
 func RunController(_ *cobra.Command, _ []string) { // coverage-ignore
 	var err error
 	ctrl.SetLogger(log.ComponentLogger("controller-runtime").Logr())
@@ -72,7 +65,7 @@ func RunController(_ *cobra.Command, _ []string) { // coverage-ignore
 	}
 
 	var tlsOpts []func(*tls.Config)
-	if !enableHTTP2 {
+	if !defaultCfg.EnableHTTP2 {
 		tlsOpts = append(tlsOpts, disableHTTP2)
 	}
 
@@ -82,13 +75,7 @@ func RunController(_ *cobra.Command, _ []string) { // coverage-ignore
 		if err != nil {
 			log.Fatal().Err(err).Msg("unable to start gRPC-Sidecar TracerProvider")
 		}
-	} else {
-		providerShutdown, err = traces.InitLocalProvider(ctx, defaultCfg.Tracing.Collector, false)
-		if err != nil {
-			log.Fatal().Err(err).Msg("unable to start local TracerProvider")
-		}
 	}
-
 	defer func() {
 		if err := providerShutdown(ctx); err != nil {
 			log.Fatal().Err(err).Msg("failed to shutdown TracerProvider")
@@ -100,44 +87,42 @@ func RunController(_ *cobra.Command, _ []string) { // coverage-ignore
 		CertDir: operatorCfg.Webhooks.CertDir,
 		Port:    operatorCfg.Webhooks.Port,
 	})
+
 	restCfg := ctrl.GetConfigOrDie()
 	restCfg.Wrap(func(rt http.RoundTripper) http.RoundTripper {
 		return otelhttp.NewTransport(rt)
 	})
 
-	// Resolve virtual workspace endpoint for the APIExport provider, if configured
+	var leaderCfg *rest.Config
+	if defaultCfg.LeaderElection.Enabled {
+		leaderCfg, err = rest.InClusterConfig()
+		if err != nil {
+			log.Fatal().Err(err).Msg("unable to get in-cluster config")
+		}
+	}
+
 	providerCfg := rest.CopyConfig(restCfg)
-	virtualWorkspaceURL, err := resolveVirtualWorkspaceURL(ctx, restCfg, operatorCfg.Kcp.ApiExportEndpointSliceName)
-	if err != nil {
-		log.Fatal().Err(err).Msg("unable to resolve APIExport endpoint")
-	}
-	if virtualWorkspaceURL != "" {
-		log.Info().Str("apiExportEndpoint", virtualWorkspaceURL).Msg("using APIExport virtual workspace endpoint")
-		providerCfg.Host = virtualWorkspaceURL
-	}
 
 	provider, err := apiexport.New(providerCfg, apiexport.Options{Scheme: scheme})
 	if err != nil {
 		log.Fatal().Err(err).Msg("unable to construct APIExport provider")
 	}
 
-	// Create multicluster manager with APIExport provider
-	mcOpts := mcmanager.Options{
+	mgr, err := mcmanager.New(providerCfg, provider, mcmanager.Options{
 		Scheme: scheme,
 		Metrics: metricsserver.Options{
 			BindAddress:   defaultCfg.Metrics.BindAddress,
-			SecureServing: secureMetrics,
+			SecureServing: defaultCfg.Metrics.Secure,
 			TLSOpts:       tlsOpts,
 		},
 		BaseContext:                   func() context.Context { return ctx },
 		WebhookServer:                 webhookServer,
 		HealthProbeBindAddress:        defaultCfg.HealthProbeBindAddress,
-		LeaderElection:                enableLeaderElection,
+		LeaderElection:                defaultCfg.LeaderElection.Enabled,
 		LeaderElectionID:              "8c290d9a.platform-mesh.io",
-		LeaderElectionConfig:          restCfg,
+		LeaderElectionConfig:          leaderCfg,
 		LeaderElectionReleaseOnCancel: true,
-	}
-	mgr, err := mcmanager.New(providerCfg, provider, mcOpts)
+	})
 	if err != nil {
 		log.Fatal().Err(err).Msg("unable to start manager")
 	}
@@ -145,6 +130,7 @@ func RunController(_ *cobra.Command, _ []string) { // coverage-ignore
 	var fgaClient openfgav1.OpenFGAServiceClient
 	if operatorCfg.Subroutines.FGA.Enabled {
 		log.Debug().Str("GrpcAddr", operatorCfg.Subroutines.FGA.GrpcAddr).Msg("Creating FGA Client")
+
 		conn, err := grpc.NewClient(operatorCfg.Subroutines.FGA.GrpcAddr,
 			grpc.WithTransportCredentials(insecure.NewCredentials()),
 			grpc.WithStatsHandler(otelgrpc.NewClientHandler()),
@@ -157,7 +143,12 @@ func RunController(_ *cobra.Command, _ []string) { // coverage-ignore
 		fgaClient = openfgav1.NewOpenFGAServiceClient(conn)
 	}
 
-	accountReconciler := controller.NewAccountReconciler(log, mgr, operatorCfg, fgaClient)
+	orgsClient, err := buildOrgsClient(mgr.GetLocalManager())
+	if err != nil {
+		log.Fatal().Err(err).Msg("unable to create orgs client")
+	}
+
+	accountReconciler := controller.NewAccountReconciler(log, mgr, operatorCfg, orgsClient, fgaClient)
 	if err := accountReconciler.SetupWithManager(mgr, defaultCfg, log); err != nil {
 		log.Fatal().Err(err).Str("controller", "Account").Msg("unable to create controller")
 	}
@@ -170,6 +161,7 @@ func RunController(_ *cobra.Command, _ []string) { // coverage-ignore
 				denyList[i] = strings.TrimSpace(item)
 			}
 		}
+
 		log.Info().Strs("deniedNames", denyList).Msg("webhooks are enabled")
 		if err := v1alpha1.SetupAccountWebhookWithManager(mgr.GetLocalManager(), denyList); err != nil {
 			log.Fatal().Err(err).Str("webhook", "Account").Msg("unable to create webhook")
@@ -183,7 +175,6 @@ func RunController(_ *cobra.Command, _ []string) { // coverage-ignore
 		log.Fatal().Err(err).Msg("unable to set up ready check")
 	}
 
-	// Start APIExport provider in background goroutine (critical for multicluster runtime)
 	log.Info().Msg("starting APIExport provider")
 	go func() {
 		if err := provider.Run(ctx, mgr); err != nil {
@@ -197,28 +188,20 @@ func RunController(_ *cobra.Command, _ []string) { // coverage-ignore
 	}
 }
 
-func resolveVirtualWorkspaceURL(ctx context.Context, cfg *rest.Config, endpointSliceName string) (string, error) {
-	if endpointSliceName == "" {
-		return "", nil
-	}
+func buildOrgsClient(mgr ctrl.Manager) (client.Client, error) {
+	cfg := rest.CopyConfig(mgr.GetConfig())
 
-	lookupCfg := rest.CopyConfig(cfg)
-	// Remove multicluster round tripper to avoid enforcing cluster headers on discovery requests
-	lookupCfg.WrapTransport = nil
-
-	cl, err := client.New(lookupCfg, client.Options{Scheme: scheme})
+	parsed, err := url.Parse(cfg.Host)
 	if err != nil {
-		return "", fmt.Errorf("failed to create client for APIExportEndpointSlice lookup: %w", err)
+		log.Error().Err(err).Msg("unable to parse host")
+		return nil, err
 	}
 
-	var slice apisv1alpha1.APIExportEndpointSlice
-	if err := cl.Get(ctx, client.ObjectKey{Name: endpointSliceName}, &slice); err != nil {
-		return "", fmt.Errorf("failed to fetch APIExportEndpointSlice %q: %w", endpointSliceName, err)
-	}
+	parsed.Path = "/clusters/root:orgs"
 
-	if len(slice.Status.APIExportEndpoints) == 0 {
-		return "", fmt.Errorf("APIExportEndpointSlice %q has no endpoints", endpointSliceName)
-	}
+	cfg.Host = parsed.String()
 
-	return slice.Status.APIExportEndpoints[0].URL, nil
+	return client.New(cfg, client.Options{
+		Scheme: scheme,
+	})
 }
