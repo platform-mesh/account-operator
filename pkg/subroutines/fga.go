@@ -38,7 +38,7 @@ func NewFGASubroutine(mgr mcmanager.Manager, fgaClient openfgav1.OpenFGAServiceC
 	}
 }
 
-func (e *FGASubroutine) Process(ctx context.Context, ro runtimeobject.RuntimeObject) (ctrl.Result, errors.OperatorError) {
+func (e *FGASubroutine) Process(ctx context.Context, _ runtimeobject.RuntimeObject) (ctrl.Result, errors.OperatorError) {
 	log := logger.LoadLoggerFromContext(ctx)
 	log.Debug().Msg("Skipping FGASubroutine.Process during initialization; handled by workspace initializer")
 	return ctrl.Result{}, nil
