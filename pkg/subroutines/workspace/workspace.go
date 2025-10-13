@@ -2,7 +2,6 @@ package workspace
 
 import (
 	"context"
-	"fmt"
 	"time"
 
 	kcptenancyv1alpha "github.com/kcp-dev/kcp/sdk/apis/tenancy/v1alpha1"
@@ -21,6 +20,7 @@ import (
 	corev1alpha1 "github.com/platform-mesh/account-operator/api/v1alpha1"
 	"github.com/platform-mesh/account-operator/pkg/clusteredname"
 	"github.com/platform-mesh/account-operator/pkg/subroutines/accountinfo"
+	"github.com/platform-mesh/account-operator/pkg/subroutines/util"
 )
 
 const (
@@ -96,7 +96,7 @@ func (r *WorkspaceSubroutine) Process(ctx context.Context, ro runtimeobject.Runt
 
 	clusterClient := clusterRef.GetClient()
 
-	workspaceTypeName := fmt.Sprintf("%s-org", instance.Name)
+	workspaceTypeName := util.GetOrgWorkspaceTypeName(instance.Name)
 	if instance.Spec.Type == corev1alpha1.AccountTypeAccount {
 
 		accountInfo := &corev1alpha1.AccountInfo{}
@@ -112,7 +112,7 @@ func (r *WorkspaceSubroutine) Process(ctx context.Context, ro runtimeobject.Runt
 			return ctrl.Result{RequeueAfter: r.limiter.When(cn)}, nil
 		}
 
-		workspaceTypeName = fmt.Sprintf("%s-acc", accountInfo.Spec.Organization.Name)
+		workspaceTypeName = util.GetAccountWorkspaceTypeName(accountInfo.Spec.Organization.Name)
 	}
 
 	ready, err := r.checkWorkspaceTypeReady(ctx, workspaceTypeName)

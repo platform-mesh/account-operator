@@ -154,7 +154,6 @@ func (r *AccountInfoSubroutine) retrieveAccountInfo(ctx context.Context, cl clie
 	accountInfo := &v1alpha1.AccountInfo{}
 	err := cl.Get(ctx, client.ObjectKey{Name: "account"}, accountInfo)
 	if err != nil {
-		// TODO: I would like to challenge this distinction as we anyway retry on all errors
 		if kerrors.IsNotFound(err) {
 			log.Info().Msg("accountInfo does not yet exist, retry")
 			return nil, false, nil

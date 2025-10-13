@@ -2,7 +2,6 @@ package workspacetype
 
 import (
 	"context"
-	"fmt"
 
 	kcptenancyv1alpha "github.com/kcp-dev/kcp/sdk/apis/tenancy/v1alpha1"
 	"github.com/platform-mesh/golang-commons/controller/lifecycle/runtimeobject"
@@ -16,6 +15,7 @@ import (
 	"sigs.k8s.io/controller-runtime/pkg/controller/controllerutil"
 
 	"github.com/platform-mesh/account-operator/api/v1alpha1"
+	"github.com/platform-mesh/account-operator/pkg/subroutines/util"
 )
 
 const (
@@ -49,8 +49,8 @@ func (w *WorkspaceTypeSubroutine) Process(ctx context.Context, ro runtimeobject.
 		return ctrl.Result{}, nil
 	}
 
-	orgWorkspaceTypeName := fmt.Sprintf("%s-org", instance.Name)
-	accountWorkspaceTypeName := fmt.Sprintf("%s-acc", instance.Name)
+	orgWorkspaceTypeName := util.GetOrgWorkspaceTypeName(instance.Name)
+	accountWorkspaceTypeName := util.GetAccountWorkspaceTypeName(instance.Name)
 
 	orgWst := generateOrgWorkspaceType(instance, orgWorkspaceTypeName, accountWorkspaceTypeName)
 	accWst := generateAccountWorkspaceType(instance, orgWorkspaceTypeName, accountWorkspaceTypeName)
@@ -85,8 +85,8 @@ func (w *WorkspaceTypeSubroutine) Finalize(ctx context.Context, ro runtimeobject
 		return ctrl.Result{}, nil
 	}
 
-	orgWorkspaceTypeName := fmt.Sprintf("%s-org", instance.Name)
-	accountWorkspaceTypeName := fmt.Sprintf("%s-acc", instance.Name)
+	orgWorkspaceTypeName := util.GetOrgWorkspaceTypeName(instance.Name)
+	accountWorkspaceTypeName := util.GetAccountWorkspaceTypeName(instance.Name)
 
 	if err := w.orgsClient.Delete(ctx, &kcptenancyv1alpha.WorkspaceType{ObjectMeta: metav1.ObjectMeta{Name: orgWorkspaceTypeName}}); err != nil {
 		if !kerrors.IsNotFound(err) {
