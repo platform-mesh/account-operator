@@ -12,7 +12,7 @@ require (
 	github.com/go-logr/logr v1.4.3
 	github.com/kcp-dev/kcp/sdk v0.28.1-0.20250926104223-cec2e15f24c6
 	github.com/kcp-dev/logicalcluster/v3 v3.0.5
-	github.com/kcp-dev/multicluster-provider v0.0.0-20250827085327-2b5ca378b7b4
+	github.com/kcp-dev/multicluster-provider v0.2.0
 	github.com/openfga/api/proto v0.0.0-20250909173124-0ac19aac54f2
 	github.com/otiai10/copy v1.14.1
 	github.com/platform-mesh/golang-commons v0.5.4
