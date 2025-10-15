@@ -1,6 +1,6 @@
 module github.com/platform-mesh/account-operator
 
-go 1.24.5
+go 1.24.8
 
 replace (
 	k8s.io/api => k8s.io/api v0.34.1

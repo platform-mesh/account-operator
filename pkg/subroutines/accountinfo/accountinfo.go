@@ -54,9 +54,40 @@ func (r *AccountInfoSubroutine) Finalizers(_ runtimeobject.RuntimeObject) []stri
 func (r *AccountInfoSubroutine) Finalize(ctx context.Context, ro runtimeobject.RuntimeObject) (ctrl.Result, errors.OperatorError) {
 	cn := clusteredname.MustGetClusteredName(ctx, ro)
 
-	// The account info object is relevant input for other finalizers, removing the accountinfo finalizer at last
+	requeue := true
+	if ts := ro.GetDeletionTimestamp(); ts != nil {
+		oneMinAgo := v1.Now().Add(-1 * time.Minute)
+		if ts.Time.Before(oneMinAgo) {
+			requeue = false
+		}
+	}
+
 	if len(ro.GetFinalizers()) > 1 {
-		return ctrl.Result{RequeueAfter: r.limiter.When(cn)}, nil
+		if requeue {
+			return ctrl.Result{RequeueAfter: r.limiter.When(cn)}, nil
+		}
+		return ctrl.Result{}, errors.NewOperatorError(fmt.Errorf("finalizer not removed yet"), true, false)
+	}
+
+	clusterRef, err := r.mgr.GetCluster(ctx, string(cn.ClusterID))
+	if err != nil {
+		return ctrl.Result{}, errors.NewOperatorError(err, true, true)
+	}
+	clusterClient := clusterRef.GetClient()
+
+	accountList := &v1alpha1.AccountList{}
+	if err := clusterClient.List(
+		ctx,
+		accountList,
+		client.MatchingLabels(map[string]string{string(v1alpha1.NamespaceAccountOwnerLabel): ro.GetName()}),
+	); err != nil {
+		return ctrl.Result{}, errors.NewOperatorError(err, true, true)
+	}
+	if len(accountList.Items) > 0 {
+		if requeue {
+			return ctrl.Result{RequeueAfter: r.limiter.When(cn)}, nil
+		}
+		return ctrl.Result{}, errors.NewOperatorError(fmt.Errorf("finalizer not removed yet"), true, false)
 	}
 
 	r.limiter.Forget(cn)
