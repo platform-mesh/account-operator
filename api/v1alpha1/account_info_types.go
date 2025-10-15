@@ -22,7 +22,6 @@ import (
 
 // AccountInfoSpec defines the desired state of Account
 type AccountInfoSpec struct {
-	FGA           FGAInfo          `json:"fga"`
 	Account       AccountLocation  `json:"account"`
 	ParentAccount *AccountLocation `json:"parentAccount,omitempty"`
 	Organization  AccountLocation  `json:"organization"`
@@ -43,14 +42,6 @@ type AccountLocation struct {
 	Path            string      `json:"path"`
 	URL             string      `json:"url"`
 	Type            AccountType `json:"type"`
-}
-
-type FGAInfo struct {
-	Store StoreInfo `json:"store"`
-}
-
-type StoreInfo struct {
-	Id string `json:"id"`
 }
 
 // AccountInfoStatus defines the observed state of AccountInfo

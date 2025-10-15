@@ -109,7 +109,6 @@ func (r *AccountInfoSubroutine) Process(ctx context.Context, ro runtimeobject.Ru
 	if instance.Spec.Type == v1alpha1.AccountTypeOrg {
 		accountInfo := &v1alpha1.AccountInfo{ObjectMeta: v1.ObjectMeta{Name: DefaultAccountInfoName}}
 		_, err = controllerutil.CreateOrPatch(ctx, accountClusterClient, accountInfo, func() error {
-			// the .Spec.FGA.Store.ID is set from an external workspace initializer
 			accountInfo.Spec.Account = selfAccountLocation
 			accountInfo.Spec.ParentAccount = nil
 			accountInfo.Spec.Organization = selfAccountLocation
@@ -138,7 +137,6 @@ func (r *AccountInfoSubroutine) Process(ctx context.Context, ro runtimeobject.Ru
 		accountInfo.Spec.Account = selfAccountLocation
 		accountInfo.Spec.ParentAccount = &parentAccountInfo.Spec.Account
 		accountInfo.Spec.Organization = parentAccountInfo.Spec.Organization
-		accountInfo.Spec.FGA.Store.Id = parentAccountInfo.Spec.FGA.Store.Id
 		accountInfo.Spec.ClusterInfo.CA = r.serverCA
 		return nil
 	})

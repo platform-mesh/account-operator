@@ -86,7 +86,6 @@ func (suite *AccountTestSuite) SetupSuite() {
 	suite.log = log
 
 	cfg := config.OperatorConfig{}
-	cfg.Subroutines.FGA.Enabled = false
 	cfg.Subroutines.Workspace.Enabled = true
 	cfg.Subroutines.AccountInfo.Enabled = true
 	cfg.Subroutines.WorkspaceType.Enabled = true

@@ -151,11 +151,6 @@ func TestAccountInfoProcess(t *testing.T) {
 
 							*pa = v1alpha1.AccountInfo{
 								Spec: v1alpha1.AccountInfoSpec{
-									FGA: v1alpha1.FGAInfo{
-										Store: v1alpha1.StoreInfo{
-											Id: "fga-store-id",
-										},
-									},
 									Account: v1alpha1.AccountLocation{
 										Name: "parent-account",
 									},
