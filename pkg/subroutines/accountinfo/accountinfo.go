@@ -107,8 +107,7 @@ func (r *AccountInfoSubroutine) Process(ctx context.Context, ro runtimeobject.Ru
 	accountClusterClient := accountCluster.GetClient()
 
 	if instance.Spec.Type == v1alpha1.AccountTypeOrg {
-		// Let the security-operator initializer create AccountInfo with FGA populated.
-		// Wait until it exists, then patch non-FGA fields only.
+		// Let the security-operator initializer create AccountInfo and then patch non-FGA fields only.
 		existing := &v1alpha1.AccountInfo{}
 		if err := accountClusterClient.Get(ctx, client.ObjectKey{Name: DefaultAccountInfoName}, existing); err != nil {
 			if kerrors.IsNotFound(err) {
@@ -123,7 +122,6 @@ func (r *AccountInfoSubroutine) Process(ctx context.Context, ro runtimeobject.Ru
 			existing.Spec.ParentAccount = nil
 			existing.Spec.Organization = selfAccountLocation
 			existing.Spec.ClusterInfo.CA = r.serverCA
-			// Do not touch existing.Spec.FGA to preserve initializer-provided values.
 			return nil
 		})
 		if err != nil {

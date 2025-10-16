@@ -489,8 +489,7 @@ func TestProcess_Org_PatchesExistingAccountInfo(t *testing.T) {
 
 	accCl.EXPECT().Get(mock.Anything, mock.Anything, mock.Anything, mock.Anything).
 		RunAndReturn(func(ctx context.Context, key client.ObjectKey, obj client.Object, opts ...client.GetOption) error {
-			ai := obj.(*v1alpha1.AccountInfo)
-			ai.Spec.FGA.Store.Id = "store-123"
+			_ = obj.(*v1alpha1.AccountInfo)
 			return nil
 		}).Twice()
 	accCl.EXPECT().Patch(mock.Anything, mock.Anything, mock.Anything, mock.Anything).Return(nil)
@@ -531,7 +530,6 @@ func TestProcess_Account_CreatesAccountInfoFromParent(t *testing.T) {
 			ai := obj.(*v1alpha1.AccountInfo)
 			ai.Spec.Account.Name = "org"
 			ai.Spec.Organization.Name = "org"
-			ai.Spec.FGA.Store.Id = "store-parent"
 			return nil
 		}).Once()
 	cur.EXPECT().GetClient().Return(curCl)
