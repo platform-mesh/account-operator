@@ -73,6 +73,18 @@ spec:
                 required:
                 - ca
                 type: object
+              fga:
+                properties:
+                  store:
+                    properties:
+                      id:
+                        type: string
+                    required:
+                    - id
+                    type: object
+                required:
+                - store
+                type: object
               organization:
                 properties:
                   generatedClusterId:
@@ -130,6 +142,7 @@ spec:
             required:
             - account
             - clusterInfo
+            - fga
             - organization
             type: object
           status:

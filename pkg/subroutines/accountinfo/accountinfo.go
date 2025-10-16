@@ -107,12 +107,23 @@ func (r *AccountInfoSubroutine) Process(ctx context.Context, ro runtimeobject.Ru
 	accountClusterClient := accountCluster.GetClient()
 
 	if instance.Spec.Type == v1alpha1.AccountTypeOrg {
-		accountInfo := &v1alpha1.AccountInfo{ObjectMeta: v1.ObjectMeta{Name: DefaultAccountInfoName}}
-		_, err = controllerutil.CreateOrPatch(ctx, accountClusterClient, accountInfo, func() error {
-			accountInfo.Spec.Account = selfAccountLocation
-			accountInfo.Spec.ParentAccount = nil
-			accountInfo.Spec.Organization = selfAccountLocation
-			accountInfo.Spec.ClusterInfo.CA = r.serverCA
+		// Let the security-operator initializer create AccountInfo with FGA populated.
+		// Wait until it exists, then patch non-FGA fields only.
+		existing := &v1alpha1.AccountInfo{}
+		if err := accountClusterClient.Get(ctx, client.ObjectKey{Name: DefaultAccountInfoName}, existing); err != nil {
+			if kerrors.IsNotFound(err) {
+				log.Info().Msg("AccountInfo not yet created by initializer; requeue")
+				return ctrl.Result{RequeueAfter: r.limiter.When(cn)}, nil
+			}
+			return ctrl.Result{}, errors.NewOperatorError(err, true, true)
+		}
+
+		_, err = controllerutil.CreateOrPatch(ctx, accountClusterClient, existing, func() error {
+			existing.Spec.Account = selfAccountLocation
+			existing.Spec.ParentAccount = nil
+			existing.Spec.Organization = selfAccountLocation
+			existing.Spec.ClusterInfo.CA = r.serverCA
+			// Do not touch existing.Spec.FGA to preserve initializer-provided values.
 			return nil
 		})
 		if err != nil {
@@ -137,6 +148,7 @@ func (r *AccountInfoSubroutine) Process(ctx context.Context, ro runtimeobject.Ru
 		accountInfo.Spec.Account = selfAccountLocation
 		accountInfo.Spec.ParentAccount = &parentAccountInfo.Spec.Account
 		accountInfo.Spec.Organization = parentAccountInfo.Spec.Organization
+		accountInfo.Spec.FGA.Store.Id = parentAccountInfo.Spec.FGA.Store.Id
 		accountInfo.Spec.ClusterInfo.CA = r.serverCA
 		return nil
 	})

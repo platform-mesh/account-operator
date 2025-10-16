@@ -5,8 +5,8 @@ metadata:
   name: core.platform-mesh.io
 spec:
   latestResourceSchemas:
-  - v250915-1185c0b.accounts.core.platform-mesh.io
-  - v251016-8dff1e4.accountinfos.core.platform-mesh.io
+  - v250305-70de32b.accounts.core.platform-mesh.io
+  - v250517-3127093.accountinfos.core.platform-mesh.io
   permissionClaims:
   - all: true
     resource: namespaces
