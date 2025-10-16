@@ -430,3 +430,131 @@ func TestAccountInfoProcess(t *testing.T) {
 		})
 	}
 }
+
+func TestProcess_Org_RequeuesUntilAccountInfoExists(t *testing.T) {
+	cur := mocks.NewCluster(t)
+	curCl := mocks.NewClient(t)
+
+	curCl.EXPECT().Get(mock.Anything, mock.Anything, mock.Anything, mock.Anything).
+		RunAndReturn(func(ctx context.Context, key client.ObjectKey, obj client.Object, opts ...client.GetOption) error {
+			ws := obj.(*kcptenancyv1alpha.Workspace)
+			*ws = kcptenancyv1alpha.Workspace{
+				Spec:   kcptenancyv1alpha.WorkspaceSpec{URL: "https://acme/clusters/root:orgs:org", Cluster: "org-cluster-id"},
+				Status: kcptenancyv1alpha.WorkspaceStatus{Phase: kcpcorev1alpha.LogicalClusterPhaseReady},
+			}
+			return nil
+		}).Once()
+	cur.EXPECT().GetClient().Return(curCl)
+
+	acc := mocks.NewCluster(t)
+	accCl := mocks.NewClient(t)
+
+	accCl.EXPECT().Get(mock.Anything, mock.Anything, mock.Anything, mock.Anything).Return(kerrors.NewNotFound(schema.GroupResource{}, "account"))
+	acc.EXPECT().GetClient().Return(accCl)
+
+	provider := &Provider{clusters: map[string]cluster.Cluster{
+		"test-cluster":   cur,
+		"org-cluster-id": acc,
+	}}
+	mgr, err := mcmanager.New(&rest.Config{}, provider, mcmanager.Options{})
+	assert.NoError(t, err)
+
+	s := accountinfo.New(mgr, "ca")
+
+	obj := &v1alpha1.Account{ObjectMeta: metav1.ObjectMeta{Name: "org"}, Spec: v1alpha1.AccountSpec{Type: v1alpha1.AccountTypeOrg}}
+	ctx := mccontext.WithCluster(context.Background(), "test-cluster")
+	res, errOp := s.Process(ctx, obj)
+
+	assert.Nil(t, errOp)
+	assert.Greater(t, res.RequeueAfter.Microseconds(), int64(0))
+}
+
+func TestProcess_Org_PatchesExistingAccountInfo(t *testing.T) {
+	cur := mocks.NewCluster(t)
+	curCl := mocks.NewClient(t)
+
+	curCl.EXPECT().Get(mock.Anything, mock.Anything, mock.Anything, mock.Anything).
+		RunAndReturn(func(ctx context.Context, key client.ObjectKey, obj client.Object, opts ...client.GetOption) error {
+			ws := obj.(*kcptenancyv1alpha.Workspace)
+			*ws = kcptenancyv1alpha.Workspace{
+				Spec:   kcptenancyv1alpha.WorkspaceSpec{URL: "https://acme/clusters/root:orgs:org", Cluster: "org-cluster-id"},
+				Status: kcptenancyv1alpha.WorkspaceStatus{Phase: kcpcorev1alpha.LogicalClusterPhaseReady},
+			}
+			return nil
+		}).Once()
+	cur.EXPECT().GetClient().Return(curCl)
+
+	acc := mocks.NewCluster(t)
+	accCl := mocks.NewClient(t)
+
+	accCl.EXPECT().Get(mock.Anything, mock.Anything, mock.Anything, mock.Anything).
+		RunAndReturn(func(ctx context.Context, key client.ObjectKey, obj client.Object, opts ...client.GetOption) error {
+			ai := obj.(*v1alpha1.AccountInfo)
+			ai.Spec.FGA.Store.Id = "store-123"
+			return nil
+		}).Twice()
+	accCl.EXPECT().Patch(mock.Anything, mock.Anything, mock.Anything, mock.Anything).Return(nil)
+	acc.EXPECT().GetClient().Return(accCl)
+
+	provider := &Provider{clusters: map[string]cluster.Cluster{
+		"test-cluster":   cur,
+		"org-cluster-id": acc,
+	}}
+	mgr, err := mcmanager.New(&rest.Config{}, provider, mcmanager.Options{})
+	assert.NoError(t, err)
+
+	s := accountinfo.New(mgr, "ca")
+
+	obj := &v1alpha1.Account{ObjectMeta: metav1.ObjectMeta{Name: "org"}, Spec: v1alpha1.AccountSpec{Type: v1alpha1.AccountTypeOrg}}
+	ctx := mccontext.WithCluster(context.Background(), "test-cluster")
+	res, errOp := s.Process(ctx, obj)
+
+	assert.Nil(t, errOp)
+	assert.Equal(t, int64(0), res.RequeueAfter.Microseconds())
+}
+
+func TestProcess_Account_CreatesAccountInfoFromParent(t *testing.T) {
+	cur := mocks.NewCluster(t)
+	curCl := mocks.NewClient(t)
+
+	curCl.EXPECT().Get(mock.Anything, mock.Anything, mock.Anything, mock.Anything).
+		RunAndReturn(func(ctx context.Context, key client.ObjectKey, obj client.Object, opts ...client.GetOption) error {
+			ws := obj.(*kcptenancyv1alpha.Workspace)
+			*ws = kcptenancyv1alpha.Workspace{
+				Spec:   kcptenancyv1alpha.WorkspaceSpec{URL: "https://acme/clusters/root:orgs:org:acc", Cluster: "acc-cluster-id"},
+				Status: kcptenancyv1alpha.WorkspaceStatus{Phase: kcpcorev1alpha.LogicalClusterPhaseReady},
+			}
+			return nil
+		}).Once()
+	curCl.EXPECT().Get(mock.Anything, mock.Anything, mock.Anything, mock.Anything).
+		RunAndReturn(func(ctx context.Context, key client.ObjectKey, obj client.Object, opts ...client.GetOption) error {
+			ai := obj.(*v1alpha1.AccountInfo)
+			ai.Spec.Account.Name = "org"
+			ai.Spec.Organization.Name = "org"
+			ai.Spec.FGA.Store.Id = "store-parent"
+			return nil
+		}).Once()
+	cur.EXPECT().GetClient().Return(curCl)
+
+	acc := mocks.NewCluster(t)
+	accCl := mocks.NewClient(t)
+
+	accCl.EXPECT().Get(mock.Anything, mock.Anything, mock.Anything, mock.Anything).Return(kerrors.NewNotFound(schema.GroupResource{}, "account")).Once()
+	accCl.EXPECT().Create(mock.Anything, mock.Anything, mock.Anything).Return(nil)
+	acc.EXPECT().GetClient().Return(accCl)
+
+	provider := &Provider{clusters: map[string]cluster.Cluster{
+		"test-cluster":   cur,
+		"acc-cluster-id": acc,
+	}}
+	mgr, err := mcmanager.New(&rest.Config{}, provider, mcmanager.Options{})
+	assert.NoError(t, err)
+
+	s := accountinfo.New(mgr, "ca")
+
+	obj := &v1alpha1.Account{ObjectMeta: metav1.ObjectMeta{Name: "acc"}, Spec: v1alpha1.AccountSpec{Type: v1alpha1.AccountTypeAccount}}
+	ctx := mccontext.WithCluster(context.Background(), "test-cluster")
+	res, errOp := s.Process(ctx, obj)
+	assert.Nil(t, errOp)
+	assert.Equal(t, int64(0), res.RequeueAfter.Microseconds())
+}
