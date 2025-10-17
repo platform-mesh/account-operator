@@ -3,6 +3,10 @@ kind: WorkspaceType
 metadata:
   name: account
 spec:
+  extend:
+    with:
+      - name: security
+        path: root
   defaultAPIBindings:
     - export: core.platform-mesh.io
       path: root:platform-mesh-system
