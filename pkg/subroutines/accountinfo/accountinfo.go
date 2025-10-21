@@ -118,10 +118,20 @@ func (r *AccountInfoSubroutine) Process(ctx context.Context, ro runtimeobject.Ru
 		}
 
 		_, err = controllerutil.CreateOrPatch(ctx, accountClusterClient, existing, func() error {
+			// Preserve FGA and Creator fields set by security-operator initializer
+			fgaStore := existing.Spec.FGA.Store.Id
+			creator := existing.Spec.Creator
+			log.Info().Str("fgaStore", fgaStore).Interface("creator", creator).Msg("Preserving FGA and Creator before update")
+
 			existing.Spec.Account = selfAccountLocation
 			existing.Spec.ParentAccount = nil
 			existing.Spec.Organization = selfAccountLocation
 			existing.Spec.ClusterInfo.CA = r.serverCA
+
+			// Restore preserved fields
+			existing.Spec.FGA.Store.Id = fgaStore
+			existing.Spec.Creator = creator
+			log.Info().Str("fgaStore", existing.Spec.FGA.Store.Id).Interface("creator", existing.Spec.Creator).Msg("Restored FGA and Creator after update")
 			return nil
 		})
 		if err != nil {
