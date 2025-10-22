@@ -136,6 +136,9 @@ spec:
               - type
               - url
               type: object
+            creator:
+              description: The initial creator of this account
+              type: string
           required:
           - account
           - clusterInfo
@@ -144,6 +147,10 @@ spec:
           type: object
         status:
           description: AccountInfoStatus defines the observed state of AccountInfo
+          properties:
+            creatorTupleWritten:
+              description: CreatorTupleWritten indicates if the initial creator FGA tuple has been written
+              type: boolean
           type: object
       type: object
     served: true
