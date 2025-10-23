@@ -2,7 +2,7 @@ apiVersion: apis.kcp.io/v1alpha1
 kind: APIResourceSchema
 metadata:
   creationTimestamp: null
-  name: v251016-8dff1e4.accountinfos.core.platform-mesh.io
+  name: v251022-fga-fix.accountinfos.core.platform-mesh.io
 spec:
   group: core.platform-mesh.io
   names:
@@ -70,18 +70,6 @@ spec:
               required:
               - ca
               type: object
-            fga:
-              properties:
-                store:
-                  properties:
-                    id:
-                      type: string
-                  required:
-                  - id
-                  type: object
-              required:
-              - store
-              type: object
             organization:
               properties:
                 generatedClusterId:
@@ -139,6 +127,21 @@ spec:
             creator:
               description: The initial creator of this account
               type: string
+            fga:
+              description: FGA authorization information
+              properties:
+                store:
+                  description: Store information for FGA
+                  properties:
+                    id:
+                      description: The ID of the OpenFGA store
+                      type: string
+                  required:
+                  - id
+                  type: object
+              required:
+              - store
+              type: object
           required:
           - account
           - clusterInfo
@@ -157,3 +160,4 @@ spec:
     storage: true
     subresources:
       status: {}
+
