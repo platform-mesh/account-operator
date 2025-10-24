@@ -107,13 +107,31 @@ func (r *AccountInfoSubroutine) Process(ctx context.Context, ro runtimeobject.Ru
 	accountClusterClient := accountCluster.GetClient()
 
 	if instance.Spec.Type == v1alpha1.AccountTypeOrg {
-		accountInfo := &v1alpha1.AccountInfo{ObjectMeta: v1.ObjectMeta{Name: DefaultAccountInfoName}}
-		_, err = controllerutil.CreateOrPatch(ctx, accountClusterClient, accountInfo, func() error {
-			// the .Spec.FGA.Store.ID is set from an external workspace initializer
-			accountInfo.Spec.Account = selfAccountLocation
-			accountInfo.Spec.ParentAccount = nil
-			accountInfo.Spec.Organization = selfAccountLocation
-			accountInfo.Spec.ClusterInfo.CA = r.serverCA
+		// Let the security-operator initializer create AccountInfo and then patch non-FGA fields only.
+		existing := &v1alpha1.AccountInfo{}
+		if err := accountClusterClient.Get(ctx, client.ObjectKey{Name: DefaultAccountInfoName}, existing); err != nil {
+			if kerrors.IsNotFound(err) {
+				log.Info().Msg("AccountInfo not yet created by initializer; requeue")
+				return ctrl.Result{RequeueAfter: r.limiter.When(cn)}, nil
+			}
+			return ctrl.Result{}, errors.NewOperatorError(err, true, true)
+		}
+
+		_, err = controllerutil.CreateOrPatch(ctx, accountClusterClient, existing, func() error {
+			// Preserve FGA and Creator fields set by security-operator initializer
+			fgaStore := existing.Spec.FGA.Store.Id
+			creator := existing.Spec.Creator
+			log.Info().Str("fgaStore", fgaStore).Interface("creator", creator).Msg("Preserving FGA and Creator before update")
+
+			existing.Spec.Account = selfAccountLocation
+			existing.Spec.ParentAccount = nil
+			existing.Spec.Organization = selfAccountLocation
+			existing.Spec.ClusterInfo.CA = r.serverCA
+
+			// Restore preserved fields
+			existing.Spec.FGA.Store.Id = fgaStore
+			existing.Spec.Creator = creator
+			log.Info().Str("fgaStore", existing.Spec.FGA.Store.Id).Interface("creator", existing.Spec.Creator).Msg("Restored FGA and Creator after update")
 			return nil
 		})
 		if err != nil {

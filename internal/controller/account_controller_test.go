@@ -32,7 +32,6 @@ import (
 	"github.com/platform-mesh/account-operator/internal/config"
 	"github.com/platform-mesh/account-operator/internal/controller"
 	"github.com/platform-mesh/account-operator/pkg/subroutines/accountinfo"
-	"github.com/platform-mesh/account-operator/pkg/subroutines/mocks"
 	"github.com/platform-mesh/account-operator/pkg/testing/kcpenvtest"
 )
 
@@ -87,7 +86,6 @@ func (suite *AccountTestSuite) SetupSuite() {
 	suite.log = log
 
 	cfg := config.OperatorConfig{}
-	cfg.Subroutines.FGA.Enabled = false
 	cfg.Subroutines.Workspace.Enabled = true
 	cfg.Subroutines.AccountInfo.Enabled = true
 	cfg.Subroutines.WorkspaceType.Enabled = true
@@ -140,8 +138,7 @@ func (suite *AccountTestSuite) SetupSuite() {
 	orgsClient, err := buildOrgsClient(suite.multiClusterManager)
 	suite.Require().NoError(err)
 
-	mockClient := mocks.NewOpenFGAServiceClient(suite.T())
-	accountReconciler := controller.NewAccountReconciler(log, suite.multiClusterManager, cfg, orgsClient, mockClient)
+	accountReconciler := controller.NewAccountReconciler(log, suite.multiClusterManager, cfg, orgsClient)
 
 	dCfg := &platformmeshconfig.CommonServiceConfig{}
 	suite.Require().NoError(accountReconciler.SetupWithManager(suite.multiClusterManager, dCfg, log))

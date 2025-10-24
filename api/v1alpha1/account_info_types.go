@@ -27,6 +27,7 @@ type AccountInfoSpec struct {
 	ParentAccount *AccountLocation `json:"parentAccount,omitempty"`
 	Organization  AccountLocation  `json:"organization"`
 	ClusterInfo   ClusterInfo      `json:"clusterInfo"`
+	Creator       *string          `json:"creator,omitempty"`
 }
 
 type ClusterInfo struct {
@@ -55,6 +56,8 @@ type StoreInfo struct {
 
 // AccountInfoStatus defines the observed state of AccountInfo
 type AccountInfoStatus struct {
+	// CreatorTupleWritten indicates if the initial creator FGA tuple has been written
+	CreatorTupleWritten bool `json:"creatorTupleWritten,omitempty"`
 }
 
 // +kubebuilder:object:root=true
