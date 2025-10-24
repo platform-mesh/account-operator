@@ -15,7 +15,7 @@ require (
 	github.com/kcp-dev/multicluster-provider v0.2.0
 	github.com/openfga/api/proto v0.0.0-20250909173124-0ac19aac54f2
 	github.com/otiai10/copy v1.14.1
-	github.com/platform-mesh/golang-commons v0.7.3
+	github.com/platform-mesh/golang-commons v0.7.4
 	github.com/rs/zerolog v1.34.0
 	github.com/spf13/cobra v1.10.1
 	github.com/spf13/viper v1.21.0
@@ -101,7 +101,7 @@ require (
 	go.opentelemetry.io/proto/otlp v1.8.0 // indirect
 	go.yaml.in/yaml/v2 v2.4.2 // indirect
 	go.yaml.in/yaml/v3 v3.0.4 // indirect
-	golang.org/x/exp v0.0.0-20251017212417-90e834f514db // indirect
+	golang.org/x/exp v0.0.0-20251023183803-a4bb9ffd2546 // indirect
 	golang.org/x/net v0.44.0 // indirect
 	golang.org/x/oauth2 v0.32.0 // indirect
 	golang.org/x/sync v0.17.0 // indirect
