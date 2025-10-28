@@ -3,37 +3,41 @@ package controller_test
 import (
 	"context"
 	"fmt"
-	"net/url"
 	"os"
-	"strconv"
 	"testing"
 	"time"
 
+	kcpapisv1alpha1 "github.com/kcp-dev/kcp/sdk/apis/apis/v1alpha1"
+	"github.com/kcp-dev/kcp/sdk/apis/core"
 	kcpcorev1alpha "github.com/kcp-dev/kcp/sdk/apis/core/v1alpha1"
 	kcptenancyv1alpha "github.com/kcp-dev/kcp/sdk/apis/tenancy/v1alpha1"
-	apiexport "github.com/kcp-dev/multicluster-provider/apiexport"
+	"github.com/kcp-dev/logicalcluster/v3"
+	"github.com/kcp-dev/multicluster-provider/apiexport"
+	clusterclient "github.com/kcp-dev/multicluster-provider/client"
+	"github.com/kcp-dev/multicluster-provider/envtest"
 	platformmeshconfig "github.com/platform-mesh/golang-commons/config"
-	platformmeshcontext "github.com/platform-mesh/golang-commons/context"
 	"github.com/platform-mesh/golang-commons/logger"
 	"github.com/stretchr/testify/suite"
-	v1 "k8s.io/api/core/v1"
+	"golang.org/x/sync/errgroup"
 	kerrors "k8s.io/apimachinery/pkg/api/errors"
 	"k8s.io/apimachinery/pkg/api/meta"
 	metav1 "k8s.io/apimachinery/pkg/apis/meta/v1"
-	"k8s.io/apimachinery/pkg/runtime"
+	"k8s.io/apimachinery/pkg/apis/meta/v1/unstructured"
 	"k8s.io/apimachinery/pkg/types"
 	utilruntime "k8s.io/apimachinery/pkg/util/runtime"
+	"k8s.io/client-go/kubernetes/scheme"
 	"k8s.io/client-go/rest"
+	ctrl "sigs.k8s.io/controller-runtime"
 	"sigs.k8s.io/controller-runtime/pkg/client"
 	metricsserver "sigs.k8s.io/controller-runtime/pkg/metrics/server"
 	mcmanager "sigs.k8s.io/multicluster-runtime/pkg/manager"
+	"sigs.k8s.io/yaml"
 
 	"github.com/platform-mesh/account-operator/api/v1alpha1"
 	"github.com/platform-mesh/account-operator/internal/config"
 	"github.com/platform-mesh/account-operator/internal/controller"
 	"github.com/platform-mesh/account-operator/pkg/subroutines/accountinfo"
 	"github.com/platform-mesh/account-operator/pkg/subroutines/mocks"
-	"github.com/platform-mesh/account-operator/pkg/testing/kcpenvtest"
 )
 
 const (
@@ -42,38 +46,38 @@ const (
 	defaultNamespace    = "default"
 )
 
+var (
+	env       *envtest.Environment
+	kcpConfig *rest.Config
+)
+
 type AccountTestSuite struct {
 	suite.Suite
 
-	kubernetesClient    client.Client
-	multiClusterManager mcmanager.Manager
+	cli                 clusterclient.ClusterClient
 	provider            *apiexport.Provider
-	testEnv             *kcpenvtest.Environment
+	providerWS          *kcptenancyv1alpha.Workspace
+	providerPath        logicalcluster.Path
+	orgsWS              *kcptenancyv1alpha.Workspace
+	orgsPath            logicalcluster.Path
+	rootOrgWS           *kcptenancyv1alpha.Workspace
+	rootOrgPath         logicalcluster.Path
+	multiClusterManager mcmanager.Manager
 	log                 *logger.Logger
-	cancel              context.CancelCauseFunc
-	rootConfig          *rest.Config
-	scheme              *runtime.Scheme
+	ctx                 context.Context
+	cancel              context.CancelFunc
+	g                   *errgroup.Group
+}
+
+func init() {
+	utilruntime.Must(v1alpha1.AddToScheme(scheme.Scheme))
+	utilruntime.Must(kcpapisv1alpha1.AddToScheme(scheme.Scheme))
+	utilruntime.Must(kcptenancyv1alpha.AddToScheme(scheme.Scheme))
+	utilruntime.Must(kcpcorev1alpha.AddToScheme(scheme.Scheme))
 }
 
 func TestAccountTestSuite(t *testing.T) {
 	suite.Run(t, new(AccountTestSuite))
-}
-
-func buildOrgsClient(mgr mcmanager.Manager) (client.Client, error) {
-	cfg := rest.CopyConfig(mgr.GetLocalManager().GetConfig())
-
-	parsed, err := url.Parse(cfg.Host)
-	if err != nil {
-		return nil, err
-	}
-
-	parsed.Path = "/clusters/root:orgs"
-
-	cfg.Host = parsed.String()
-
-	return client.New(cfg, client.Options{
-		Scheme: mgr.GetLocalManager().GetScheme(),
-	})
 }
 
 func (suite *AccountTestSuite) SetupSuite() {
@@ -83,100 +87,214 @@ func (suite *AccountTestSuite) SetupSuite() {
 	logConfig.Level = "debug"
 
 	log, err := logger.New(logConfig)
-	suite.Require().NoError(err)
+	suite.Require().NoError(err, "failed to create logger")
 	suite.log = log
 
-	cfg := config.OperatorConfig{}
-	cfg.Subroutines.FGA.Enabled = false
-	cfg.Subroutines.Workspace.Enabled = true
-	cfg.Subroutines.AccountInfo.Enabled = true
-	cfg.Subroutines.WorkspaceType.Enabled = true
-	cfg.Kcp.ProviderWorkspace = "root"
+	ctrl.SetLogger(log.Logr())
+	suite.ctx, suite.cancel = context.WithCancel(context.Background())
 
-	testContext, cancel, _ := platformmeshcontext.StartContext(log, cfg, 2*time.Minute)
-	suite.cancel = cancel
+	// Prevent the metrics listener being created
+	metricsserver.DefaultBindAddress = "0"
 
-	testEnvLogger := log.ComponentLogger("kcpenvtest")
+	env = &envtest.Environment{}
+	env.BinaryAssetsDirectory = "../../bin"
+	err = os.Setenv("PRESERVE", "true")
+	suite.Require().NoError(err, "failed to set PRESERVE environment variable")
 
-	useExistingCluster := true
-	if envValue, err := strconv.ParseBool(os.Getenv("USE_EXISTING_CLUSTER")); err == nil {
-		useExistingCluster = envValue
+	kcpConfig, err = env.Start()
+	suite.Require().NoError(err, "failed to start envtest environment")
+
+	suite.cli, err = clusterclient.New(kcpConfig, client.Options{})
+	suite.Require().NoError(err, "failed to create cluster client")
+
+	// Create provider workspace (platform-mesh-system)
+	suite.providerWS, suite.providerPath = envtest.NewWorkspaceFixture(suite.T(), suite.cli, core.RootCluster.Path(), envtest.WithName("platform-mesh-system"))
+
+	// Create orgs workspace
+	suite.orgsWS, suite.orgsPath = envtest.NewWorkspaceFixture(suite.T(), suite.cli, core.RootCluster.Path(), envtest.WithName("orgs"))
+
+	// Create root-org workspace under orgs
+	suite.rootOrgWS, suite.rootOrgPath = envtest.NewWorkspaceFixture(suite.T(), suite.cli, suite.orgsPath, envtest.WithName("root-org"))
+
+	// Load API resources and APIExport for the provider workspace
+	suite.loadFromFile("../../test/setup/01-platform-mesh-system/apiresourceschema-accounts.core.platform-mesh.io.yaml", suite.providerPath)
+	suite.loadFromFile("../../test/setup/01-platform-mesh-system/apiresourceschema-accountinfos.core.platform-mesh.io.yaml", suite.providerPath)
+	suite.loadFromFile("../../test/setup/01-platform-mesh-system/apiexport-core.platform-mesh.io.yaml", suite.providerPath)
+
+	// Create APIExportEndpointSlice
+	aes := &kcpapisv1alpha1.APIExportEndpointSlice{
+		ObjectMeta: metav1.ObjectMeta{
+			Name: "core.platform-mesh.io",
+		},
+		Spec: kcpapisv1alpha1.APIExportEndpointSliceSpec{
+			APIExport: kcpapisv1alpha1.ExportBindingReference{
+				Name: "core.platform-mesh.io",
+				Path: suite.providerPath.String(),
+			},
+		},
 	}
+	suite.cli.Cluster(suite.providerPath).Create(suite.ctx, aes) //nolint:errcheck
 
-	suite.testEnv = kcpenvtest.NewEnvironment("core.platform-mesh.io", "platform-mesh-system", "../../", "bin", "test/setup", useExistingCluster, testEnvLogger)
-	suite.testEnv.ControlPlaneStartTimeout = 2 * time.Minute
-	suite.testEnv.ControlPlaneStopTimeout = 30 * time.Second
-
-	k8sCfg, vsURL, err := suite.testEnv.Start()
-	if err != nil {
-		_ = suite.testEnv.Stop(useExistingCluster)
-		suite.T().Skipf("skipping account controller suite: unable to start KCP: %v", err)
+	// Create APIBinding in orgs workspace
+	ab := &kcpapisv1alpha1.APIBinding{
+		ObjectMeta: metav1.ObjectMeta{
+			Name: "core.platform-mesh.io",
+		},
+		Spec: kcpapisv1alpha1.APIBindingSpec{
+			Reference: kcpapisv1alpha1.BindingReference{
+				Export: &kcpapisv1alpha1.ExportBindingReference{
+					Name: "core.platform-mesh.io",
+					Path: suite.providerPath.String(),
+				},
+			},
+		},
 	}
-	suite.rootConfig = k8sCfg
+	err = suite.cli.Cluster(suite.orgsPath).Create(suite.ctx, ab)
+	suite.Require().NoError(err, "failed to create APIBinding in orgs workspace")
 
-	suite.scheme = runtime.NewScheme()
-	utilruntime.Must(v1alpha1.AddToScheme(suite.scheme))
-	utilruntime.Must(v1.AddToScheme(suite.scheme))
-	utilruntime.Must(kcpcorev1alpha.AddToScheme(suite.scheme))
-	utilruntime.Must(kcptenancyv1alpha.AddToScheme(suite.scheme))
+	suite.Eventually(func() bool {
+		getErr := suite.cli.Cluster(suite.orgsPath).Get(suite.ctx, types.NamespacedName{Name: "core.platform-mesh.io"}, ab)
+		return getErr == nil && ab.Status.Phase == kcpapisv1alpha1.APIBindingPhaseBound
+	}, 30*time.Second, 500*time.Millisecond, "APIBinding for core.platform-mesh.io in orgs workspace did not become ready")
 
-	providerCfg := rest.CopyConfig(suite.rootConfig)
-	providerCfg.Host = vsURL
+	// Bind KCP tenancy APIs to orgs workspace
+	tenancyBindingOrgs := &kcpapisv1alpha1.APIBinding{
+		ObjectMeta: metav1.ObjectMeta{
+			Name: "tenancy",
+		},
+		Spec: kcpapisv1alpha1.APIBindingSpec{
+			Reference: kcpapisv1alpha1.BindingReference{
+				Export: &kcpapisv1alpha1.ExportBindingReference{
+					Name: "tenancy.kcp.io",
+					Path: "root",
+				},
+			},
+		},
+	}
+	err = suite.cli.Cluster(suite.orgsPath).Create(suite.ctx, tenancyBindingOrgs)
+	suite.Require().NoError(err, "failed to create tenancy APIBinding in orgs workspace")
 
-	suite.provider, err = apiexport.New(providerCfg, apiexport.Options{Scheme: suite.scheme})
-	suite.Require().NoError(err)
+	suite.Eventually(func() bool {
+		getErr := suite.cli.Cluster(suite.orgsPath).Get(suite.ctx, types.NamespacedName{Name: "tenancy"}, tenancyBindingOrgs)
+		return getErr == nil && tenancyBindingOrgs.Status.Phase == kcpapisv1alpha1.APIBindingPhaseBound
+	}, 30*time.Second, 500*time.Millisecond, "APIBinding for tenancy in orgs workspace did not become ready")
 
-	mcOpts := mcmanager.Options{
-		Scheme: suite.scheme,
+	// Create APIBinding in root-org workspace as well
+	abRootOrg := &kcpapisv1alpha1.APIBinding{
+		ObjectMeta: metav1.ObjectMeta{
+			Name: "core.platform-mesh.io",
+		},
+		Spec: kcpapisv1alpha1.APIBindingSpec{
+			Reference: kcpapisv1alpha1.BindingReference{
+				Export: &kcpapisv1alpha1.ExportBindingReference{
+					Name: "core.platform-mesh.io",
+					Path: suite.providerPath.String(),
+				},
+			},
+		},
+	}
+	err = suite.cli.Cluster(suite.rootOrgPath).Create(suite.ctx, abRootOrg)
+	suite.Require().NoError(err, "failed to create APIBinding in root-org workspace")
+
+	suite.Eventually(func() bool {
+		getErr := suite.cli.Cluster(suite.rootOrgPath).Get(suite.ctx, types.NamespacedName{Name: "core.platform-mesh.io"}, abRootOrg)
+		return getErr == nil && abRootOrg.Status.Phase == kcpapisv1alpha1.APIBindingPhaseBound
+	}, 30*time.Second, 500*time.Millisecond, "APIBinding for core.platform-mesh.io in root-org workspace did not become ready")
+
+	// Bind KCP tenancy APIs to root-org workspace (needed for Workspace resources)
+	tenancyBinding := &kcpapisv1alpha1.APIBinding{
+		ObjectMeta: metav1.ObjectMeta{
+			Name: "tenancy",
+		},
+		Spec: kcpapisv1alpha1.APIBindingSpec{
+			Reference: kcpapisv1alpha1.BindingReference{
+				Export: &kcpapisv1alpha1.ExportBindingReference{
+					Name: "tenancy.kcp.io",
+					Path: "root",
+				},
+			},
+		},
+	}
+	err = suite.cli.Cluster(suite.rootOrgPath).Create(suite.ctx, tenancyBinding)
+	suite.Require().NoError(err, "failed to create tenancy APIBinding in root-org workspace")
+
+	suite.Eventually(func() bool {
+		getErr := suite.cli.Cluster(suite.rootOrgPath).Get(suite.ctx, types.NamespacedName{Name: "tenancy"}, tenancyBinding)
+		return getErr == nil && tenancyBinding.Status.Phase == kcpapisv1alpha1.APIBindingPhaseBound
+	}, 30*time.Second, 500*time.Millisecond, "APIBinding for tenancy in root-org workspace did not become ready")
+
+	// Lookup APIExportEndpointSlice to get the URL
+	err = suite.cli.Cluster(suite.providerPath).Get(suite.ctx, types.NamespacedName{Name: "core.platform-mesh.io"}, aes)
+	suite.Require().NoError(err, "failed to get APIExportEndpointSlice")
+	suite.Require().NotEmpty(aes.Status.APIExportEndpoints, "APIExportEndpointSlice has no endpoints")
+
+	// Setup provider and manager
+	cfg := rest.CopyConfig(kcpConfig)
+	cfg.Host = aes.Status.APIExportEndpoints[0].URL
+
+	suite.provider, err = apiexport.New(cfg, apiexport.Options{})
+	suite.Require().NoError(err, "failed to create APIExport client")
+
+	operatorCfg := config.OperatorConfig{}
+	operatorCfg.Subroutines.FGA.Enabled = false
+	operatorCfg.Subroutines.Workspace.Enabled = true
+	operatorCfg.Subroutines.AccountInfo.Enabled = true
+	operatorCfg.Subroutines.WorkspaceType.Enabled = true
+	operatorCfg.Kcp.ProviderWorkspace = "root"
+
+	mgr, err := mcmanager.New(cfg, suite.provider, mcmanager.Options{
+		Logger: log.Logr(),
 		Metrics: metricsserver.Options{
 			BindAddress: "0",
 		},
-		BaseContext: func() context.Context { return testContext },
-	}
+	})
+	suite.Require().NoError(err, "failed to create multicluster manager")
+	suite.multiClusterManager = mgr
 
-	suite.multiClusterManager, err = mcmanager.New(providerCfg, suite.provider, mcOpts)
-	suite.Require().NoError(err)
-
-	orgsClient, err := buildOrgsClient(suite.multiClusterManager)
-	suite.Require().NoError(err)
+	// Build orgs client
+	orgsClient, err := suite.buildOrgsClient()
+	suite.Require().NoError(err, "failed to build orgs client")
 
 	mockClient := mocks.NewOpenFGAServiceClient(suite.T())
-	accountReconciler := controller.NewAccountReconciler(log, suite.multiClusterManager, cfg, orgsClient, mockClient)
+	accountReconciler := controller.NewAccountReconciler(log, suite.multiClusterManager, operatorCfg, orgsClient, mockClient)
 
 	dCfg := &platformmeshconfig.CommonServiceConfig{}
 	suite.Require().NoError(accountReconciler.SetupWithManager(suite.multiClusterManager, dCfg, log))
 
-	go suite.startController(testContext)
+	var groupContext context.Context
+	suite.g, groupContext = errgroup.WithContext(suite.ctx)
+	suite.g.Go(func() error {
+		return suite.provider.Run(groupContext, suite.multiClusterManager)
+	})
+	suite.g.Go(func() error {
+		return suite.multiClusterManager.Start(groupContext)
+	})
+}
 
-	// Client targeting orgs workspace for assertions
-	testDataConfig := rest.CopyConfig(suite.rootConfig)
-	testDataConfig.Host = fmt.Sprintf("%s:%s", suite.rootConfig.Host, "orgs:root-org")
+func (suite *AccountTestSuite) loadFromFile(filePath string, workspace logicalcluster.Path) {
+	data, err := os.ReadFile(filePath)
+	suite.Require().NoError(err, "failed to read file %s", filePath)
 
-	suite.kubernetesClient, err = client.New(testDataConfig, client.Options{Scheme: suite.scheme})
-	suite.Require().NoError(err)
+	var u unstructured.Unstructured
+	err = yaml.Unmarshal(data, &u.Object)
+	suite.Require().NoError(err, "failed to unmarshal file %s", filePath)
 
-	suite.Require().NoError(suite.testEnv.WaitForWorkspaceWithTimeout(orgsClient, "root-org", testEnvLogger, time.Minute))
+	err = suite.cli.Cluster(workspace).Create(suite.ctx, &u)
+	suite.Require().NoError(err, "failed to create resource %s", filePath)
+}
+
+func (suite *AccountTestSuite) buildOrgsClient() (client.Client, error) {
+	cfg := rest.CopyConfig(suite.multiClusterManager.GetLocalManager().GetConfig())
+	cfg.Host = fmt.Sprintf("%s/clusters/%s", cfg.Host, suite.orgsPath.String())
+	return client.New(cfg, client.Options{
+		Scheme: suite.multiClusterManager.GetLocalManager().GetScheme(),
+	})
 }
 
 func (suite *AccountTestSuite) TearDownSuite() {
-	if suite.cancel != nil {
-		suite.cancel(fmt.Errorf("tearing down test suite"))
-	}
-
-	useExistingCluster := true
-	if envValue, err := strconv.ParseBool(os.Getenv("USE_EXISTING_CLUSTER")); err == nil {
-		useExistingCluster = envValue
-	}
-	if suite.testEnv != nil {
-		_ = suite.testEnv.Stop(useExistingCluster)
-	}
-}
-
-func (suite *AccountTestSuite) startController(ctx context.Context) {
-	go func() {
-		_ = suite.provider.Run(ctx, suite.multiClusterManager)
-	}()
-	suite.Require().NoError(suite.multiClusterManager.Start(ctx))
+	suite.cancel()
+	suite.g.Wait() //nolint:errcheck
+	env.Stop()     //nolint:errcheck
 }
 
 func (suite *AccountTestSuite) TestAddingFinalizer() {
@@ -192,11 +310,11 @@ func (suite *AccountTestSuite) TestAddingFinalizer() {
 		},
 	}
 
-	suite.Require().NoError(suite.kubernetesClient.Create(testContext, account))
+	suite.Require().NoError(suite.cli.Cluster(suite.rootOrgPath).Create(testContext, account))
 
 	createdAccount := v1alpha1.Account{}
 	suite.Assert().Eventually(func() bool {
-		err := suite.kubernetesClient.Get(testContext, types.NamespacedName{Name: accountName, Namespace: defaultNamespace}, &createdAccount)
+		err := suite.cli.Cluster(suite.rootOrgPath).Get(testContext, types.NamespacedName{Name: accountName, Namespace: defaultNamespace}, &createdAccount)
 		return err == nil && len(createdAccount.Finalizers) == 3
 	}, defaultTestTimeout, defaultTickInterval)
 
@@ -208,11 +326,11 @@ func (suite *AccountTestSuite) TestWorkspaceCreation() {
 	accountName := "test-account-ws-creation"
 	account := &v1alpha1.Account{ObjectMeta: metav1.ObjectMeta{Name: accountName}, Spec: v1alpha1.AccountSpec{Type: v1alpha1.AccountTypeAccount}}
 
-	suite.Require().NoError(suite.kubernetesClient.Create(testContext, account))
+	suite.Require().NoError(suite.cli.Cluster(suite.rootOrgPath).Create(testContext, account))
 
 	createdWorkspace := kcptenancyv1alpha.Workspace{}
 	suite.Assert().Eventually(func() bool {
-		if err := suite.kubernetesClient.Get(testContext, types.NamespacedName{Name: accountName}, &createdWorkspace); err != nil {
+		if err := suite.cli.Cluster(suite.rootOrgPath).Get(testContext, types.NamespacedName{Name: accountName}, &createdWorkspace); err != nil {
 			return false
 		}
 		return createdWorkspace.Status.Phase == kcpcorev1alpha.LogicalClusterPhaseReady
@@ -220,7 +338,7 @@ func (suite *AccountTestSuite) TestWorkspaceCreation() {
 
 	updatedAccount := &v1alpha1.Account{}
 	suite.Assert().Eventually(func() bool {
-		if err := suite.kubernetesClient.Get(testContext, types.NamespacedName{Name: accountName}, updatedAccount); err != nil {
+		if err := suite.cli.Cluster(suite.rootOrgPath).Get(testContext, types.NamespacedName{Name: accountName}, updatedAccount); err != nil {
 			return false
 		}
 		return meta.IsStatusConditionTrue(updatedAccount.Status.Conditions, "WorkspaceSubroutine_Ready")
@@ -235,11 +353,11 @@ func (suite *AccountTestSuite) TestAccountInfoCreationForOrganization() {
 	accountName := "test-org-account"
 	account := &v1alpha1.Account{ObjectMeta: metav1.ObjectMeta{Name: accountName}, Spec: v1alpha1.AccountSpec{Type: v1alpha1.AccountTypeOrg}}
 
-	suite.Require().NoError(suite.kubernetesClient.Create(testContext, account))
+	suite.Require().NoError(suite.cli.Cluster(suite.rootOrgPath).Create(testContext, account))
 
 	createdAccount := &v1alpha1.Account{}
 	suite.Assert().Eventually(func() bool {
-		if err := suite.kubernetesClient.Get(testContext, types.NamespacedName{Name: accountName}, createdAccount); err != nil {
+		if err := suite.cli.Cluster(suite.rootOrgPath).Get(testContext, types.NamespacedName{Name: accountName}, createdAccount); err != nil {
 			return false
 		}
 		return meta.IsStatusConditionTrue(createdAccount.Status.Conditions, "AccountInfoSubroutine_Ready")
@@ -247,7 +365,7 @@ func (suite *AccountTestSuite) TestAccountInfoCreationForOrganization() {
 
 	accountInfo := &v1alpha1.AccountInfo{}
 	suite.Assert().Eventually(func() bool {
-		if err := suite.kubernetesClient.Get(testContext, client.ObjectKey{Name: accountinfo.DefaultAccountInfoName}, accountInfo); err != nil {
+		if err := suite.cli.Cluster(suite.rootOrgPath).Get(testContext, client.ObjectKey{Name: accountinfo.DefaultAccountInfoName}, accountInfo); err != nil {
 			return false
 		}
 		return accountInfo.Spec.Account.Type == v1alpha1.AccountTypeOrg
@@ -259,24 +377,24 @@ func (suite *AccountTestSuite) TestWorkspaceFinalizerRemovesWorkspace() {
 	accountName := "test-workspace-finalizer"
 	account := &v1alpha1.Account{ObjectMeta: metav1.ObjectMeta{Name: accountName}, Spec: v1alpha1.AccountSpec{Type: v1alpha1.AccountTypeAccount}}
 
-	suite.Require().NoError(suite.kubernetesClient.Create(testContext, account))
+	suite.Require().NoError(suite.cli.Cluster(suite.rootOrgPath).Create(testContext, account))
 
 	createdWorkspace := kcptenancyv1alpha.Workspace{}
 	suite.Assert().Eventually(func() bool {
-		return suite.kubernetesClient.Get(testContext, types.NamespacedName{Name: accountName}, &createdWorkspace) == nil
+		return suite.cli.Cluster(suite.rootOrgPath).Get(testContext, types.NamespacedName{Name: accountName}, &createdWorkspace) == nil
 	}, defaultTestTimeout, defaultTickInterval)
 
-	suite.Require().NoError(suite.kubernetesClient.Delete(testContext, account))
+	suite.Require().NoError(suite.cli.Cluster(suite.rootOrgPath).Delete(testContext, account))
 
 	suite.Assert().Eventually(func() bool {
-		err := suite.kubernetesClient.Get(testContext, types.NamespacedName{Name: accountName}, &kcptenancyv1alpha.Workspace{})
+		err := suite.cli.Cluster(suite.rootOrgPath).Get(testContext, types.NamespacedName{Name: accountName}, &kcptenancyv1alpha.Workspace{})
 		return kerrors.IsNotFound(err)
 	}, defaultTestTimeout, defaultTickInterval)
 }
 
 func (suite *AccountTestSuite) verifyWorkspace(ctx context.Context, accountName string) {
 	workspace := &kcptenancyv1alpha.Workspace{}
-	suite.Require().NoError(suite.kubernetesClient.Get(ctx, types.NamespacedName{Name: accountName}, workspace))
+	suite.Require().NoError(suite.cli.Cluster(suite.rootOrgPath).Get(ctx, types.NamespacedName{Name: accountName}, workspace))
 	suite.Equal(accountName, workspace.Name)
 	suite.NotNil(workspace.Spec.Type)
 	expectedType := kcptenancyv1alpha.WorkspaceTypeName(fmt.Sprintf("%s-acc", accountName))
