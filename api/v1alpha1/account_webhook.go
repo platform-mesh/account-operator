@@ -31,7 +31,10 @@ func (a *AccountDefaulter) Default(ctx context.Context, obj runtime.Object) erro
 		return err
 	}
 
-	account.Spec.Creator = &req.UserInfo.Username
+	// Only set creator if not already specified
+	if account.Spec.Creator == nil || *account.Spec.Creator == "" {
+		account.Spec.Creator = &req.UserInfo.Username
+	}
 
 	return nil
 }
