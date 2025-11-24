@@ -15,7 +15,7 @@ require (
 	github.com/kcp-dev/multicluster-provider v0.2.0
 	github.com/openfga/api/proto v0.0.0-20251105142303-feed3db3d69d
 	github.com/otiai10/copy v1.14.1
-	github.com/platform-mesh/golang-commons v0.7.20
+	github.com/platform-mesh/golang-commons v0.7.21
 	github.com/rs/zerolog v1.34.0
 	github.com/spf13/cobra v1.10.1
 	github.com/spf13/viper v1.21.0
@@ -35,7 +35,7 @@ require (
 )
 
 require (
-	github.com/99designs/gqlgen v0.17.83 // indirect
+	github.com/99designs/gqlgen v0.17.84 // indirect
 	github.com/beorn7/perks v1.0.1 // indirect
 	github.com/cenkalti/backoff/v5 v5.0.3 // indirect
 	github.com/cespare/xxhash/v2 v2.3.0 // indirect
