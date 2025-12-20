@@ -15,7 +15,7 @@ require (
 	github.com/kcp-dev/multicluster-provider v0.2.0
 	github.com/openfga/api/proto v0.0.0-20251105142303-feed3db3d69d
 	github.com/otiai10/copy v1.14.1
-	github.com/platform-mesh/golang-commons v0.9.8
+	github.com/platform-mesh/golang-commons v0.9.11
 	github.com/rs/zerolog v1.34.0
 	github.com/spf13/cobra v1.10.2
 	github.com/spf13/viper v1.21.0
@@ -29,7 +29,7 @@ require (
 	k8s.io/apiextensions-apiserver v0.34.3
 	k8s.io/apimachinery v0.34.3
 	k8s.io/client-go v0.34.3
-	k8s.io/utils v0.0.0-20251002143259-bc988d571ff4
+	k8s.io/utils v0.0.0-20251219084037-98d557b7f1e7
 	sigs.k8s.io/controller-runtime v0.22.4
 	sigs.k8s.io/multicluster-runtime v0.21.0-alpha.9
 )
@@ -101,7 +101,7 @@ require (
 	go.opentelemetry.io/proto/otlp v1.9.0 // indirect
 	go.yaml.in/yaml/v2 v2.4.2 // indirect
 	go.yaml.in/yaml/v3 v3.0.4 // indirect
-	golang.org/x/exp v0.0.0-20251209150349-8475f28825e9 // indirect
+	golang.org/x/exp v0.0.0-20251219203646-944ab1f22d93 // indirect
 	golang.org/x/net v0.48.0 // indirect
 	golang.org/x/oauth2 v0.34.0 // indirect
 	golang.org/x/sync v0.19.0 // indirect
