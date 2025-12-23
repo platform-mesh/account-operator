@@ -15,7 +15,7 @@ require (
 	github.com/kcp-dev/multicluster-provider v0.2.0
 	github.com/openfga/api/proto v0.0.0-20251105142303-feed3db3d69d
 	github.com/otiai10/copy v1.14.1
-	github.com/platform-mesh/golang-commons v0.9.13
+	github.com/platform-mesh/golang-commons v0.9.14
 	github.com/rs/zerolog v1.34.0
 	github.com/spf13/cobra v1.10.2
 	github.com/spf13/viper v1.21.0
