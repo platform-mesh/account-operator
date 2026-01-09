@@ -21,7 +21,7 @@ limitations under the License.
 package v1alpha1
 
 import (
-	v1 "k8s.io/apiextensions-apiserver/pkg/apis/apiextensions/v1"
+	"k8s.io/apiextensions-apiserver/pkg/apis/apiextensions/v1"
 	metav1 "k8s.io/apimachinery/pkg/apis/meta/v1"
 	"k8s.io/apimachinery/pkg/runtime"
 )
@@ -279,6 +279,11 @@ func (in *AccountValidator) DeepCopyInto(out *AccountValidator) {
 	if in.OrganizationNameDenyList != nil {
 		in, out := &in.OrganizationNameDenyList, &out.OrganizationNameDenyList
 		*out = make([]string, len(*in))
+		copy(*out, *in)
+	}
+	if in.AccountTypeAllowList != nil {
+		in, out := &in.AccountTypeAllowList, &out.AccountTypeAllowList
+		*out = make([]AccountType, len(*in))
 		copy(*out, *in)
 	}
 }
