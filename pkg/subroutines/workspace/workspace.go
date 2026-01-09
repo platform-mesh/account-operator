@@ -93,12 +93,10 @@ func (r *WorkspaceSubroutine) Process(ctx context.Context, ro runtimeobject.Runt
 	if err != nil {
 		return ctrl.Result{}, errors.NewOperatorError(err, true, true)
 	}
-
 	clusterClient := clusterRef.GetClient()
 
-	workspaceTypeName := util.GetOrgWorkspaceTypeName(instance.Name)
+	workspaceTypeName := util.GetWorkspaceTypeName(instance.Name, instance.Spec.Type)
 	if instance.Spec.Type == corev1alpha1.AccountTypeAccount {
-
 		accountInfo := &corev1alpha1.AccountInfo{}
 		if err := clusterClient.Get(ctx, client.ObjectKey{Name: accountinfo.DefaultAccountInfoName}, accountInfo); err != nil {
 			if kerrors.IsNotFound(err) {
@@ -124,15 +122,14 @@ func (r *WorkspaceSubroutine) Process(ctx context.Context, ro runtimeobject.Runt
 	}
 
 	createdWorkspace := &kcptenancyv1alpha.Workspace{ObjectMeta: metav1.ObjectMeta{Name: instance.Name}}
-	_, err = controllerutil.CreateOrUpdate(ctx, clusterClient, createdWorkspace, func() error {
+	if _, err = controllerutil.CreateOrUpdate(ctx, clusterClient, createdWorkspace, func() error {
 		createdWorkspace.Spec.Type = &kcptenancyv1alpha.WorkspaceTypeReference{
 			Name: kcptenancyv1alpha.WorkspaceTypeName(workspaceTypeName),
 			Path: orgsWorkspacePath,
 		}
 
 		return controllerutil.SetOwnerReference(instance, createdWorkspace, clusterClient.Scheme())
-	})
-	if err != nil {
+	}); err != nil {
 		return ctrl.Result{}, errors.NewOperatorError(err, true, true)
 	}
 

@@ -49,7 +49,7 @@ func (w *WorkspaceTypeSubroutine) Process(ctx context.Context, ro runtimeobject.
 		return ctrl.Result{}, nil
 	}
 
-	orgWorkspaceTypeName := util.GetOrgWorkspaceTypeName(instance.Name)
+	orgWorkspaceTypeName := util.GetWorkspaceTypeName(instance.Name, instance.Spec.Type)
 	accountWorkspaceTypeName := util.GetAccountWorkspaceTypeName(instance.Name)
 
 	orgWst := generateOrgWorkspaceType(instance, orgWorkspaceTypeName, accountWorkspaceTypeName)
@@ -85,7 +85,7 @@ func (w *WorkspaceTypeSubroutine) Finalize(ctx context.Context, ro runtimeobject
 		return ctrl.Result{}, nil
 	}
 
-	orgWorkspaceTypeName := util.GetOrgWorkspaceTypeName(instance.Name)
+	orgWorkspaceTypeName := util.GetWorkspaceTypeName(instance.Name, instance.Spec.Type)
 	accountWorkspaceTypeName := util.GetAccountWorkspaceTypeName(instance.Name)
 
 	if err := w.orgsClient.Delete(ctx, &kcptenancyv1alpha.WorkspaceType{ObjectMeta: metav1.ObjectMeta{Name: orgWorkspaceTypeName}}); err != nil {
