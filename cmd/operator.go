@@ -162,7 +162,7 @@ func RunController(_ *cobra.Command, _ []string) { // coverage-ignore
 			}
 		}
 
-		accountTypeAllowList := []v1alpha1.AccountType{v1alpha1.AccountTypeAccount, v1alpha1.AccountTypeOrg}
+		accountTypeAllowList := []v1alpha1.AccountType{v1alpha1.AccountTypeOrg}
 		for _, additionalType := range operatorCfg.Webhooks.AdditionalAccountTypes {
 			accountTypeAllowList = append(accountTypeAllowList, v1alpha1.AccountType(additionalType))
 		}
