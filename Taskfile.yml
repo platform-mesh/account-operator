@@ -62,7 +62,7 @@ tasks:
       - "{{.LOCAL_BIN}}/golangci-lint run --timeout 15m ./..."
   envtest:
     cmds:
-      - go test ./... {{.ADDITIONAL_COMMAND_ARGS}}
+      - go test -count=1 -v ./... {{.ADDITIONAL_COMMAND_ARGS}}
   test:
     deps: [setup:kcp, setup:gomplate]
     cmds:

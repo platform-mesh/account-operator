@@ -19,6 +19,7 @@ package cmd
 import (
 	"context"
 	"crypto/tls"
+	"fmt"
 	"net/http"
 	"net/url"
 	"strings"
@@ -26,7 +27,6 @@ import (
 	"github.com/kcp-dev/multicluster-provider/apiexport"
 	openfgav1 "github.com/openfga/api/proto/openfga/v1"
 	platformmeshcontext "github.com/platform-mesh/golang-commons/context"
-	"github.com/platform-mesh/golang-commons/traces"
 	"github.com/spf13/cobra"
 	"go.opentelemetry.io/contrib/instrumentation/google.golang.org/grpc/otelgrpc"
 	"google.golang.org/grpc"
@@ -52,6 +52,27 @@ var operatorCmd = &cobra.Command{
 	Run:   RunController,
 }
 
+const (
+	platformMeshWorkspace = "root:platform-mesh-system"
+)
+
+func getPlatformMeshSystemConfig(cfg *rest.Config) (*rest.Config, error) {
+	providerConfig := rest.CopyConfig(cfg)
+
+	parsed, err := url.Parse(providerConfig.Host)
+	if err != nil {
+		return nil, fmt.Errorf("unable to parse URL: %w", err)
+	}
+
+	parsed.Path, err = url.JoinPath("clusters", platformMeshWorkspace)
+	if err != nil {
+		return nil, fmt.Errorf("failed to join path")
+	}
+	providerConfig.Host = parsed.String()
+
+	return providerConfig, nil
+}
+
 func RunController(_ *cobra.Command, _ []string) { // coverage-ignore
 	var err error
 	ctrl.SetLogger(log.ComponentLogger("controller-runtime").Logr())
@@ -68,19 +89,6 @@ func RunController(_ *cobra.Command, _ []string) { // coverage-ignore
 	if !defaultCfg.EnableHTTP2 {
 		tlsOpts = append(tlsOpts, disableHTTP2)
 	}
-
-	var providerShutdown func(ctx context.Context) error
-	if defaultCfg.Tracing.Enabled {
-		providerShutdown, err = traces.InitProvider(ctx, defaultCfg.Tracing.Collector)
-		if err != nil {
-			log.Fatal().Err(err).Msg("unable to start gRPC-Sidecar TracerProvider")
-		}
-	}
-	defer func() {
-		if err := providerShutdown(ctx); err != nil {
-			log.Fatal().Err(err).Msg("failed to shutdown TracerProvider")
-		}
-	}()
 
 	webhookServer := webhook.NewServer(webhook.Options{
 		TLSOpts: tlsOpts,
@@ -101,11 +109,17 @@ func RunController(_ *cobra.Command, _ []string) { // coverage-ignore
 		}
 	}
 
-	providerCfg := rest.CopyConfig(restCfg)
-
-	provider, err := apiexport.New(providerCfg, apiexport.Options{Scheme: scheme})
+	providerCfg, err := getPlatformMeshSystemConfig(restCfg)
 	if err != nil {
-		log.Fatal().Err(err).Msg("unable to construct APIExport provider")
+		log.Fatal().Err(err).Msg("creating provider config")
+	}
+	fmt.Println(providerCfg)
+	provider, err := apiexport.New(providerCfg, operatorCfg.Kcp.ApiExportEndpointSliceName, apiexport.Options{
+		Log:    &ctrl.Log,
+		Scheme: scheme,
+	})
+	if err != nil {
+		log.Fatal().Err(err).Msg("creating APIExport provider")
 	}
 
 	mgr, err := mcmanager.New(providerCfg, provider, mcmanager.Options{
@@ -174,13 +188,6 @@ func RunController(_ *cobra.Command, _ []string) { // coverage-ignore
 	if err := mgr.AddReadyzCheck("readyz", healthz.Ping); err != nil {
 		log.Fatal().Err(err).Msg("unable to set up ready check")
 	}
-
-	log.Info().Msg("starting APIExport provider")
-	go func() {
-		if err := provider.Run(ctx, mgr); err != nil {
-			log.Fatal().Err(err).Msg("problem running APIExport provider")
-		}
-	}()
 
 	log.Info().Msg("starting manager")
 	if err := mgr.Start(ctrl.SetupSignalHandler()); err != nil {
