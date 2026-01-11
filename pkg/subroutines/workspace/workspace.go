@@ -96,7 +96,7 @@ func (r *WorkspaceSubroutine) Process(ctx context.Context, ro runtimeobject.Runt
 	clusterClient := clusterRef.GetClient()
 
 	workspaceTypeName := util.GetWorkspaceTypeName(instance.Name, instance.Spec.Type)
-	if instance.Spec.Type == corev1alpha1.AccountTypeAccount {
+	if instance.Spec.Type != corev1alpha1.AccountTypeOrg {
 		accountInfo := &corev1alpha1.AccountInfo{}
 		if err := clusterClient.Get(ctx, client.ObjectKey{Name: accountinfo.DefaultAccountInfoName}, accountInfo); err != nil {
 			if kerrors.IsNotFound(err) {
@@ -109,8 +109,6 @@ func (r *WorkspaceSubroutine) Process(ctx context.Context, ro runtimeobject.Runt
 		if accountInfo.Spec.Organization.Name == "" {
 			return ctrl.Result{RequeueAfter: r.limiter.When(cn)}, nil
 		}
-
-		workspaceTypeName = util.GetAccountWorkspaceTypeName(accountInfo.Spec.Organization.Name)
 	}
 
 	ready, err := r.checkWorkspaceTypeReady(ctx, workspaceTypeName)

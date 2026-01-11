@@ -12,8 +12,3 @@ func TestGetWorkspaceTypeName(t *testing.T) {
 	got := util.GetWorkspaceTypeName("test", v1alpha1.AccountTypeOrg)
 	assert.Equal(t, "test-org", got)
 }
-
-func TestGetAccountWorkspaceTypeName(t *testing.T) {
-	got := util.GetAccountWorkspaceTypeName("test")
-	assert.Equal(t, "test-acc", got)
-}
