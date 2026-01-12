@@ -7,7 +7,7 @@ type OperatorConfig struct {
 		CertDir                string   `mapstructure:"webhooks-cert-dir" default:"certs"`
 		Port                   int      `mapstructure:"webhooks-port" default:"9443"`
 		DenyList               string   `mapstructure:"webhooks-deny-list"`
-		AdditionalAccountTypes []string `mapstructure:"webhooks-account-additional-types"`
+		AdditionalAccountTypes []string `mapstructure:"webhooks-additional-account-types"`
 	} `mapstructure:",squash"`
 	Subroutines struct {
 		WorkspaceType struct {
