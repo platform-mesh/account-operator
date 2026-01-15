@@ -109,6 +109,8 @@ func (r *WorkspaceSubroutine) Process(ctx context.Context, ro runtimeobject.Runt
 		if accountInfo.Spec.Organization.Name == "" {
 			return ctrl.Result{RequeueAfter: r.limiter.When(cn)}, nil
 		}
+
+		workspaceTypeName = util.GetWorkspaceTypeName(accountInfo.Spec.Organization.Name, instance.Spec.Type)
 	}
 
 	ready, err := r.checkWorkspaceTypeReady(ctx, workspaceTypeName)
