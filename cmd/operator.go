@@ -91,15 +91,15 @@ func RunController(_ *cobra.Command, _ []string) { // coverage-ignore
 		tlsOpts = append(tlsOpts, disableHTTP2)
 	}
 
-	var providerShutdown func(ctx context.Context) error
+	var traceShutdown func(ctx context.Context) error
 	if defaultCfg.Tracing.Enabled {
-		providerShutdown, err = traces.InitProvider(ctx, defaultCfg.Tracing.Collector)
+		traceShutdown, err = traces.InitProvider(ctx, defaultCfg.Tracing.Collector)
 		if err != nil {
 			log.Fatal().Err(err).Msg("unable to start gRPC-Sidecar TracerProvider")
 		}
 	}
 	defer func() {
-		if err := providerShutdown(ctx); err != nil {
+		if err := traceShutdown(ctx); err != nil {
 			log.Fatal().Err(err).Msg("failed to shutdown TracerProvider")
 		}
 	}()
