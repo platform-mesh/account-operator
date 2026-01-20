@@ -19,6 +19,7 @@ package cmd
 import (
 	"context"
 	"crypto/tls"
+	"fmt"
 	"net/http"
 	"net/url"
 	"strings"
@@ -50,6 +51,27 @@ var operatorCmd = &cobra.Command{
 	Use:   "operator",
 	Short: "operator to reconcile Accounts",
 	Run:   RunController,
+}
+
+const (
+	platformMeshWorkspace = "root:platform-mesh-system"
+)
+
+func getPlatformMeshSystemConfig(cfg *rest.Config) (*rest.Config, error) {
+	copy := rest.CopyConfig(cfg)
+
+	parsed, err := url.Parse(copy.Host)
+	if err != nil {
+		return nil, fmt.Errorf("unable to parse URL: %w", err)
+	}
+
+	parsed.Path, err = url.JoinPath("clusters", platformMeshWorkspace)
+	if err != nil {
+		return nil, fmt.Errorf("failed to join path")
+	}
+	copy.Host = parsed.String()
+
+	return copy, nil
 }
 
 func RunController(_ *cobra.Command, _ []string) { // coverage-ignore
@@ -101,11 +123,16 @@ func RunController(_ *cobra.Command, _ []string) { // coverage-ignore
 		}
 	}
 
-	providerCfg := rest.CopyConfig(restCfg)
-
-	provider, err := apiexport.New(providerCfg, apiexport.Options{Scheme: scheme})
+	providerCfg, err := getPlatformMeshSystemConfig(restCfg)
 	if err != nil {
-		log.Fatal().Err(err).Msg("unable to construct APIExport provider")
+		log.Fatal().Err(err).Msg("creating provider config")
+	}
+	provider, err := apiexport.New(providerCfg, operatorCfg.Kcp.ApiExportEndpointSliceName, apiexport.Options{
+		Log:    &ctrl.Log,
+		Scheme: scheme,
+	})
+	if err != nil {
+		log.Fatal().Err(err).Msg("creating APIExport provider")
 	}
 
 	mgr, err := mcmanager.New(providerCfg, provider, mcmanager.Options{
@@ -174,13 +201,6 @@ func RunController(_ *cobra.Command, _ []string) { // coverage-ignore
 	if err := mgr.AddReadyzCheck("readyz", healthz.Ping); err != nil {
 		log.Fatal().Err(err).Msg("unable to set up ready check")
 	}
-
-	log.Info().Msg("starting APIExport provider")
-	go func() {
-		if err := provider.Run(ctx, mgr); err != nil {
-			log.Fatal().Err(err).Msg("problem running APIExport provider")
-		}
-	}()
 
 	log.Info().Msg("starting manager")
 	if err := mgr.Start(ctrl.SetupSignalHandler()); err != nil {

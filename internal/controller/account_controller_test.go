@@ -9,9 +9,9 @@ import (
 	"testing"
 	"time"
 
-	kcpcorev1alpha "github.com/kcp-dev/kcp/sdk/apis/core/v1alpha1"
-	kcptenancyv1alpha "github.com/kcp-dev/kcp/sdk/apis/tenancy/v1alpha1"
 	apiexport "github.com/kcp-dev/multicluster-provider/apiexport"
+	kcpcorev1alpha "github.com/kcp-dev/sdk/apis/core/v1alpha1"
+	kcptenancyv1alpha "github.com/kcp-dev/sdk/apis/tenancy/v1alpha1"
 	platformmeshconfig "github.com/platform-mesh/golang-commons/config"
 	platformmeshcontext "github.com/platform-mesh/golang-commons/context"
 	"github.com/platform-mesh/golang-commons/logger"
