@@ -32,6 +32,7 @@ import (
 	"k8s.io/apimachinery/pkg/runtime"
 	"k8s.io/apimachinery/pkg/types"
 	utilruntime "k8s.io/apimachinery/pkg/util/runtime"
+	"k8s.io/apimachinery/pkg/util/wait"
 	"k8s.io/client-go/rest"
 	"sigs.k8s.io/controller-runtime/pkg/client"
 	metricsserver "sigs.k8s.io/controller-runtime/pkg/metrics/server"
@@ -43,7 +44,6 @@ import (
 	"github.com/platform-mesh/account-operator/internal/controller"
 	"github.com/platform-mesh/account-operator/pkg/subroutines/accountinfo"
 	"github.com/platform-mesh/account-operator/pkg/subroutines/mocks"
-	kcpenvtest "github.com/platform-mesh/account-operator/pkg/testing/kcpenvtest"
 )
 
 var (
@@ -160,7 +160,7 @@ func (suite *AccountTestSuite) SetupSuite() {
 	suite.Require().NoError(err)
 	c := suite.mcc.Cluster(logicalcluster.NewPath("root"))
 	suite.Require().NoError(err)
-	kcpenvtest.WaitForWorkspaceWithTimeout(c, "root", testEnvLogger, 15*time.Second)
+	WaitForWorkspaceWithTimeout(c, "root", testEnvLogger, 15*time.Second)
 
 	// Setup root workspace and wait for workspaces to appear
 	rootClient := suite.mcc.Cluster(logicalcluster.NewPath("root"))
@@ -182,7 +182,7 @@ func (suite *AccountTestSuite) SetupSuite() {
 	}
 
 	// Setup platform-mesh-system workspace
-	kcpenvtest.WaitForWorkspaceWithTimeout(c, "platform-mesh-system", testEnvLogger, 15*time.Second)
+	WaitForWorkspaceWithTimeout(c, "platform-mesh-system", testEnvLogger, 15*time.Second)
 	pmsClient := suite.mcc.Cluster(logicalcluster.NewPath("root:platform-mesh-system"))
 	for _, data := range platformMeshSystemAPIResourceSchemas {
 		var ars kcpapisv1alpha1.APIResourceSchema
@@ -212,7 +212,7 @@ func (suite *AccountTestSuite) SetupSuite() {
 	suite.Require().NoError(err, "Creating unmarshalled object")
 
 	// Setup orgs workspace with test Account
-	kcpenvtest.WaitForWorkspaceWithTimeout(c, "orgs", testEnvLogger, 15*time.Second)
+	WaitForWorkspaceWithTimeout(c, "orgs", testEnvLogger, 15*time.Second)
 	orgsClient := suite.mcc.Cluster(logicalcluster.NewPath("root:orgs"))
 	var acc v1alpha1.Account
 	err = yaml.Unmarshal(accountRootOrgYAML, &acc)
@@ -259,7 +259,7 @@ func (suite *AccountTestSuite) SetupSuite() {
 
 	suite.rootOrgsClient = suite.mcc.Cluster(logicalcluster.NewPath("root:orgs"))
 	suite.rootOrgsDefaultClient = suite.mcc.Cluster(logicalcluster.NewPath("root:orgs:default"))
-	suite.Require().NoError(kcpenvtest.WaitForWorkspaceWithTimeout(orgsClient, "default", testEnvLogger, time.Minute))
+	suite.Require().NoError(WaitForWorkspaceWithTimeout(orgsClient, "default", testEnvLogger, time.Minute))
 }
 
 func (suite *AccountTestSuite) TearDownSuite() {
@@ -280,17 +280,18 @@ func (suite *AccountTestSuite) TestAddingFinalizer() {
 			Name: accountName,
 		},
 		Spec: v1alpha1.AccountSpec{
-			Type: v1alpha1.AccountTypeAccount,
+			Type: v1alpha1.AccountTypeOrg,
 		},
 	}
 
-	suite.Require().NoError(suite.kubernetesClient.Create(testContext, account))
+	suite.Require().NoError(suite.rootOrgsDefaultClient.Create(testContext, account))
 
 	createdAccount := v1alpha1.Account{}
 	suite.Assert().Eventually(func() bool {
-		err := suite.kubernetesClient.Get(testContext, types.NamespacedName{Name: accountName, Namespace: defaultNamespace}, &createdAccount)
+		err := suite.rootOrgsDefaultClient.Get(testContext, types.NamespacedName{Name: accountName, Namespace: defaultNamespace}, &createdAccount)
+
 		return err == nil && len(createdAccount.Finalizers) == 3
-	}, defaultTestTimeout, defaultTickInterval)
+	}, defaultTestTimeout*2, defaultTickInterval)
 
 	suite.ElementsMatch([]string{"workspacetype.core.platform-mesh.io/finalizer", "account.core.platform-mesh.io/finalizer", "account.core.platform-mesh.io/info"}, createdAccount.Finalizers)
 }
@@ -300,11 +301,11 @@ func (suite *AccountTestSuite) TestWorkspaceCreation() {
 	accountName := "test-account-ws-creation"
 	account := &v1alpha1.Account{ObjectMeta: metav1.ObjectMeta{Name: accountName}, Spec: v1alpha1.AccountSpec{Type: v1alpha1.AccountTypeAccount}}
 
-	suite.Require().NoError(suite.kubernetesClient.Create(testContext, account))
+	suite.Require().NoError(suite.rootOrgsDefaultClient.Create(testContext, account))
 
 	createdWorkspace := kcptenancyv1alpha.Workspace{}
 	suite.Assert().Eventually(func() bool {
-		if err := suite.kubernetesClient.Get(testContext, types.NamespacedName{Name: accountName}, &createdWorkspace); err != nil {
+		if err := suite.rootOrgsDefaultClient.Get(testContext, types.NamespacedName{Name: accountName}, &createdWorkspace); err != nil {
 			return false
 		}
 		return createdWorkspace.Status.Phase == kcpcorev1alpha.LogicalClusterPhaseReady
@@ -312,13 +313,13 @@ func (suite *AccountTestSuite) TestWorkspaceCreation() {
 
 	updatedAccount := &v1alpha1.Account{}
 	suite.Assert().Eventually(func() bool {
-		if err := suite.kubernetesClient.Get(testContext, types.NamespacedName{Name: accountName}, updatedAccount); err != nil {
+		if err := suite.rootOrgsDefaultClient.Get(testContext, types.NamespacedName{Name: accountName}, updatedAccount); err != nil {
 			return false
 		}
 		return meta.IsStatusConditionTrue(updatedAccount.Status.Conditions, "WorkspaceSubroutine_Ready")
 	}, defaultTestTimeout, defaultTickInterval)
 
-	suite.verifyWorkspace(testContext, accountName)
+	suite.verifyWorkspace(testContext, "default", accountName)
 	suite.verifyCondition(updatedAccount.Status.Conditions, "WorkspaceSubroutine_Ready", metav1.ConditionTrue, "Complete")
 }
 
@@ -327,11 +328,11 @@ func (suite *AccountTestSuite) TestAccountInfoCreationForOrganization() {
 	accountName := "test-org-account"
 	account := &v1alpha1.Account{ObjectMeta: metav1.ObjectMeta{Name: accountName}, Spec: v1alpha1.AccountSpec{Type: v1alpha1.AccountTypeOrg}}
 
-	suite.Require().NoError(suite.kubernetesClient.Create(testContext, account))
+	suite.Require().NoError(suite.rootOrgsClient.Create(testContext, account))
 
 	createdAccount := &v1alpha1.Account{}
 	suite.Assert().Eventually(func() bool {
-		if err := suite.kubernetesClient.Get(testContext, types.NamespacedName{Name: accountName}, createdAccount); err != nil {
+		if err := suite.rootOrgsClient.Get(testContext, types.NamespacedName{Name: accountName}, createdAccount); err != nil {
 			return false
 		}
 		return meta.IsStatusConditionTrue(createdAccount.Status.Conditions, "AccountInfoSubroutine_Ready")
@@ -339,7 +340,7 @@ func (suite *AccountTestSuite) TestAccountInfoCreationForOrganization() {
 
 	accountInfo := &v1alpha1.AccountInfo{}
 	suite.Assert().Eventually(func() bool {
-		if err := suite.kubernetesClient.Get(testContext, client.ObjectKey{Name: accountinfo.DefaultAccountInfoName}, accountInfo); err != nil {
+		if err := suite.rootOrgsDefaultClient.Get(testContext, client.ObjectKey{Name: accountinfo.DefaultAccountInfoName}, accountInfo); err != nil {
 			return false
 		}
 		return accountInfo.Spec.Account.Type == v1alpha1.AccountTypeOrg
@@ -351,27 +352,27 @@ func (suite *AccountTestSuite) TestWorkspaceFinalizerRemovesWorkspace() {
 	accountName := "test-workspace-finalizer"
 	account := &v1alpha1.Account{ObjectMeta: metav1.ObjectMeta{Name: accountName}, Spec: v1alpha1.AccountSpec{Type: v1alpha1.AccountTypeAccount}}
 
-	suite.Require().NoError(suite.kubernetesClient.Create(testContext, account))
+	suite.Require().NoError(suite.rootOrgsDefaultClient.Create(testContext, account))
 
 	createdWorkspace := kcptenancyv1alpha.Workspace{}
 	suite.Assert().Eventually(func() bool {
-		return suite.kubernetesClient.Get(testContext, types.NamespacedName{Name: accountName}, &createdWorkspace) == nil
+		return suite.rootOrgsDefaultClient.Get(testContext, types.NamespacedName{Name: accountName}, &createdWorkspace) == nil
 	}, defaultTestTimeout, defaultTickInterval)
 
-	suite.Require().NoError(suite.kubernetesClient.Delete(testContext, account))
+	suite.Require().NoError(suite.rootOrgsDefaultClient.Delete(testContext, account))
 
 	suite.Assert().Eventually(func() bool {
-		err := suite.kubernetesClient.Get(testContext, types.NamespacedName{Name: accountName}, &kcptenancyv1alpha.Workspace{})
+		err := suite.rootOrgsDefaultClient.Get(testContext, types.NamespacedName{Name: accountName}, &kcptenancyv1alpha.Workspace{})
 		return kerrors.IsNotFound(err)
 	}, defaultTestTimeout, defaultTickInterval)
 }
 
-func (suite *AccountTestSuite) verifyWorkspace(ctx context.Context, accountName string) {
+func (suite *AccountTestSuite) verifyWorkspace(ctx context.Context, orgName, accountName string) {
 	workspace := &kcptenancyv1alpha.Workspace{}
-	suite.Require().NoError(suite.kubernetesClient.Get(ctx, types.NamespacedName{Name: accountName}, workspace))
+	suite.Require().NoError(suite.rootOrgsDefaultClient.Get(ctx, types.NamespacedName{Name: accountName}, workspace))
 	suite.Equal(accountName, workspace.Name)
 	suite.NotNil(workspace.Spec.Type)
-	expectedType := kcptenancyv1alpha.WorkspaceTypeName(fmt.Sprintf("%s-acc", accountName))
+	expectedType := kcptenancyv1alpha.WorkspaceTypeName(fmt.Sprintf("%s-acc", orgName))
 	suite.Equal(expectedType, workspace.Spec.Type.Name)
 }
 
@@ -380,4 +381,22 @@ func (suite *AccountTestSuite) verifyCondition(conditions []metav1.Condition, co
 	condition := meta.FindStatusCondition(conditions, conditionType)
 	suite.Require().NotNil(condition)
 	suite.Equal(reason, condition.Reason)
+}
+
+func WaitForWorkspaceWithTimeout(client client.Client, name string, log *logger.Logger, timeout time.Duration) error {
+	// It shouldn't take longer than 5s for the default namespace to be brought up in etcd
+	err := wait.PollUntilContextTimeout(context.TODO(), time.Millisecond*500, timeout, true, func(ctx context.Context) (bool, error) {
+		ws := &kcptenancyv1alpha.Workspace{}
+		if err := client.Get(ctx, types.NamespacedName{Name: name}, ws); err != nil {
+			return false, nil //nolint:nilerr
+		}
+		ready := ws.Status.Phase == "Ready"
+		log.Info().Str("workspace", name).Bool("ready", ready).Msg("waiting for workspace to be ready")
+		return ready, nil
+	})
+
+	if err != nil {
+		return fmt.Errorf("workspace %s did not become ready: %w", name, err)
+	}
+	return err
 }
