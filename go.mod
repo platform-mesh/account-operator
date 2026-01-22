@@ -13,7 +13,7 @@ require (
 	github.com/kcp-dev/kcp/sdk v0.28.3
 	github.com/kcp-dev/logicalcluster/v3 v3.0.5
 	github.com/kcp-dev/multicluster-provider v0.2.0
-	github.com/openfga/api/proto v0.0.0-20260122164422-25e22cb1875b
+	github.com/openfga/api/proto v0.0.0-20260122181957-618e7e0a4878
 	github.com/otiai10/copy v1.14.1
 	github.com/platform-mesh/golang-commons v0.9.14
 	github.com/rs/zerolog v1.34.0
