@@ -11,11 +11,11 @@ spec:
     - resource: namespaces
       all: true
     - group: tenancy.kcp.io
-      identityHash: '{{ .data.apiExportRootTenancyKcpIoIdentityHash }}'
+      identityHash: "" # Will be set at test runtime by AccountTestSuite
       resource: workspaces
       all: true
     - group: tenancy.kcp.io
-      identityHash: '{{ .data.apiExportRootTenancyKcpIoIdentityHash }}'
+      identityHash: "" # Will be set at test runtime by AccountTestSuite
       resource: workspacetypes
       all: true
 status: {}
