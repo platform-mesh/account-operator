@@ -8,14 +8,34 @@ spec:
     - v250715-5b899f6.accountinfos.core.platform-mesh.io
     - v250915-1185c0b.accounts.core.platform-mesh.io
   permissionClaims:
-    - resource: namespaces
+    - resource: apibindings
+      group: apis.kcp.io
       all: true
-    - group: tenancy.kcp.io
-      identityHash: "" # Will be set at test runtime by AccountTestSuite
-      resource: workspaces
+      verbs: ["*"]
+      identityHash: ""
+    - resource: apiexports
+      group: apis.kcp.io
       all: true
-    - group: tenancy.kcp.io
-      identityHash: "" # Will be set at test runtime by AccountTestSuite
-      resource: workspacetypes
+      verbs: ["*"]
+      identityHash: ""
+    - resource: apiresourceschemas
+      group: apis.kcp.io
       all: true
+      verbs: ["*"]
+      identityHash: ""
+    - resource: logicalclusters
+      group: apis.kcp.io
+      all: true
+      verbs: ["*"]
+      identityHash: ""
+    - resource: workspaces
+      group: tenancy.kcp.io
+      all: true
+      verbs: ["*"]
+      identityHash: ""
+    - resource: workspacetypes
+      group: tenancy.kcp.io
+      all: true
+      verbs: ["*"]
+      identityHash: ""
 status: {}

@@ -9,7 +9,8 @@ import (
 
 	mcc "github.com/kcp-dev/multicluster-provider/client"
 	kcpapisv1alpha1 "github.com/kcp-dev/sdk/apis/apis/v1alpha1"
-
+	kcpapisv1alpha2 "github.com/kcp-dev/sdk/apis/apis/v1alpha2"
+	"github.com/kcp-dev/sdk/apis/core"
 	kcpcorev1alpha "github.com/kcp-dev/sdk/apis/core/v1alpha1"
 	ctrl "sigs.k8s.io/controller-runtime"
 
@@ -30,6 +31,7 @@ import (
 	"sigs.k8s.io/controller-runtime/pkg/client"
 	mcmanager "sigs.k8s.io/multicluster-runtime/pkg/manager"
 
+	"github.com/kcp-dev/logicalcluster/v3"
 	mcenvtest "github.com/kcp-dev/multicluster-provider/envtest"
 	"github.com/platform-mesh/account-operator/api/v1alpha1"
 	"github.com/platform-mesh/account-operator/internal/config"
@@ -47,11 +49,14 @@ const (
 type AccountTestSuite struct {
 	suite.Suite
 
-	env       *mcenvtest.Environment
-	kcpClient mcc.ClusterClient
-	kcpConfig *rest.Config
-	mgr       mcmanager.Manager
-	scheme    *runtime.Scheme
+	env                          *mcenvtest.Environment
+	kcpClient                    mcc.ClusterClient
+	kcpConfig                    *rest.Config
+	mgr                          mcmanager.Manager
+	scheme                       *runtime.Scheme
+	apiExportEndpointSliceConfig *rest.Config
+	platformMeshSysPath          logicalcluster.Path
+	orgsClusterPath              logicalcluster.Path
 
 	rootClient            client.Client
 	rootOrgsClient        client.Client
@@ -90,6 +95,7 @@ func (s *AccountTestSuite) SetupSuite() {
 	utilruntime.Must(v1alpha1.AddToScheme(s.scheme))
 	utilruntime.Must(v1.AddToScheme(s.scheme))
 	utilruntime.Must(kcpapisv1alpha1.AddToScheme(s.scheme))
+	utilruntime.Must(kcpapisv1alpha2.AddToScheme(s.scheme))
 	utilruntime.Must(kcpcorev1alpha.AddToScheme(s.scheme))
 	utilruntime.Must(kcptenancyv1alpha.AddToScheme(s.scheme))
 
@@ -102,7 +108,7 @@ func (s *AccountTestSuite) SetupSuite() {
 	cfg.Subroutines.Workspace.Enabled = true
 	cfg.Subroutines.AccountInfo.Enabled = true
 	cfg.Subroutines.WorkspaceType.Enabled = true
-	cfg.Kcp.ProviderWorkspace = rootWorkspace
+	cfg.Kcp.ProviderWorkspace = core.RootCluster.Path().String()
 	fgaMock := mocks.NewOpenFGAServiceClient(s.T())
 	dCfg := &platformmeshconfig.CommonServiceConfig{}
 	accountReconciler := controller.NewAccountReconciler(logger, s.mgr, cfg, s.rootOrgsClient, fgaMock)
