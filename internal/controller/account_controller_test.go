@@ -4,6 +4,7 @@ import (
 	"context"
 	_ "embed"
 	"fmt"
+	"os"
 	"testing"
 	"time"
 
@@ -74,9 +75,11 @@ func TestAccountTestSuite(t *testing.T) {
 }
 
 func (s *AccountTestSuite) SetupSuite() {
-	// os.Setenv("USE_EXISTING_KCP", "true")
-	// os.Setenv("KUBECONFIG", "/home/simt/src/account-operator/.kcp/admin.kubeconfig")
-	// os.Setenv("EXISTING_KCP_CONTEXT", "base")
+	// Prevents KCP from cleaning up workspace fixtures before shutdown, the
+	// instance controlled by envtest is ephemeral anyway.
+	if os.Getenv("PRESERVE") == "" {
+		os.Setenv("PRESERVE", "true")
+	}
 
 	logConfig := logger.DefaultConfig()
 	logConfig.NoJSON = true

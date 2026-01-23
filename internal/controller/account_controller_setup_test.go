@@ -3,6 +3,7 @@ package controller_test
 import (
 	"context"
 	_ "embed"
+	"errors"
 	"fmt"
 	"time"
 
@@ -55,7 +56,7 @@ const relativeBinaryAssetsDirectory = "../../bin"
 // setupKCP starts KCP and sets up the basic platform-mesh workspace structure
 // and configuration.
 func (s *AccountTestSuite) setupKCP() {
-	s.env = &envtest.Environment{AttachKcpOutput: false}
+	s.env = &envtest.Environment{AttachKcpOutput: false, KcpStopTimeout: time.Second * 30}
 	s.env.BinaryAssetsDirectory = relativeBinaryAssetsDirectory
 	s.env.KcpStartTimeout = 2 * time.Minute
 	s.env.KcpStopTimeout = 30 * time.Second
@@ -165,7 +166,6 @@ func (s *AccountTestSuite) setupManager() {
 	// Setup root workspace
 	providerConfig := rest.CopyConfig(s.kcpConfig)
 	providerConfig.Host += fmt.Sprintf("/clusters/%s", s.platformMeshSysPath)
-	providerConfig.Username = "kcp-admin"
 
 	axplogr := s.logger.ComponentLogger("apiexport_provider").Logr()
 	provider, err := apiexport.New(providerConfig, "core.platform-mesh.io", apiexport.Options{
