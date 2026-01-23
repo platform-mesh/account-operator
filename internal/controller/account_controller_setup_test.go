@@ -5,7 +5,6 @@ import (
 	_ "embed"
 	"errors"
 	"fmt"
-	"net/url"
 	"time"
 
 	apiexport "github.com/kcp-dev/multicluster-provider/apiexport"
@@ -90,9 +89,8 @@ func (s *AccountTestSuite) setupKCP() {
 	}
 
 	// Create :root:platform-mesh-system
-	_, platformMeshSystemClusterPath := envtest.NewWorkspaceFixture(s.T(), s.kcpClient, core.RootCluster.Path(), envtest.WithName("platform-mesh-system"))
-	s.platformMeshSysPath = platformMeshSystemClusterPath
-	platformMeshSystemClient := s.kcpClient.Cluster(platformMeshSystemClusterPath)
+	_, s.platformMeshSysPath = envtest.NewWorkspaceFixture(s.T(), s.kcpClient, core.RootCluster.Path(), envtest.WithName("platform-mesh-system"))
+	platformMeshSystemClient := s.kcpClient.Cluster(s.platformMeshSysPath)
 
 	// register api-resource schemas
 	for _, schemaYAML := range [][]byte{apiresourceschemaAccountinfosCorePlatformMeshIoYAML, apiresourceschemaAccountsCorePlatformMeshIoYAML} {
@@ -166,18 +164,15 @@ func (s *AccountTestSuite) setupKCP() {
 	s.Require().NotEmpty(endpointSlice.Status.APIExportEndpoints, "APIExportEndpointSlice should have at least one endpoint")
 	s.Require().NotEqual("", endpointSlice.Status.APIExportEndpoints[0].URL, "APIExportEndpointSlice endpoint URL should not be empty")
 
-	// set up config for virtual workspace
-	cfg := rest.CopyConfig(s.kcpConfig)
-	cfg.Host = endpointSlice.Status.APIExportEndpoints[0].URL
-	s.apiExportEndpointSliceConfig = cfg
-	s.logger.Info().Msgf("created apiExportEndpointSliceConfig with host: %s", s.apiExportEndpointSliceConfig.Host)
+	time.Sleep(10 * time.Second)
 }
 
 // setupManager configures but does not start the manager
 func (s *AccountTestSuite) setupManager() {
 	// Setup root workspace
-	providerConfig, err := s.getPlatformMeshSystemConfig(s.apiExportEndpointSliceConfig)
-	s.Require().NoError(err)
+	providerConfig := rest.CopyConfig(s.kcpConfig)
+	providerConfig.Host += fmt.Sprintf("/clusters/%s", s.platformMeshSysPath)
+	providerConfig.Username = "kcp-admin"
 
 	axplogr := s.logger.ComponentLogger("apiexport_provider").Logr()
 	provider, err := apiexport.New(providerConfig, "core.platform-mesh.io", apiexport.Options{
@@ -229,21 +224,4 @@ func (s *AccountTestSuite) setupDefaultOrg() {
 		return defaultWs.Status.Phase == "Ready"
 	}, 15*time.Second, 500*time.Millisecond, "default workspace should be ready")
 	s.rootOrgsDefaultClient = s.kcpClient.Cluster(s.orgsClusterPath.Join(defaultWorkspace))
-}
-
-func (s *AccountTestSuite) getPlatformMeshSystemConfig(cfg *rest.Config) (*rest.Config, error) {
-	providerConfig := rest.CopyConfig(cfg)
-
-	parsed, err := url.Parse(providerConfig.Host)
-	if err != nil {
-		return nil, fmt.Errorf("unable to parse URL: %w", err)
-	}
-
-	parsed.Path, err = url.JoinPath("clusters", s.platformMeshSysPath.String())
-	if err != nil {
-		return nil, fmt.Errorf("failed to join path")
-	}
-	providerConfig.Host = parsed.String()
-
-	return providerConfig, nil
 }

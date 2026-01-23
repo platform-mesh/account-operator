@@ -67,8 +67,6 @@ type AccountTestSuite struct {
 	cancel    context.CancelCauseFunc
 	mgrCtx    context.Context
 	mgrCancel context.CancelFunc
-
-	rootConfig *rest.Config
 }
 
 func TestAccountTestSuite(t *testing.T) {
