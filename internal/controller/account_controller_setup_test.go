@@ -184,16 +184,13 @@ func (s *AccountTestSuite) setupManager() {
 
 	s.mgr, err = mcmanager.New(providerConfig, provider, mcOpts)
 	s.Require().NoError(err)
-
-	s.mgrCtx, s.mgrCancel = context.WithCancel(s.ctx)
 }
 
 // startManager starts the manager configured by setupManager
 func (s *AccountTestSuite) startManager() {
 	go func() {
-		if err := s.mgr.Start(s.mgrCtx); err != nil && !errors.Is(err, context.Canceled) {
-			s.logger.Error().Msg(err.Error())
-			s.T().Fatalf("Failed to start manager: %v", err)
+		if err := s.mgr.Start(s.ctx); err != nil && !errors.Is(err, context.Canceled) {
+			s.logger.Error().Msgf("Manager exited with error: %v", err)
 		}
 	}()
 }

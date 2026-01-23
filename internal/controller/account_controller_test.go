@@ -50,24 +50,21 @@ const (
 type AccountTestSuite struct {
 	suite.Suite
 
-	env                          *mcenvtest.Environment
-	kcpClient                    mcc.ClusterClient
-	kcpConfig                    *rest.Config
-	mgr                          mcmanager.Manager
-	scheme                       *runtime.Scheme
-	apiExportEndpointSliceConfig *rest.Config
-	platformMeshSysPath          logicalcluster.Path
-	orgsClusterPath              logicalcluster.Path
+	env                 *mcenvtest.Environment
+	kcpClient           mcc.ClusterClient
+	kcpConfig           *rest.Config
+	mgr                 mcmanager.Manager
+	scheme              *runtime.Scheme
+	platformMeshSysPath logicalcluster.Path
+	orgsClusterPath     logicalcluster.Path
 
 	rootClient            client.Client
 	rootOrgsClient        client.Client
 	rootOrgsDefaultClient client.Client
 
-	logger    *logger.Logger
-	ctx       context.Context
-	cancel    context.CancelCauseFunc
-	mgrCtx    context.Context
-	mgrCancel context.CancelFunc
+	logger *logger.Logger
+	ctx    context.Context
+	cancel context.CancelCauseFunc
 }
 
 func TestAccountTestSuite(t *testing.T) {
@@ -123,15 +120,7 @@ func (s *AccountTestSuite) TearDownSuite() {
 	if err := s.env.Stop(); err != nil {
 		s.T().Logf("Error stopping KCP environment: %v", err)
 	}
-
-	s.mgrCancel()
-
-	if s.cancel != nil {
-		s.cancel(fmt.Errorf("tearing down test suite"))
-	}
-	if s.env != nil {
-		_ = s.env.Stop()
-	}
+	s.cancel(fmt.Errorf("tearing down test suite"))
 }
 
 func (s *AccountTestSuite) TestAddingFinalizer() {
