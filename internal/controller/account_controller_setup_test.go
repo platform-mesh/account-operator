@@ -3,7 +3,6 @@ package controller_test
 import (
 	"context"
 	_ "embed"
-	"errors"
 	"fmt"
 	"time"
 
@@ -112,11 +111,9 @@ func (s *AccountTestSuite) setupKCP() {
 	s.Require().NoError(err)
 	for i := range aePlatformMesh.Spec.PermissionClaims {
 		pc := &aePlatformMesh.Spec.PermissionClaims[i]
-		if pc.Resource == "namespace" {
-			continue
+		if pc.Group == "tenancy.kcp.io" {
+			pc.IdentityHash = aeTenancy.Status.IdentityHash
 		}
-
-		pc.IdentityHash = aeTenancy.Status.IdentityHash
 	}
 	err = platformMeshSystemClient.Create(s.ctx, &aePlatformMesh)
 	if err != nil && !kerrors.IsAlreadyExists(err) {
@@ -128,11 +125,9 @@ func (s *AccountTestSuite) setupKCP() {
 	s.Require().NoError(yaml.Unmarshal(apiexportendpointsliceCorePlatformMeshOrgYAML, &platformMeshBinding))
 	for i := range platformMeshBinding.Spec.PermissionClaims {
 		pc := &platformMeshBinding.Spec.PermissionClaims[i]
-		if pc.Resource == "namespace" {
-			continue
+		if pc.Group == "tenancy.kcp.io" {
+			pc.IdentityHash = aeTenancy.Status.IdentityHash
 		}
-
-		pc.IdentityHash = aeTenancy.Status.IdentityHash
 	}
 	err = platformMeshSystemClient.Create(s.ctx, &platformMeshBinding)
 	if err != nil && !kerrors.IsAlreadyExists(err) {
@@ -163,8 +158,6 @@ func (s *AccountTestSuite) setupKCP() {
 
 	s.Require().NotEmpty(endpointSlice.Status.APIExportEndpoints, "APIExportEndpointSlice should have at least one endpoint")
 	s.Require().NotEqual("", endpointSlice.Status.APIExportEndpoints[0].URL, "APIExportEndpointSlice endpoint URL should not be empty")
-
-	time.Sleep(10 * time.Second)
 }
 
 // setupManager configures but does not start the manager
