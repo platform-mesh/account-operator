@@ -2,7 +2,7 @@ apiVersion: apis.kcp.io/v1alpha1
 kind: APIResourceSchema
 metadata:
   creationTimestamp: null
-  name: v250715-5b899f6.accountinfos.core.platform-mesh.io
+  name: v260126-400425c.accountinfos.core.platform-mesh.io
 spec:
   group: core.platform-mesh.io
   names:
@@ -82,6 +82,23 @@ spec:
               required:
               - store
               type: object
+            oidc:
+              properties:
+                clients:
+                  additionalProperties:
+                    properties:
+                      clientId:
+                        type: string
+                    required:
+                    - clientId
+                    type: object
+                  type: object
+                issuerUrl:
+                  type: string
+              required:
+              - clients
+              - issuerUrl
+              type: object
             organization:
               properties:
                 generatedClusterId:
@@ -140,6 +157,7 @@ spec:
           - account
           - clusterInfo
           - fga
+          - oidc
           - organization
           type: object
         status:
