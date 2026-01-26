@@ -69,10 +69,12 @@ func (w *WorkspaceTypeSubroutine) Process(ctx context.Context, ro runtimeobject.
 }
 
 func (w *WorkspaceTypeSubroutine) createOrUpdateWorkspaceType(ctx context.Context, desiredWst kcptenancyv1alpha.WorkspaceType) error {
-
 	wst := &kcptenancyv1alpha.WorkspaceType{ObjectMeta: metav1.ObjectMeta{Name: desiredWst.Name}}
 	_, err := controllerutil.CreateOrUpdate(ctx, w.orgsClient, wst, func() error {
-		wst.Spec = desiredWst.Spec
+		wst.Spec.Extend = desiredWst.Spec.Extend
+		wst.Spec.DefaultChildWorkspaceType = desiredWst.Spec.DefaultChildWorkspaceType
+		wst.Spec.LimitAllowedParents = desiredWst.Spec.LimitAllowedParents
+		wst.Spec.LimitAllowedChildren = desiredWst.Spec.LimitAllowedChildren
 		return nil
 	})
 	return err
