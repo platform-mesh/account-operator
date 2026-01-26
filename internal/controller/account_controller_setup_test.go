@@ -48,10 +48,9 @@ var (
 )
 
 const (
-	defaultWorkspace = "default"
+	defaultWorkspace              = "default"
+	relativeBinaryAssetsDirectory = "../../bin"
 )
-
-const relativeBinaryAssetsDirectory = "../../bin"
 
 // setupKCP starts KCP and sets up the basic platform-mesh workspace structure
 // and configuration.
