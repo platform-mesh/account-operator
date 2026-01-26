@@ -19,7 +19,6 @@ package cmd
 import (
 	"context"
 	"crypto/tls"
-	"fmt"
 	"net/http"
 	"net/url"
 	"strings"
@@ -56,23 +55,6 @@ var operatorCmd = &cobra.Command{
 const (
 	platformMeshWorkspace = "root:platform-mesh-system"
 )
-
-func getPlatformMeshSystemConfig(cfg *rest.Config) (*rest.Config, error) {
-	copy := rest.CopyConfig(cfg)
-
-	parsed, err := url.Parse(copy.Host)
-	if err != nil {
-		return nil, fmt.Errorf("unable to parse URL: %w", err)
-	}
-
-	parsed.Path, err = url.JoinPath("clusters", platformMeshWorkspace)
-	if err != nil {
-		return nil, fmt.Errorf("failed to join path")
-	}
-	copy.Host = parsed.String()
-
-	return copy, nil
-}
 
 func RunController(_ *cobra.Command, _ []string) { // coverage-ignore
 	var err error
@@ -122,12 +104,7 @@ func RunController(_ *cobra.Command, _ []string) { // coverage-ignore
 			log.Fatal().Err(err).Msg("unable to get in-cluster config")
 		}
 	}
-
-	providerCfg, err := getPlatformMeshSystemConfig(restCfg)
-	if err != nil {
-		log.Fatal().Err(err).Msg("creating provider config")
-	}
-	provider, err := apiexport.New(providerCfg, operatorCfg.Kcp.ApiExportEndpointSliceName, apiexport.Options{
+	provider, err := apiexport.New(restCfg, operatorCfg.Kcp.ApiExportEndpointSliceName, apiexport.Options{
 		Log:    &ctrl.Log,
 		Scheme: scheme,
 	})
