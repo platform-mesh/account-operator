@@ -52,10 +52,6 @@ var operatorCmd = &cobra.Command{
 	Run:   RunController,
 }
 
-const (
-	platformMeshWorkspace = "root:platform-mesh-system"
-)
-
 func RunController(_ *cobra.Command, _ []string) { // coverage-ignore
 	var err error
 	ctrl.SetLogger(log.ComponentLogger("controller-runtime").Logr())
