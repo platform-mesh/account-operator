@@ -112,7 +112,7 @@ func RunController(_ *cobra.Command, _ []string) { // coverage-ignore
 		log.Fatal().Err(err).Msg("creating APIExport provider")
 	}
 
-	mgr, err := mcmanager.New(providerCfg, provider, mcmanager.Options{
+	mgr, err := mcmanager.New(restCfg, provider, mcmanager.Options{
 		Scheme: scheme,
 		Metrics: metricsserver.Options{
 			BindAddress:   defaultCfg.Metrics.BindAddress,
