@@ -27,7 +27,7 @@ type AccountInfoSpec struct {
 	ParentAccount *AccountLocation `json:"parentAccount,omitempty"`
 	Organization  AccountLocation  `json:"organization"`
 	ClusterInfo   ClusterInfo      `json:"clusterInfo"`
-	OIDC          OIDCInfo         `json:"oidc"`
+	OIDC          *OIDCInfo        `json:"oidc,omitempty"`
 }
 
 type ClusterInfo struct {

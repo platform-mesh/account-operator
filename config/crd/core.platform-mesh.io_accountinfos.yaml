@@ -160,7 +160,6 @@ spec:
             - account
             - clusterInfo
             - fga
-            - oidc
             - organization
             type: object
           status:
