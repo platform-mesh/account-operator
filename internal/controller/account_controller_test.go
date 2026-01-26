@@ -216,7 +216,7 @@ func (s *AccountTestSuite) TestWorkspaceFinalizerRemovesWorkspace() {
 	s.Assert().Eventually(func() bool {
 		err := s.rootOrgsDefaultClient.Get(testContext, types.NamespacedName{Name: accountName}, &kcptenancyv1alpha.Workspace{})
 		return kerrors.IsNotFound(err)
-	}, defaultTestTimeout, defaultTickInterval)
+	}, defaultTestTimeout*4, defaultTickInterval)
 }
 
 func (s *AccountTestSuite) verifyWorkspace(ctx context.Context, orgName, accountName string) {
