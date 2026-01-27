@@ -161,72 +161,74 @@ func (e *FGASubroutine) Finalize(ctx context.Context, runtimeObj runtimeobject.R
 	log := logger.LoadLoggerFromContext(ctx)
 
 	// Skip fga account finalization for organizations because the store is removed completely
+	if account.Spec.Type == v1alpha1.AccountTypeOrg {
+		return ctrl.Result{}, nil
+	}
+
+	clusterName, ok := mccontext.ClusterFrom(ctx)
+	if !ok {
+		return ctrl.Result{}, errors.NewOperatorError(fmt.Errorf("cluster client not available: ensure context carries cluster information"), true, true)
+	}
+
+	clusterRef, err := e.mgr.GetCluster(ctx, clusterName)
+	if err != nil {
+		return ctrl.Result{}, errors.NewOperatorError(err, true, true)
+	}
+	clusterClient := clusterRef.GetClient()
+
+	accountInfo, err := e.getAccountInfo(ctx, clusterClient)
+	if err != nil {
+		return ctrl.Result{}, errors.NewOperatorError(err, true, true)
+	}
+
+	if accountInfo.Spec.FGA.Store.Id == "" {
+		return ctrl.Result{}, errors.NewOperatorError(fmt.Errorf("FGA Store Id is empty"), true, true)
+	}
+
+	deletes := []*openfgav1.TupleKeyWithoutCondition{}
 	if account.Spec.Type != v1alpha1.AccountTypeOrg {
-		clusterName, ok := mccontext.ClusterFrom(ctx)
-		if !ok {
-			return ctrl.Result{}, errors.NewOperatorError(fmt.Errorf("cluster client not available: ensure context carries cluster information"), true, true)
+		parentAccountName := accountInfo.Spec.Account.Name
+
+		deletes = append(deletes, &openfgav1.TupleKeyWithoutCondition{
+			User:     fmt.Sprintf("%s:%s/%s", e.objectType, accountInfo.Spec.Account.OriginClusterId, parentAccountName),
+			Relation: e.parentRelation,
+			Object:   fmt.Sprintf("%s:%s/%s", e.objectType, accountInfo.Spec.Account.GeneratedClusterId, account.GetName()),
+		})
+	}
+
+	if account.Spec.Creator != nil {
+		creator := formatUser(*account.Spec.Creator)
+		deletes = append(deletes, &openfgav1.TupleKeyWithoutCondition{
+			User:     fmt.Sprintf("user:%s", creator),
+			Relation: "assignee",
+			Object:   fmt.Sprintf("role:%s/%s/%s/owner", e.objectType, accountInfo.Spec.Account.GeneratedClusterId, account.Name),
+		})
+
+		deletes = append(deletes, &openfgav1.TupleKeyWithoutCondition{
+			User:     fmt.Sprintf("role:%s/%s/%s/owner#assignee", e.objectType, accountInfo.Spec.Account.GeneratedClusterId, account.Name),
+			Relation: e.creatorRelation,
+			Object:   fmt.Sprintf("%s:%s/%s", e.objectType, accountInfo.Spec.Account.GeneratedClusterId, account.Name),
+		})
+	}
+
+	for _, deleteTuple := range deletes {
+
+		_, err = e.fgaClient.Write(ctx, &openfgav1.WriteRequest{
+			StoreId: accountInfo.Spec.FGA.Store.Id,
+			Deletes: &openfgav1.WriteRequestDeletes{
+				TupleKeys: []*openfgav1.TupleKeyWithoutCondition{deleteTuple},
+			},
+		})
+
+		if helpers.IsDuplicateWriteError(err) {
+			log.Info().Err(err).Msg("Open FGA write failed due to invalid input (possibly trying to deleteTuple nonexisting entry)")
+			err = nil
 		}
 
-		clusterRef, err := e.mgr.GetCluster(ctx, clusterName)
 		if err != nil {
-			return ctrl.Result{}, errors.NewOperatorError(err, true, true)
-		}
-		clusterClient := clusterRef.GetClient()
-
-		accountInfo, err := e.getAccountInfo(ctx, clusterClient)
-		if err != nil {
-			return ctrl.Result{}, errors.NewOperatorError(err, true, true)
+			return ctrl.Result{}, errors.NewOperatorError(fmt.Errorf("OpenFGA write failed: %w", err), true, true)
 		}
 
-		if accountInfo.Spec.FGA.Store.Id == "" {
-			return ctrl.Result{}, errors.NewOperatorError(fmt.Errorf("FGA Store Id is empty"), true, true)
-		}
-
-		deletes := []*openfgav1.TupleKeyWithoutCondition{}
-		if account.Spec.Type != v1alpha1.AccountTypeOrg {
-			parentAccountName := accountInfo.Spec.Account.Name
-
-			deletes = append(deletes, &openfgav1.TupleKeyWithoutCondition{
-				User:     fmt.Sprintf("%s:%s/%s", e.objectType, accountInfo.Spec.Account.OriginClusterId, parentAccountName),
-				Relation: e.parentRelation,
-				Object:   fmt.Sprintf("%s:%s/%s", e.objectType, accountInfo.Spec.Account.GeneratedClusterId, account.GetName()),
-			})
-		}
-
-		if account.Spec.Creator != nil {
-			creator := formatUser(*account.Spec.Creator)
-			deletes = append(deletes, &openfgav1.TupleKeyWithoutCondition{
-				User:     fmt.Sprintf("user:%s", creator),
-				Relation: "assignee",
-				Object:   fmt.Sprintf("role:%s/%s/%s/owner", e.objectType, accountInfo.Spec.Account.GeneratedClusterId, account.Name),
-			})
-
-			deletes = append(deletes, &openfgav1.TupleKeyWithoutCondition{
-				User:     fmt.Sprintf("role:%s/%s/%s/owner#assignee", e.objectType, accountInfo.Spec.Account.GeneratedClusterId, account.Name),
-				Relation: e.creatorRelation,
-				Object:   fmt.Sprintf("%s:%s/%s", e.objectType, accountInfo.Spec.Account.GeneratedClusterId, account.Name),
-			})
-		}
-
-		for _, deleteTuple := range deletes {
-
-			_, err = e.fgaClient.Write(ctx, &openfgav1.WriteRequest{
-				StoreId: accountInfo.Spec.FGA.Store.Id,
-				Deletes: &openfgav1.WriteRequestDeletes{
-					TupleKeys: []*openfgav1.TupleKeyWithoutCondition{deleteTuple},
-				},
-			})
-
-			if helpers.IsDuplicateWriteError(err) {
-				log.Info().Err(err).Msg("Open FGA write failed due to invalid input (possibly trying to deleteTuple nonexisting entry)")
-				err = nil
-			}
-
-			if err != nil {
-				return ctrl.Result{}, errors.NewOperatorError(fmt.Errorf("OpenFGA write failed: %w", err), true, true)
-			}
-
-		}
 	}
 
 	return ctrl.Result{}, nil
