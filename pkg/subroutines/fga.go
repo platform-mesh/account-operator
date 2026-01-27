@@ -54,7 +54,6 @@ func NewFGASubroutine(mgr mcmanager.Manager, fgaClient openfgav1.OpenFGAServiceC
 func (e *FGASubroutine) Process(ctx context.Context, ro runtimeobject.RuntimeObject) (ctrl.Result, errors.OperatorError) {
 	account := ro.(*v1alpha1.Account)
 	log := logger.LoadLoggerFromContext(ctx)
-	log.Debug().Msg("Starting creator subroutine process() function")
 
 	clusterName, ok := mccontext.ClusterFrom(ctx)
 	if !ok {
@@ -85,22 +84,18 @@ func (e *FGASubroutine) Process(ctx context.Context, ro runtimeobject.RuntimeObj
 
 	accountInfo, err := e.getAccountInfo(ctx, accountClusterClient)
 	if err != nil {
-		log.Error().Err(err).Msg("Couldn't get Store Id")
-		return ctrl.Result{}, errors.NewOperatorError(err, true, true)
+		return ctrl.Result{}, errors.NewOperatorError(fmt.Errorf("getting store ID: %w", err), true, true)
 	}
 
 	if accountInfo.Spec.FGA.Store.Id == "" {
-		log.Error().Msg("FGA Store Id is empty")
 		return ctrl.Result{}, errors.NewOperatorError(fmt.Errorf("FGA Store Id is empty"), true, true)
 	}
 
 	if accountInfo.Spec.Account.GeneratedClusterId == "" {
-		log.Error().Msg("account cluster id is empty")
 		return ctrl.Result{}, errors.NewOperatorError(fmt.Errorf("account cluster id is empty"), true, true)
 	}
 
 	if account.Spec.Type != v1alpha1.AccountTypeOrg && accountInfo.Spec.ParentAccount.GeneratedClusterId == "" {
-		log.Error().Msg("parent account cluster id is empty")
 		return ctrl.Result{}, errors.NewOperatorError(fmt.Errorf("parent account cluster id is empty"), true, true)
 	}
 
@@ -122,8 +117,7 @@ func (e *FGASubroutine) Process(ctx context.Context, ro runtimeobject.RuntimeObj
 	creatorTuplesWritten := meta.IsStatusConditionTrue(account.Status.Conditions, fmt.Sprintf("%s_Ready", e.GetName()))
 	if account.Spec.Creator != nil && !creatorTuplesWritten {
 		if valid := validateCreator(*account.Spec.Creator); !valid {
-			log.Error().Str("creator", *account.Spec.Creator).Msg("creator string is in the protected service account prefix range")
-			return ctrl.Result{}, errors.NewOperatorError(fmt.Errorf("creator in protected service account range"), false, false)
+			return ctrl.Result{}, errors.NewOperatorError(fmt.Errorf("creator %s in protected service account range", *account.Spec.Creator), false, false)
 		}
 		creator := formatUser(*account.Spec.Creator)
 
@@ -154,8 +148,7 @@ func (e *FGASubroutine) Process(ctx context.Context, ro runtimeobject.RuntimeObj
 		}
 
 		if err != nil {
-			log.Error().Err(err).Msg("Open FGA writeTuple failed")
-			return ctrl.Result{}, errors.NewOperatorError(err, true, true)
+			return ctrl.Result{}, errors.NewOperatorError(fmt.Errorf("OpenFGA writeTuple failed: %w", err), true, true)
 		}
 	}
 
@@ -182,12 +175,10 @@ func (e *FGASubroutine) Finalize(ctx context.Context, runtimeObj runtimeobject.R
 
 		accountInfo, err := e.getAccountInfo(ctx, clusterClient)
 		if err != nil {
-			log.Error().Err(err).Msg("Couldn't get Store Id")
 			return ctrl.Result{}, errors.NewOperatorError(err, true, true)
 		}
 
 		if accountInfo.Spec.FGA.Store.Id == "" {
-			log.Error().Msg("FGA Store Id is empty")
 			return ctrl.Result{}, errors.NewOperatorError(fmt.Errorf("FGA Store Id is empty"), true, true)
 		}
 
@@ -232,8 +223,7 @@ func (e *FGASubroutine) Finalize(ctx context.Context, runtimeObj runtimeobject.R
 			}
 
 			if err != nil {
-				log.Error().Err(err).Msg("Open FGA write failed")
-				return ctrl.Result{}, errors.NewOperatorError(err, true, true)
+				return ctrl.Result{}, errors.NewOperatorError(fmt.Errorf("OpenFGA write failed: %w", err), true, true)
 			}
 
 		}
