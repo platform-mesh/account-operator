@@ -201,14 +201,31 @@ func (s *AccountTestSuite) TestWorkspaceFinalizerRemovesWorkspace() {
 
 	createdWorkspace := kcptenancyv1alpha.Workspace{}
 	s.Assert().Eventually(func() bool {
-		return s.rootOrgsDefaultClient.Get(testContext, types.NamespacedName{Name: accountName}, &createdWorkspace) == nil
+		if err := s.rootOrgsDefaultClient.Get(testContext, types.NamespacedName{Name: accountName}, &createdWorkspace); err != nil && !kerrors.IsNotFound(err) {
+			s.logger.Err(err).Msg("Waiting for Workspace to be created")
+			return false
+		} else if kerrors.IsNotFound(err) {
+			s.logger.Info().Msg("Waiting for Workspace to be created")
+			return false
+		}
+
+		s.logger.Info().Msg("Workspace was created")
+		return true
 	}, defaultTestTimeout, defaultTickInterval)
 
 	s.Require().NoError(s.rootOrgsDefaultClient.Delete(testContext, account))
 
 	s.Assert().Eventually(func() bool {
-		err := s.rootOrgsDefaultClient.Get(testContext, types.NamespacedName{Name: accountName}, &kcptenancyv1alpha.Workspace{})
-		return kerrors.IsNotFound(err)
+		if err := s.rootOrgsDefaultClient.Get(testContext, types.NamespacedName{Name: accountName}, &kcptenancyv1alpha.Workspace{}); err != nil && !kerrors.IsNotFound(err) {
+			s.logger.Err(err).Msg("Waiting for Workspace to be deleted")
+			return false
+		} else if err == nil {
+			s.logger.Info().Msg("Waiting for Workspace to be deleted")
+
+		}
+		s.logger.Info().Msg("Workspace was deleted")
+
+		return true
 	}, defaultTestTimeout, defaultTickInterval)
 }
 
