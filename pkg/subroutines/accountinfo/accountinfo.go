@@ -71,13 +71,13 @@ func (r *AccountInfoSubroutine) Process(ctx context.Context, ro runtimeobject.Ru
 
 	clusterRef, err := r.mgr.GetCluster(ctx, string(cn.ClusterID))
 	if err != nil {
-		return ctrl.Result{}, errors.NewOperatorError(err, true, true)
+		return ctrl.Result{}, errors.NewOperatorError(fmt.Errorf("getting cluster: %w", err), true, true)
 	}
 	clusterClient := clusterRef.GetClient()
 
 	accountWorkspace := &kcptenancyv1alpha.Workspace{}
 	if err := clusterClient.Get(ctx, client.ObjectKey{Name: instance.Name}, accountWorkspace); err != nil {
-		return ctrl.Result{}, errors.NewOperatorError(err, true, true)
+		return ctrl.Result{}, errors.NewOperatorError(fmt.Errorf("getting Account's Workspace: %w"), true, true)
 	}
 
 	if accountWorkspace.Status.Phase != kcpcorev1alpha.LogicalClusterPhaseInitializing && accountWorkspace.Status.Phase != kcpcorev1alpha.LogicalClusterPhaseReady {
@@ -106,17 +106,17 @@ func (r *AccountInfoSubroutine) Process(ctx context.Context, ro runtimeobject.Ru
 	}
 	accountClusterClient := accountCluster.GetClient()
 
+	// Create AccountInfo for an organization
 	if instance.Spec.Type == v1alpha1.AccountTypeOrg {
 		accountInfo := &v1alpha1.AccountInfo{ObjectMeta: v1.ObjectMeta{Name: DefaultAccountInfoName}}
-		_, err = controllerutil.CreateOrPatch(ctx, accountClusterClient, accountInfo, func() error {
+		if _, err := controllerutil.CreateOrPatch(ctx, accountClusterClient, accountInfo, func() error {
 			// the .Spec.FGA.Store.ID is set from an external workspace initializer
 			accountInfo.Spec.Account = selfAccountLocation
 			accountInfo.Spec.ParentAccount = nil
 			accountInfo.Spec.Organization = selfAccountLocation
 			accountInfo.Spec.ClusterInfo.CA = r.serverCA
 			return nil
-		})
-		if err != nil {
+		}); err != nil {
 			return ctrl.Result{}, errors.NewOperatorError(err, true, true)
 		}
 
@@ -124,44 +124,29 @@ func (r *AccountInfoSubroutine) Process(ctx context.Context, ro runtimeobject.Ru
 		return ctrl.Result{}, nil
 	}
 
-	parentAccountInfo, exists, err := r.retrieveAccountInfo(ctx, clusterClient, log)
-	if err != nil {
-		return ctrl.Result{}, errors.NewOperatorError(err, true, true)
-	}
-
-	if !exists {
-		return ctrl.Result{}, errors.NewOperatorError(fmt.Errorf("AccountInfo does not yet exist. Retry another time"), true, false)
+	// Create AccountInfo for a non-organization Account based on its parent's
+	// AccountInfo
+	var parentAccountInfo v1alpha1.AccountInfo
+	if err := clusterClient.Get(ctx, client.ObjectKey{Name: DefaultAccountInfoName}, &parentAccountInfo); kerrors.IsNotFound(err) {
+		return ctrl.Result{}, errors.NewOperatorError(fmt.Errorf("AccountInfo does not yet exist"), true, false)
+	} else if err != nil {
+		return ctrl.Result{}, errors.NewOperatorError(fmt.Errorf("getting parent AccountInfo: %w", err), true, true)
 	}
 
 	accountInfo := &v1alpha1.AccountInfo{ObjectMeta: v1.ObjectMeta{Name: DefaultAccountInfoName}}
-	_, err = controllerutil.CreateOrUpdate(ctx, accountClusterClient, accountInfo, func() error {
+	if _, err := controllerutil.CreateOrUpdate(ctx, accountClusterClient, accountInfo, func() error {
 		accountInfo.Spec.Account = selfAccountLocation
 		accountInfo.Spec.ParentAccount = &parentAccountInfo.Spec.Account
 		accountInfo.Spec.Organization = parentAccountInfo.Spec.Organization
 		accountInfo.Spec.FGA.Store.Id = parentAccountInfo.Spec.FGA.Store.Id
 		accountInfo.Spec.ClusterInfo.CA = r.serverCA
 		return nil
-	})
-	if err != nil {
-		return ctrl.Result{}, errors.NewOperatorError(err, true, true)
+	}); err != nil {
+		return ctrl.Result{}, errors.NewOperatorError(fmt.Errorf("creating or updating AccountInfo %w", err), true, true)
 	}
 
 	r.limiter.Forget(cn)
 	return ctrl.Result{}, nil
-}
-
-func (r *AccountInfoSubroutine) retrieveAccountInfo(ctx context.Context, cl client.Client, log *logger.Logger) (*v1alpha1.AccountInfo, bool, error) {
-	accountInfo := &v1alpha1.AccountInfo{}
-	err := cl.Get(ctx, client.ObjectKey{Name: "account"}, accountInfo)
-	if err != nil {
-		if kerrors.IsNotFound(err) {
-			log.Info().Msg("accountInfo does not yet exist, retry")
-			return nil, false, nil
-		}
-		log.Error().Err(err).Msg("error retrieving accountInfo")
-		return nil, false, err
-	}
-	return accountInfo, true, nil
 }
 
 func (r *AccountInfoSubroutine) retrieveCurrentWorkspacePath(ws *kcptenancyv1alpha.Workspace) (string, string, error) {
