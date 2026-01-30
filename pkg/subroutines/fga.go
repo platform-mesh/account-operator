@@ -91,11 +91,14 @@ func (e *FGASubroutine) Process(ctx context.Context, ro runtimeobject.RuntimeObj
 		log.Error().Err(err).Msg("Couldn't get Store Id")
 		return ctrl.Result{}, errors.NewOperatorError(err, true, true)
 	}
-	// Add finalizer to AccountInfo because we need it for deletion
-	if !controllerutil.ContainsFinalizer(accountInfo, fgaFinalizer) {
-		controllerutil.AddFinalizer(accountInfo, fgaFinalizer)
-		if err := accountClusterClient.Update(ctx, accountInfo); err != nil {
-			return ctrl.Result{}, errors.NewOperatorError(fmt.Errorf("updating AccountInfo with finalizer: %w", err), true, true)
+
+	if account.Spec.Type == v1alpha1.AccountTypeOrg {
+		// Add finalizer to AccountInfo because we need it for deletion
+		if !controllerutil.ContainsFinalizer(accountInfo, fgaFinalizer) {
+			controllerutil.AddFinalizer(accountInfo, fgaFinalizer)
+			if err := accountClusterClient.Update(ctx, accountInfo); err != nil {
+				return ctrl.Result{}, errors.NewOperatorError(fmt.Errorf("updating AccountInfo with finalizer: %w", err), true, true)
+			}
 		}
 	}
 
@@ -247,10 +250,13 @@ func (e *FGASubroutine) Finalize(ctx context.Context, runtimeObj runtimeobject.R
 			}
 		}
 
-		if controllerutil.ContainsFinalizer(accountInfo, fgaFinalizer) {
-			controllerutil.RemoveFinalizer(accountInfo, fgaFinalizer)
-			if err := clusterClient.Update(ctx, accountInfo); err != nil {
-				return ctrl.Result{}, errors.NewOperatorError(fmt.Errorf("updating AccountInfo to remove finalizer: %w", err), true, true)
+		if account.Spec.Type == v1alpha1.AccountTypeOrg {
+			// Remove finalizer on an org's AccountInfo after cleanup
+			if controllerutil.ContainsFinalizer(accountInfo, fgaFinalizer) {
+				controllerutil.RemoveFinalizer(accountInfo, fgaFinalizer)
+				if err := clusterClient.Update(ctx, accountInfo); err != nil {
+					return ctrl.Result{}, errors.NewOperatorError(fmt.Errorf("updating AccountInfo to remove finalizer: %w", err), true, true)
+				}
 			}
 		}
 
