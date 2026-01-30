@@ -19,12 +19,15 @@ import (
 	"k8s.io/client-go/util/workqueue"
 	ctrl "sigs.k8s.io/controller-runtime"
 	"sigs.k8s.io/controller-runtime/pkg/client"
+	"sigs.k8s.io/controller-runtime/pkg/controller/controllerutil"
 	mccontext "sigs.k8s.io/multicluster-runtime/pkg/context"
 	mcmanager "sigs.k8s.io/multicluster-runtime/pkg/manager"
 
 	"github.com/platform-mesh/account-operator/api/v1alpha1"
 	"github.com/platform-mesh/account-operator/pkg/subroutines/accountinfo"
 )
+
+const fgaFinalizer = "account.core.platform-mesh.io/fga"
 
 type FGASubroutine struct {
 	fgaClient       openfgav1.OpenFGAServiceClient
@@ -87,6 +90,13 @@ func (e *FGASubroutine) Process(ctx context.Context, ro runtimeobject.RuntimeObj
 	if err != nil {
 		log.Error().Err(err).Msg("Couldn't get Store Id")
 		return ctrl.Result{}, errors.NewOperatorError(err, true, true)
+	}
+	// Add finalizer to AccountInfo because we need it for deletion
+	if !controllerutil.ContainsFinalizer(accountInfo, fgaFinalizer) {
+		controllerutil.AddFinalizer(accountInfo, fgaFinalizer)
+		if err := accountClusterClient.Update(ctx, accountInfo); err != nil {
+			return ctrl.Result{}, errors.NewOperatorError(fmt.Errorf("updating AccountInfo with finalizer: %w", err), true, true)
+		}
 	}
 
 	if accountInfo.Spec.FGA.Store.Id == "" {
@@ -235,10 +245,16 @@ func (e *FGASubroutine) Finalize(ctx context.Context, runtimeObj runtimeobject.R
 				log.Error().Err(err).Msg("Open FGA write failed")
 				return ctrl.Result{}, errors.NewOperatorError(err, true, true)
 			}
-
 		}
-	}
 
+		if controllerutil.ContainsFinalizer(accountInfo, fgaFinalizer) {
+			controllerutil.RemoveFinalizer(accountInfo, fgaFinalizer)
+			if err := clusterClient.Update(ctx, accountInfo); err != nil {
+				return ctrl.Result{}, errors.NewOperatorError(fmt.Errorf("updating AccountInfo to remove finalizer: %w", err), true, true)
+			}
+		}
+
+	}
 	return ctrl.Result{}, nil
 }
 
@@ -254,7 +270,7 @@ func (e *FGASubroutine) getAccountInfo(ctx context.Context, cl client.Client) (*
 func (e *FGASubroutine) GetName() string { return "FGASubroutine" }
 
 func (e *FGASubroutine) Finalizers(_ runtimeobject.RuntimeObject) []string {
-	return []string{"account.core.platform-mesh.io/fga"}
+	return []string{fgaFinalizer}
 }
 
 var saRegex = regexp.MustCompile(`^system:serviceaccount:[^:]*:[^:]*$`)
