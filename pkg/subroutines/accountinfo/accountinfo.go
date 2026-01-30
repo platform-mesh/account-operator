@@ -13,6 +13,7 @@ import (
 	"github.com/platform-mesh/golang-commons/errors"
 	"github.com/platform-mesh/golang-commons/logger"
 	kerrors "k8s.io/apimachinery/pkg/api/errors"
+	"k8s.io/apimachinery/pkg/api/meta"
 	v1 "k8s.io/apimachinery/pkg/apis/meta/v1"
 	"k8s.io/client-go/util/workqueue"
 	ctrl "sigs.k8s.io/controller-runtime"
@@ -53,6 +54,60 @@ func (r *AccountInfoSubroutine) Finalizers(_ runtimeobject.RuntimeObject) []stri
 
 func (r *AccountInfoSubroutine) Finalize(ctx context.Context, ro runtimeobject.RuntimeObject) (ctrl.Result, errors.OperatorError) {
 	cn := clusteredname.MustGetClusteredName(ctx, ro)
+	log := logger.LoadLoggerFromContext(ctx)
+	instance := ro.(*v1alpha1.Account)
+
+	// Test if there are further child accounts in this workspace, if yes then don't remove the accountinfo finalizer yet
+	cluster, err := r.mgr.ClusterFromContext(ctx)
+	if err != nil {
+		return ctrl.Result{}, errors.NewOperatorError(fmt.Errorf("getting cluster from context: %w", err), true, true)
+	}
+
+	clusterClient := cluster.GetClient()
+	accountWorkspace := &kcptenancyv1alpha.Workspace{}
+	if err := clusterClient.Get(ctx, client.ObjectKey{Name: instance.Name}, accountWorkspace); err != nil {
+		// the workspace inclusive contained accountinfo was deleted, finalization complete
+		if kerrors.IsNotFound(err) || meta.IsNoMatchError(err) {
+			r.limiter.Forget(cn)
+			return ctrl.Result{}, nil
+		}
+		return ctrl.Result{}, errors.NewOperatorError(fmt.Errorf("getting Account's Workspace: %w", err), true, true)
+	}
+
+	accountCluster, err := r.mgr.GetCluster(ctx, accountWorkspace.Spec.Cluster)
+	if err != nil {
+		return ctrl.Result{}, errors.NewOperatorError(err, true, true)
+	}
+	accountClusterClient := accountCluster.GetClient()
+
+	list := &v1alpha1.AccountList{}
+	err = accountClusterClient.List(ctx, list, &client.ListOptions{})
+	if err != nil {
+		return ctrl.Result{}, errors.NewOperatorError(fmt.Errorf("listing child accounts: %w", err), true, true)
+	}
+	if len(list.Items) > 0 {
+		log.Info().Msgf("Found %d accounts", len(list.Items))
+		return ctrl.Result{RequeueAfter: r.limiter.When(cn)}, nil
+	}
+	log.Info().Msgf("No accounts found in cluster")
+
+	accountInfo := &v1alpha1.AccountInfo{ObjectMeta: v1.ObjectMeta{Name: DefaultAccountInfoName}}
+	err = accountClusterClient.Get(ctx, client.ObjectKey{Name: DefaultAccountInfoName}, accountInfo)
+	if err != nil {
+		if kerrors.IsNotFound(err) {
+			r.limiter.Forget(cn)
+			return ctrl.Result{}, nil
+		}
+		return ctrl.Result{}, errors.NewOperatorError(fmt.Errorf("updating AccountInfo to remove finalizer: %w", err), true, true)
+	}
+
+	// Remove finalizer on an org's AccountInfo after cleanup
+	if controllerutil.ContainsFinalizer(accountInfo, AccountInfoFinalizer) {
+		controllerutil.RemoveFinalizer(accountInfo, AccountInfoFinalizer)
+		if err := accountClusterClient.Update(ctx, accountInfo); err != nil {
+			return ctrl.Result{}, errors.NewOperatorError(fmt.Errorf("updating AccountInfo to remove finalizer: %w", err), true, true)
+		}
+	}
 
 	// The account info object is relevant input for other finalizers, removing the accountinfo finalizer at last
 	if len(ro.GetFinalizers()) > 1 {
@@ -110,6 +165,9 @@ func (r *AccountInfoSubroutine) Process(ctx context.Context, ro runtimeobject.Ru
 	if instance.Spec.Type == v1alpha1.AccountTypeOrg {
 		accountInfo := &v1alpha1.AccountInfo{ObjectMeta: v1.ObjectMeta{Name: DefaultAccountInfoName}}
 		if _, err := controllerutil.CreateOrPatch(ctx, accountClusterClient, accountInfo, func() error {
+			if !controllerutil.ContainsFinalizer(accountInfo, AccountInfoFinalizer) {
+				accountInfo.Finalizers = append(accountInfo.Finalizers, AccountInfoFinalizer)
+			}
 			// the .Spec.FGA.Store.ID is set from an external workspace initializer
 			accountInfo.Spec.Account = selfAccountLocation
 			accountInfo.Spec.ParentAccount = nil
@@ -135,6 +193,9 @@ func (r *AccountInfoSubroutine) Process(ctx context.Context, ro runtimeobject.Ru
 
 	accountInfo := &v1alpha1.AccountInfo{ObjectMeta: v1.ObjectMeta{Name: DefaultAccountInfoName}}
 	if _, err := controllerutil.CreateOrUpdate(ctx, accountClusterClient, accountInfo, func() error {
+		if !controllerutil.ContainsFinalizer(accountInfo, AccountInfoFinalizer) {
+			accountInfo.Finalizers = append(accountInfo.Finalizers, AccountInfoFinalizer)
+		}
 		accountInfo.Spec.Account = selfAccountLocation
 		accountInfo.Spec.ParentAccount = &parentAccountInfo.Spec.Account
 		accountInfo.Spec.Organization = parentAccountInfo.Spec.Organization

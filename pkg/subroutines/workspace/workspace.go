@@ -10,6 +10,7 @@ import (
 	"github.com/platform-mesh/golang-commons/controller/lifecycle/runtimeobject"
 	"github.com/platform-mesh/golang-commons/errors"
 	kerrors "k8s.io/apimachinery/pkg/api/errors"
+	"k8s.io/apimachinery/pkg/api/meta"
 	metav1 "k8s.io/apimachinery/pkg/apis/meta/v1"
 	"k8s.io/client-go/util/workqueue"
 	ctrl "sigs.k8s.io/controller-runtime"
@@ -62,7 +63,8 @@ func (r *WorkspaceSubroutine) Finalize(ctx context.Context, ro runtimeobject.Run
 
 	ws := kcptenancyv1alpha.Workspace{}
 	if err := clusterClient.Get(ctx, client.ObjectKey{Name: instance.Name}, &ws); err != nil {
-		if kerrors.IsNotFound(err) {
+		if kerrors.IsNotFound(err) || meta.IsNoMatchError(err) {
+			r.limiter.Forget(cn)
 			return ctrl.Result{}, nil
 		}
 		return ctrl.Result{}, errors.NewOperatorError(err, true, true)

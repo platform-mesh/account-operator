@@ -19,7 +19,6 @@ import (
 	"k8s.io/client-go/util/workqueue"
 	ctrl "sigs.k8s.io/controller-runtime"
 	"sigs.k8s.io/controller-runtime/pkg/client"
-	"sigs.k8s.io/controller-runtime/pkg/controller/controllerutil"
 	mccontext "sigs.k8s.io/multicluster-runtime/pkg/context"
 	mcmanager "sigs.k8s.io/multicluster-runtime/pkg/manager"
 
@@ -90,16 +89,6 @@ func (e *FGASubroutine) Process(ctx context.Context, ro runtimeobject.RuntimeObj
 	if err != nil {
 		log.Error().Err(err).Msg("Couldn't get Store Id")
 		return ctrl.Result{}, errors.NewOperatorError(err, true, true)
-	}
-
-	if account.Spec.Type == v1alpha1.AccountTypeOrg {
-		// Add finalizer to AccountInfo because we need it for deletion
-		if !controllerutil.ContainsFinalizer(accountInfo, fgaFinalizer) {
-			controllerutil.AddFinalizer(accountInfo, fgaFinalizer)
-			if err := accountClusterClient.Update(ctx, accountInfo); err != nil {
-				return ctrl.Result{}, errors.NewOperatorError(fmt.Errorf("updating AccountInfo with finalizer: %w", err), true, true)
-			}
-		}
 	}
 
 	if accountInfo.Spec.FGA.Store.Id == "" {
@@ -249,17 +238,6 @@ func (e *FGASubroutine) Finalize(ctx context.Context, runtimeObj runtimeobject.R
 				return ctrl.Result{}, errors.NewOperatorError(err, true, true)
 			}
 		}
-
-		if account.Spec.Type == v1alpha1.AccountTypeOrg {
-			// Remove finalizer on an org's AccountInfo after cleanup
-			if controllerutil.ContainsFinalizer(accountInfo, fgaFinalizer) {
-				controllerutil.RemoveFinalizer(accountInfo, fgaFinalizer)
-				if err := clusterClient.Update(ctx, accountInfo); err != nil {
-					return ctrl.Result{}, errors.NewOperatorError(fmt.Errorf("updating AccountInfo to remove finalizer: %w", err), true, true)
-				}
-			}
-		}
-
 	}
 	return ctrl.Result{}, nil
 }
@@ -275,8 +253,14 @@ func (e *FGASubroutine) getAccountInfo(ctx context.Context, cl client.Client) (*
 
 func (e *FGASubroutine) GetName() string { return "FGASubroutine" }
 
-func (e *FGASubroutine) Finalizers(_ runtimeobject.RuntimeObject) []string {
-	return []string{fgaFinalizer}
+func (e *FGASubroutine) Finalizers(runtimeObj runtimeobject.RuntimeObject) []string {
+	account := runtimeObj.(*v1alpha1.Account)
+
+	// Skip fga account finalization for organizations because the store is removed completely
+	if account.Spec.Type != v1alpha1.AccountTypeOrg {
+		return []string{fgaFinalizer}
+	}
+	return []string{}
 }
 
 var saRegex = regexp.MustCompile(`^system:serviceaccount:[^:]*:[^:]*$`)
