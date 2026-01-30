@@ -77,7 +77,7 @@ func (r *AccountInfoSubroutine) Process(ctx context.Context, ro runtimeobject.Ru
 
 	accountWorkspace := &kcptenancyv1alpha.Workspace{}
 	if err := clusterClient.Get(ctx, client.ObjectKey{Name: instance.Name}, accountWorkspace); err != nil {
-		return ctrl.Result{}, errors.NewOperatorError(fmt.Errorf("getting Account's Workspace: %w"), true, true)
+		return ctrl.Result{}, errors.NewOperatorError(fmt.Errorf("getting Account's Workspace: %w", err), true, true)
 	}
 
 	if accountWorkspace.Status.Phase != kcpcorev1alpha.LogicalClusterPhaseInitializing && accountWorkspace.Status.Phase != kcpcorev1alpha.LogicalClusterPhaseReady {
