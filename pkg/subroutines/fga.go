@@ -23,7 +23,7 @@ import (
 	mcmanager "sigs.k8s.io/multicluster-runtime/pkg/manager"
 
 	"github.com/platform-mesh/account-operator/api/v1alpha1"
-	"github.com/platform-mesh/account-operator/pkg/subroutines/accountinfo"
+	"github.com/platform-mesh/account-operator/pkg/subroutines/manageaccountinfo"
 )
 
 const fgaFinalizer = "account.core.platform-mesh.io/fga"
@@ -244,7 +244,7 @@ func (e *FGASubroutine) Finalize(ctx context.Context, runtimeObj runtimeobject.R
 
 func (e *FGASubroutine) getAccountInfo(ctx context.Context, cl client.Client) (*v1alpha1.AccountInfo, error) {
 	accountInfo := &v1alpha1.AccountInfo{}
-	err := cl.Get(ctx, client.ObjectKey{Name: accountinfo.DefaultAccountInfoName}, accountInfo)
+	err := cl.Get(ctx, client.ObjectKey{Name: manageaccountinfo.DefaultAccountInfoName}, accountInfo)
 	if err != nil {
 		return nil, err
 	}

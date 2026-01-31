@@ -20,7 +20,7 @@ import (
 
 	corev1alpha1 "github.com/platform-mesh/account-operator/api/v1alpha1"
 	"github.com/platform-mesh/account-operator/pkg/clusteredname"
-	"github.com/platform-mesh/account-operator/pkg/subroutines/accountinfo"
+	"github.com/platform-mesh/account-operator/pkg/subroutines/manageaccountinfo"
 	"github.com/platform-mesh/account-operator/pkg/subroutines/util"
 )
 
@@ -102,7 +102,7 @@ func (r *WorkspaceSubroutine) Process(ctx context.Context, ro runtimeobject.Runt
 	if instance.Spec.Type == corev1alpha1.AccountTypeAccount {
 
 		accountInfo := &corev1alpha1.AccountInfo{}
-		if err := clusterClient.Get(ctx, client.ObjectKey{Name: accountinfo.DefaultAccountInfoName}, accountInfo); err != nil {
+		if err := clusterClient.Get(ctx, client.ObjectKey{Name: manageaccountinfo.DefaultAccountInfoName}, accountInfo); err != nil {
 			if kerrors.IsNotFound(err) {
 				return ctrl.Result{RequeueAfter: r.limiter.When(cn)}, nil
 			}
