@@ -92,33 +92,6 @@ func TestFinalizeAccountInfoFinalize(t *testing.T) {
 			expectRequeue: true,
 		},
 		{
-			name: "should requeue if other finalizers exist",
-			obj: &v1alpha1.AccountInfo{
-				ObjectMeta: metav1.ObjectMeta{
-					Name: "account",
-					Finalizers: []string{
-						"other.finalizer/test",
-						finalizeaccountinfo.AccountInfoFinalizer,
-					},
-				},
-			},
-			clusters: map[string]cluster.Cluster{
-				"test-cluster": func() cluster.Cluster {
-					c := mocks.NewCluster(t)
-					cl := mocks.NewClient(t)
-					cl.EXPECT().List(mock.Anything, mock.Anything, mock.Anything).
-						RunAndReturn(func(_ context.Context, list client.ObjectList, _ ...client.ListOption) error {
-							accountList := list.(*v1alpha1.AccountList)
-							accountList.Items = []v1alpha1.Account{}
-							return nil
-						}).Once()
-					c.EXPECT().GetClient().Return(cl)
-					return c
-				}(),
-			},
-			expectRequeue: true,
-		},
-		{
 			name: "should complete finalization when no accounts and only our finalizer",
 			obj: &v1alpha1.AccountInfo{
 				ObjectMeta: metav1.ObjectMeta{

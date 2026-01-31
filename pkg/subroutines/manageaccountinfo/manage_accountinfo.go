@@ -27,7 +27,6 @@ var _ subroutine.Subroutine = (*ManageAccountInfoSubroutine)(nil)
 const (
 	ManageAccountInfoSubroutineName = "ManageAccountInfoSubroutine"
 	DefaultAccountInfoName          = "account"
-	AccountInfoFinalizer            = "account.core.platform-mesh.io/info"
 )
 
 type ManageAccountInfoSubroutine struct {
@@ -100,9 +99,6 @@ func (r *ManageAccountInfoSubroutine) Process(ctx context.Context, ro runtimeobj
 	if instance.Spec.Type == v1alpha1.AccountTypeOrg {
 		accountInfo := &v1alpha1.AccountInfo{ObjectMeta: ctrl.ObjectMeta{Name: DefaultAccountInfoName}}
 		if _, err := controllerutil.CreateOrPatch(ctx, accountClusterClient, accountInfo, func() error {
-			if !controllerutil.ContainsFinalizer(accountInfo, AccountInfoFinalizer) {
-				accountInfo.Finalizers = append(accountInfo.Finalizers, AccountInfoFinalizer)
-			}
 			// the .Spec.FGA.Store.ID is set from an external workspace initializer
 			accountInfo.Spec.Account = selfAccountLocation
 			accountInfo.Spec.ParentAccount = nil
@@ -126,9 +122,6 @@ func (r *ManageAccountInfoSubroutine) Process(ctx context.Context, ro runtimeobj
 
 	accountInfo := &v1alpha1.AccountInfo{ObjectMeta: ctrl.ObjectMeta{Name: DefaultAccountInfoName}}
 	if _, err := controllerutil.CreateOrUpdate(ctx, accountClusterClient, accountInfo, func() error {
-		if !controllerutil.ContainsFinalizer(accountInfo, AccountInfoFinalizer) {
-			accountInfo.Finalizers = append(accountInfo.Finalizers, AccountInfoFinalizer)
-		}
 		accountInfo.Spec.Account = selfAccountLocation
 		accountInfo.Spec.ParentAccount = &parentAccountInfo.Spec.Account
 		accountInfo.Spec.Organization = parentAccountInfo.Spec.Organization
