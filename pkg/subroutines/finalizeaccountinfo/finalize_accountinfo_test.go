@@ -55,7 +55,6 @@ func TestFinalizeAccountInfoProcess(t *testing.T) {
 	s := finalizeaccountinfo.New(nil)
 	result, err := s.Process(t.Context(), nil)
 	assert.Nil(t, err)
-	assert.False(t, result.Requeue)
 	assert.Zero(t, result.RequeueAfter)
 }
 

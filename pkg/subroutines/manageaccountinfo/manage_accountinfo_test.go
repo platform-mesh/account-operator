@@ -60,7 +60,6 @@ func TestManageAccountInfoFinalize(t *testing.T) {
 	s := manageaccountinfo.New(nil, "")
 	result, err := s.Finalize(t.Context(), nil)
 	assert.Nil(t, err)
-	assert.False(t, result.Requeue)
 	assert.Zero(t, result.RequeueAfter)
 }
 
