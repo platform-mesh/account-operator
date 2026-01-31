@@ -3,8 +3,8 @@ package finalizeaccountinfo
 import (
 	"context"
 	"fmt"
-	"time"
 
+	"github.com/platform-mesh/golang-commons/controller/lifecycle/ratelimiter"
 	"github.com/platform-mesh/golang-commons/controller/lifecycle/runtimeobject"
 	"github.com/platform-mesh/golang-commons/controller/lifecycle/subroutine"
 	"github.com/platform-mesh/golang-commons/errors"
@@ -33,8 +33,8 @@ type FinalizeAccountInfoSubroutine struct {
 }
 
 func New(mgr mcmanager.Manager) *FinalizeAccountInfoSubroutine {
-	exp := workqueue.NewTypedItemExponentialFailureRateLimiter[clusteredname.ClusteredName](1*time.Second, 120*time.Second)
-	return &FinalizeAccountInfoSubroutine{mgr: mgr, limiter: exp}
+	rl, _ := ratelimiter.NewStaticThenExponentialRateLimiter[clusteredname.ClusteredName](ratelimiter.NewConfig()) //nolint:errcheck
+	return &FinalizeAccountInfoSubroutine{mgr: mgr, limiter: rl}
 }
 
 func (r *FinalizeAccountInfoSubroutine) GetName() string {
