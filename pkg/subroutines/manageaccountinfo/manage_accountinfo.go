@@ -32,11 +32,11 @@ const (
 type ManageAccountInfoSubroutine struct {
 	mgr      mcmanager.Manager
 	serverCA string
-	limiter  workqueue.TypedRateLimiter[clusteredname.ClusteredName]
+	limiter  workqueue.TypedRateLimiter[*v1alpha1.Account]
 }
 
 func New(mgr mcmanager.Manager, serverCA string) *ManageAccountInfoSubroutine {
-	exp := workqueue.NewTypedItemExponentialFailureRateLimiter[clusteredname.ClusteredName](1*time.Second, 120*time.Second)
+	exp := workqueue.NewTypedItemExponentialFailureRateLimiter[*v1alpha1.Account](1*time.Second, 120*time.Second)
 	return &ManageAccountInfoSubroutine{mgr: mgr, serverCA: serverCA, limiter: exp}
 }
 
@@ -71,7 +71,7 @@ func (r *ManageAccountInfoSubroutine) Process(ctx context.Context, ro runtimeobj
 
 	if accountWorkspace.Status.Phase != kcpcorev1alpha.LogicalClusterPhaseInitializing && accountWorkspace.Status.Phase != kcpcorev1alpha.LogicalClusterPhaseReady {
 		log.Info().Msg("workspace is not ready yet, retry")
-		return ctrl.Result{RequeueAfter: r.limiter.When(cn)}, nil
+		return ctrl.Result{RequeueAfter: r.limiter.When(instance)}, nil
 	}
 
 	// Retrieve logical cluster
@@ -109,7 +109,7 @@ func (r *ManageAccountInfoSubroutine) Process(ctx context.Context, ro runtimeobj
 			return ctrl.Result{}, errors.NewOperatorError(err, true, true)
 		}
 
-		r.limiter.Forget(cn)
+		r.limiter.Forget(instance)
 		return ctrl.Result{}, nil
 	}
 
@@ -133,7 +133,7 @@ func (r *ManageAccountInfoSubroutine) Process(ctx context.Context, ro runtimeobj
 		return ctrl.Result{}, errors.NewOperatorError(fmt.Errorf("creating or updating AccountInfo %w", err), true, true)
 	}
 
-	r.limiter.Forget(cn)
+	r.limiter.Forget(instance)
 	return ctrl.Result{}, nil
 }
 

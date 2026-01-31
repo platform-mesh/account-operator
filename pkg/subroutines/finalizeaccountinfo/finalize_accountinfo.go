@@ -17,7 +17,6 @@ import (
 	mcmanager "sigs.k8s.io/multicluster-runtime/pkg/manager"
 
 	"github.com/platform-mesh/account-operator/api/v1alpha1"
-	"github.com/platform-mesh/account-operator/pkg/clusteredname"
 )
 
 var _ subroutine.Subroutine = (*FinalizeAccountInfoSubroutine)(nil)
@@ -29,11 +28,11 @@ const (
 
 type FinalizeAccountInfoSubroutine struct {
 	mgr     mcmanager.Manager
-	limiter workqueue.TypedRateLimiter[clusteredname.ClusteredName]
+	limiter workqueue.TypedRateLimiter[*v1alpha1.AccountInfo]
 }
 
 func New(mgr mcmanager.Manager) *FinalizeAccountInfoSubroutine {
-	rl, _ := ratelimiter.NewStaticThenExponentialRateLimiter[clusteredname.ClusteredName](ratelimiter.NewConfig()) //nolint:errcheck
+	rl, _ := ratelimiter.NewStaticThenExponentialRateLimiter[*v1alpha1.AccountInfo](ratelimiter.NewConfig()) //nolint:errcheck
 	return &FinalizeAccountInfoSubroutine{mgr: mgr, limiter: rl}
 }
 
@@ -50,7 +49,7 @@ func (r *FinalizeAccountInfoSubroutine) Process(_ context.Context, _ runtimeobje
 }
 
 func (r *FinalizeAccountInfoSubroutine) Finalize(ctx context.Context, ro runtimeobject.RuntimeObject) (ctrl.Result, errors.OperatorError) {
-	cn := clusteredname.MustGetClusteredName(ctx, ro)
+	instance := ro.(*v1alpha1.AccountInfo)
 	log := logger.LoadLoggerFromContext(ctx)
 
 	cluster, err := r.mgr.ClusterFromContext(ctx)
@@ -68,11 +67,11 @@ func (r *FinalizeAccountInfoSubroutine) Finalize(ctx context.Context, ro runtime
 
 	if len(list.Items) > 0 {
 		log.Info().Msgf("Found %d accounts, cannot finalize AccountInfo yet", len(list.Items))
-		return ctrl.Result{RequeueAfter: r.limiter.When(cn)}, nil
+		return ctrl.Result{RequeueAfter: r.limiter.When(instance)}, nil
 	}
 
 	log.Info().Msg("No accounts found in cluster, AccountInfo can be finalized")
 
-	r.limiter.Forget(cn)
+	r.limiter.Forget(instance)
 	return ctrl.Result{}, nil
 }
