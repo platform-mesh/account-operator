@@ -22,7 +22,8 @@ func SetupAccountWebhookWithManager(mgr ctrl.Manager, denyList []string) error {
 
 type AccountDefaulter struct{}
 
-// Default implements admission.CustomDefaulter.
+// Default implements admission.CustomDefaulter. Sets the creator to the
+// request's username in case it is not defined.
 func (a *AccountDefaulter) Default(ctx context.Context, obj runtime.Object) error {
 	account := obj.(*Account)
 
@@ -31,7 +32,9 @@ func (a *AccountDefaulter) Default(ctx context.Context, obj runtime.Object) erro
 		return err
 	}
 
-	account.Spec.Creator = &req.UserInfo.Username
+	if account.Spec.Creator == nil || *account.Spec.Creator == "" {
+		account.Spec.Creator = &req.UserInfo.Username
+	}
 
 	return nil
 }
