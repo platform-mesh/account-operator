@@ -3,7 +3,7 @@ package workspacetype
 import (
 	"context"
 
-	kcptenancyv1alpha "github.com/kcp-dev/kcp/sdk/apis/tenancy/v1alpha1"
+	kcptenancyv1alpha "github.com/kcp-dev/sdk/apis/tenancy/v1alpha1"
 	"github.com/platform-mesh/golang-commons/controller/lifecycle/runtimeobject"
 	"github.com/platform-mesh/golang-commons/controller/lifecycle/subroutine"
 	"github.com/platform-mesh/golang-commons/errors"
@@ -52,15 +52,15 @@ func (w *WorkspaceTypeSubroutine) Process(ctx context.Context, ro runtimeobject.
 	orgWorkspaceTypeName := util.GetWorkspaceTypeName(instance.Name, instance.Spec.Type)
 	accountWorkspaceTypeName := util.GetWorkspaceTypeName(instance.Name, v1alpha1.AccountTypeAccount)
 
-	orgWst := generateOrgWorkspaceType(instance, orgWorkspaceTypeName, accountWorkspaceTypeName)
-	accWst := generateAccountWorkspaceType(instance, orgWorkspaceTypeName, accountWorkspaceTypeName)
+	orgWst := generateOrgWorkspaceType(orgWorkspaceTypeName, accountWorkspaceTypeName)
+	accWst := generateAccountWorkspaceType(orgWorkspaceTypeName, accountWorkspaceTypeName)
 
-	if err := w.createOrUpdateWorkspaceType(ctx, orgWst); err != nil { // coverage-ignore
+	if err := w.createOrPatchWorkspaceType(ctx, orgWst); err != nil { // coverage-ignore
 		log.Error().Err(err).Str("name", orgWst.Name).Msg("failed to create or update org workspace type")
 		return ctrl.Result{}, errors.NewOperatorError(err, true, true)
 	}
 
-	if err := w.createOrUpdateWorkspaceType(ctx, accWst); err != nil { // coverage-ignore
+	if err := w.createOrPatchWorkspaceType(ctx, accWst); err != nil { // coverage-ignore
 		log.Error().Err(err).Str("name", accWst.Name).Msg("failed to create or update account workspace type")
 		return ctrl.Result{}, errors.NewOperatorError(err, true, true)
 	}
@@ -68,11 +68,13 @@ func (w *WorkspaceTypeSubroutine) Process(ctx context.Context, ro runtimeobject.
 	return ctrl.Result{}, nil
 }
 
-func (w *WorkspaceTypeSubroutine) createOrUpdateWorkspaceType(ctx context.Context, desiredWst kcptenancyv1alpha.WorkspaceType) error {
-
+func (w *WorkspaceTypeSubroutine) createOrPatchWorkspaceType(ctx context.Context, desiredWst kcptenancyv1alpha.WorkspaceType) error {
 	wst := &kcptenancyv1alpha.WorkspaceType{ObjectMeta: metav1.ObjectMeta{Name: desiredWst.Name}}
-	_, err := controllerutil.CreateOrUpdate(ctx, w.orgsClient, wst, func() error {
-		wst.Spec = desiredWst.Spec
+	_, err := controllerutil.CreateOrPatch(ctx, w.orgsClient, wst, func() error {
+		wst.Spec.Extend = desiredWst.Spec.Extend
+		wst.Spec.DefaultChildWorkspaceType = desiredWst.Spec.DefaultChildWorkspaceType
+		wst.Spec.LimitAllowedParents = desiredWst.Spec.LimitAllowedParents
+		wst.Spec.LimitAllowedChildren = desiredWst.Spec.LimitAllowedChildren
 		return nil
 	})
 	return err
@@ -118,7 +120,7 @@ func (w *WorkspaceTypeSubroutine) Finalizers(obj runtimeobject.RuntimeObject) []
 	return []string{WorkspaceTypeSubroutineFinalizer}
 }
 
-func generateOrgWorkspaceType(instance *v1alpha1.Account, orgWorkspaceTypeName, accountWorkspaceTypeName string) kcptenancyv1alpha.WorkspaceType {
+func generateOrgWorkspaceType(orgWorkspaceTypeName, accountWorkspaceTypeName string) kcptenancyv1alpha.WorkspaceType {
 	return kcptenancyv1alpha.WorkspaceType{
 		ObjectMeta: metav1.ObjectMeta{Name: orgWorkspaceTypeName},
 		Spec: kcptenancyv1alpha.WorkspaceTypeSpec{
@@ -150,16 +152,11 @@ func generateOrgWorkspaceType(instance *v1alpha1.Account, orgWorkspaceTypeName, 
 					},
 				},
 			},
-			AuthenticationConfigurations: []kcptenancyv1alpha.AuthenticationConfigurationReference{
-				{
-					Name: instance.Name,
-				},
-			},
 		},
 	}
 }
 
-func generateAccountWorkspaceType(instance *v1alpha1.Account, orgWorkspaceTypeName, accountWorkspaceTypeName string) kcptenancyv1alpha.WorkspaceType {
+func generateAccountWorkspaceType(orgWorkspaceTypeName, accountWorkspaceTypeName string) kcptenancyv1alpha.WorkspaceType {
 	return kcptenancyv1alpha.WorkspaceType{
 		ObjectMeta: metav1.ObjectMeta{Name: accountWorkspaceTypeName},
 		Spec: kcptenancyv1alpha.WorkspaceTypeSpec{
@@ -191,11 +188,6 @@ func generateAccountWorkspaceType(instance *v1alpha1.Account, orgWorkspaceTypeNa
 						Name: kcptenancyv1alpha.WorkspaceTypeName(accountWorkspaceTypeName),
 						Path: orgsWorkspacePath,
 					},
-				},
-			},
-			AuthenticationConfigurations: []kcptenancyv1alpha.AuthenticationConfigurationReference{
-				{
-					Name: instance.Name,
 				},
 			},
 		},

@@ -7,9 +7,10 @@ import (
 	"strings"
 	"time"
 
-	kcpcorev1alpha "github.com/kcp-dev/kcp/sdk/apis/core/v1alpha1"
-	kcptenancyv1alpha "github.com/kcp-dev/kcp/sdk/apis/tenancy/v1alpha1"
+	kcpcorev1alpha "github.com/kcp-dev/sdk/apis/core/v1alpha1"
+	kcptenancyv1alpha "github.com/kcp-dev/sdk/apis/tenancy/v1alpha1"
 	openfgav1 "github.com/openfga/api/proto/openfga/v1"
+	"github.com/platform-mesh/golang-commons/controller/lifecycle/ratelimiter"
 	"github.com/platform-mesh/golang-commons/controller/lifecycle/runtimeobject"
 	"github.com/platform-mesh/golang-commons/errors"
 	"github.com/platform-mesh/golang-commons/fga/helpers"
@@ -22,9 +23,10 @@ import (
 	mcmanager "sigs.k8s.io/multicluster-runtime/pkg/manager"
 
 	"github.com/platform-mesh/account-operator/api/v1alpha1"
-	"github.com/platform-mesh/account-operator/pkg/clusteredname"
-	"github.com/platform-mesh/account-operator/pkg/subroutines/accountinfo"
+	"github.com/platform-mesh/account-operator/pkg/subroutines/manageaccountinfo"
 )
+
+const fgaFinalizer = "account.core.platform-mesh.io/fga"
 
 type FGASubroutine struct {
 	fgaClient       openfgav1.OpenFGAServiceClient
@@ -33,24 +35,26 @@ type FGASubroutine struct {
 	parentRelation  string
 	creatorRelation string
 
-	limiter workqueue.TypedRateLimiter[clusteredname.ClusteredName]
+	limiter workqueue.TypedRateLimiter[*v1alpha1.Account]
 }
 
 func NewFGASubroutine(mgr mcmanager.Manager, fgaClient openfgav1.OpenFGAServiceClient, creatorRelation, parentRelation, objectType string) *FGASubroutine {
+	rcfg := ratelimiter.NewConfig()
+	rcfg.StaticWindow = 5 * time.Minute
+	rcfg.ExponentialMaxBackoff = 15 * time.Minute
+	limiter, _ := ratelimiter.NewStaticThenExponentialRateLimiter[*v1alpha1.Account](rcfg) //nolint:errcheck
 	return &FGASubroutine{
 		mgr:             mgr,
 		fgaClient:       fgaClient,
 		creatorRelation: creatorRelation,
 		parentRelation:  parentRelation,
 		objectType:      objectType,
-		limiter:         workqueue.NewTypedItemExponentialFailureRateLimiter[clusteredname.ClusteredName](1*time.Second, 120*time.Second),
+		limiter:         limiter,
 	}
 }
 
 func (e *FGASubroutine) Process(ctx context.Context, ro runtimeobject.RuntimeObject) (ctrl.Result, errors.OperatorError) {
 	account := ro.(*v1alpha1.Account)
-	cn := clusteredname.MustGetClusteredName(ctx, ro)
-
 	log := logger.LoadLoggerFromContext(ctx)
 	log.Debug().Msg("Starting creator subroutine process() function")
 
@@ -72,7 +76,7 @@ func (e *FGASubroutine) Process(ctx context.Context, ro runtimeobject.RuntimeObj
 
 	if accountWorkspace.Status.Phase != kcpcorev1alpha.LogicalClusterPhaseReady {
 		log.Info().Msg("workspace is not ready yet, retry")
-		return ctrl.Result{RequeueAfter: e.limiter.When(cn)}, nil
+		return ctrl.Result{RequeueAfter: e.limiter.When(account)}, nil
 	}
 
 	accountCluster, err := e.mgr.GetCluster(ctx, accountWorkspace.Spec.Cluster)
@@ -157,7 +161,7 @@ func (e *FGASubroutine) Process(ctx context.Context, ro runtimeobject.RuntimeObj
 		}
 	}
 
-	e.limiter.Forget(cn)
+	e.limiter.Forget(account)
 	return ctrl.Result{}, nil
 }
 
@@ -233,16 +237,14 @@ func (e *FGASubroutine) Finalize(ctx context.Context, runtimeObj runtimeobject.R
 				log.Error().Err(err).Msg("Open FGA write failed")
 				return ctrl.Result{}, errors.NewOperatorError(err, true, true)
 			}
-
 		}
 	}
-
 	return ctrl.Result{}, nil
 }
 
 func (e *FGASubroutine) getAccountInfo(ctx context.Context, cl client.Client) (*v1alpha1.AccountInfo, error) {
 	accountInfo := &v1alpha1.AccountInfo{}
-	err := cl.Get(ctx, client.ObjectKey{Name: accountinfo.DefaultAccountInfoName}, accountInfo)
+	err := cl.Get(ctx, client.ObjectKey{Name: manageaccountinfo.DefaultAccountInfoName}, accountInfo)
 	if err != nil {
 		return nil, err
 	}
@@ -251,8 +253,14 @@ func (e *FGASubroutine) getAccountInfo(ctx context.Context, cl client.Client) (*
 
 func (e *FGASubroutine) GetName() string { return "FGASubroutine" }
 
-func (e *FGASubroutine) Finalizers(_ runtimeobject.RuntimeObject) []string {
-	return []string{"account.core.platform-mesh.io/fga"}
+func (e *FGASubroutine) Finalizers(runtimeObj runtimeobject.RuntimeObject) []string {
+	account := runtimeObj.(*v1alpha1.Account)
+
+	// Skip fga account finalization for organizations because the store is removed completely
+	if account.Spec.Type != v1alpha1.AccountTypeOrg {
+		return []string{fgaFinalizer}
+	}
+	return []string{}
 }
 
 var saRegex = regexp.MustCompile(`^system:serviceaccount:[^:]*:[^:]*$`)
