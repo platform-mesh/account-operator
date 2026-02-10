@@ -3,7 +3,6 @@ package controller
 import (
 	"context"
 
-	openfgav1 "github.com/openfga/api/proto/openfga/v1"
 	platformmeshconfig "github.com/platform-mesh/golang-commons/config"
 	"github.com/platform-mesh/golang-commons/controller/lifecycle/builder"
 	mclifecycle "github.com/platform-mesh/golang-commons/controller/lifecycle/multicluster"
@@ -37,7 +36,7 @@ type AccountReconciler struct {
 	lifecycle *mclifecycle.LifecycleManager
 }
 
-func NewAccountReconciler(log *logger.Logger, mgr mcmanager.Manager, cfg config.OperatorConfig, orgsClient client.Client, fgaClient openfgav1.OpenFGAServiceClient) *AccountReconciler { // coverage-ignore
+func NewAccountReconciler(log *logger.Logger, mgr mcmanager.Manager, cfg config.OperatorConfig, orgsClient client.Client) *AccountReconciler { // coverage-ignore
 	localMgr := mgr.GetLocalManager()
 	localCfg := rest.CopyConfig(localMgr.GetConfig())
 	serverCA := string(localCfg.CAData)
@@ -57,7 +56,7 @@ func NewAccountReconciler(log *logger.Logger, mgr mcmanager.Manager, cfg config.
 	}
 
 	if cfg.Subroutines.FGA.Enabled {
-		subs = append(subs, subroutines.NewFGASubroutine(mgr, fgaClient, cfg.Subroutines.FGA.CreatorRelation, cfg.Subroutines.FGA.ParentRelation, cfg.Subroutines.FGA.ObjectType))
+		subs = append(subs, subroutines.NewFGASubroutine(mgr, orgsClient, cfg.Subroutines.FGA.CreatorRelation, cfg.Subroutines.FGA.ParentRelation, cfg.Subroutines.FGA.ObjectType))
 	}
 
 	return &AccountReconciler{
