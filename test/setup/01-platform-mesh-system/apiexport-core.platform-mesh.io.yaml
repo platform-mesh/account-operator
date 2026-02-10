@@ -17,12 +17,12 @@ spec:
   resources:
   - group: core.platform-mesh.io
     name: accountinfos
-    schema: v260126-7c674ee.accountinfos.core.platform-mesh.io
+    schema: v260206-c3b6d8d.accountinfos.core.platform-mesh.io
     storage:
       crd: {}
   - group: core.platform-mesh.io
     name: accounts
-    schema: v260109-82344be.accounts.core.platform-mesh.io
+    schema: v260206-c3b6d8d.accounts.core.platform-mesh.io
     storage:
       crd: {}
 status: {}
