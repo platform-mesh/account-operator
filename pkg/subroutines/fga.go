@@ -112,8 +112,6 @@ func (e *FGASubroutine) Finalize(ctx context.Context, runtimeObj runtimeobject.R
 		return ctrl.Result{}, errors.NewOperatorError(fmt.Errorf("updating Store with tuples: %w", err), true, true)
 	}
 
-	// todo(simontesar): wait for deletion
-
 	return ctrl.Result{}, nil
 }
 
