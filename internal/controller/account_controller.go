@@ -22,6 +22,7 @@ import (
 	"github.com/platform-mesh/account-operator/pkg/subroutines"
 	"github.com/platform-mesh/account-operator/pkg/subroutines/manageaccountinfo"
 	"github.com/platform-mesh/account-operator/pkg/subroutines/workspace"
+	"github.com/platform-mesh/account-operator/pkg/subroutines/workspaceready"
 	"github.com/platform-mesh/account-operator/pkg/subroutines/workspacetype"
 )
 
@@ -57,6 +58,10 @@ func NewAccountReconciler(log *logger.Logger, mgr mcmanager.Manager, cfg config.
 
 	if cfg.Subroutines.FGA.Enabled {
 		subs = append(subs, subroutines.NewFGASubroutine(mgr, orgsClient, cfg.Subroutines.FGA.CreatorRelation, cfg.Subroutines.FGA.ParentRelation, cfg.Subroutines.FGA.ObjectType))
+	}
+
+	if cfg.Subroutines.WorkspaceReady.Enabled {
+		subs = append(subs, workspaceready.New(mgr))
 	}
 
 	return &AccountReconciler{

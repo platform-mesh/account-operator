@@ -16,6 +16,9 @@ type OperatorConfig struct {
 		Workspace struct {
 			Enabled bool `mapstructure:"subroutines-workspace-enabled" default:"true"`
 		} `mapstructure:",squash"`
+		WorkspaceReady struct {
+			Enabled bool `mapstructure:"subroutines-workspace-ready-enabled" default:"true"`
+		} `mapstructure:",squash"`
 		AccountInfo struct {
 			Enabled bool `mapstructure:"subroutines-account-info-enabled" default:"true"`
 		} `mapstructure:",squash"`
