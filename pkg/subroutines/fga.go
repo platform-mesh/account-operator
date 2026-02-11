@@ -104,7 +104,10 @@ func (e *FGASubroutine) Finalize(ctx context.Context, runtimeObj runtimeobject.R
 		return ctrl.Result{}, errors.NewOperatorError(fmt.Errorf("getting parent organisation's Store: %w", err), true, true)
 	}
 
-	tuples := fga.TuplesForAccount(*account, *accountAccountInfo, e.creatorRelation, e.parentRelation, e.objectType)
+	tuples, err := fga.TuplesForAccount(*account, *accountAccountInfo, e.creatorRelation, e.parentRelation, e.objectType)
+	if err != nil {
+		return ctrl.Result{}, errors.NewOperatorError(fmt.Errorf("building tuples for account: %w", err), true, true)
+	}
 	st.Spec.Tuples = slices.DeleteFunc(st.Spec.Tuples, func(t securityv1alpha1.Tuple) bool {
 		return slices.Contains(tuples, t)
 	})
