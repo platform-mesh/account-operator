@@ -13,7 +13,7 @@ require (
 	github.com/kcp-dev/logicalcluster/v3 v3.0.5
 	github.com/kcp-dev/multicluster-provider v0.4.0
 	github.com/kcp-dev/sdk v0.30.0
-	github.com/openfga/api/proto v0.0.0-20251105142303-feed3db3d69d
+	github.com/openfga/api/proto v0.0.0-20260122181957-618e7e0a4878
 	github.com/platform-mesh/golang-commons v0.9.14
 	github.com/spf13/cobra v1.10.2
 	github.com/spf13/viper v1.21.0
