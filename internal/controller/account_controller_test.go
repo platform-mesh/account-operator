@@ -37,7 +37,6 @@ import (
 	"github.com/platform-mesh/account-operator/internal/config"
 	"github.com/platform-mesh/account-operator/internal/controller"
 	"github.com/platform-mesh/account-operator/pkg/subroutines/manageaccountinfo"
-	"github.com/platform-mesh/account-operator/pkg/subroutines/mocks"
 )
 
 const (
@@ -100,9 +99,8 @@ func (s *AccountTestSuite) SetupSuite() {
 	cfg.Subroutines.AccountInfo.Enabled = true
 	cfg.Subroutines.WorkspaceType.Enabled = true
 	cfg.Kcp.ProviderWorkspace = core.RootCluster.Path().String()
-	fgaMock := mocks.NewOpenFGAServiceClient(s.T())
 	dCfg := &platformmeshconfig.CommonServiceConfig{}
-	accountReconciler := controller.NewAccountReconciler(logger, s.mgr, cfg, s.rootOrgsClient, fgaMock)
+	accountReconciler := controller.NewAccountReconciler(logger, s.mgr, cfg, s.rootOrgsClient)
 	s.Require().NoError(accountReconciler.SetupWithManager(s.mgr, dCfg, logger))
 	s.startManager()
 
