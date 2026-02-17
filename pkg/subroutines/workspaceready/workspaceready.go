@@ -3,10 +3,10 @@ package workspaceready
 import (
 	"context"
 	"fmt"
-	"time"
 
 	kcpcorev1alpha "github.com/kcp-dev/sdk/apis/core/v1alpha1"
 	kcptenancyv1alpha "github.com/kcp-dev/sdk/apis/tenancy/v1alpha1"
+	"github.com/platform-mesh/golang-commons/controller/lifecycle/ratelimiter"
 	"github.com/platform-mesh/golang-commons/controller/lifecycle/runtimeobject"
 	"github.com/platform-mesh/golang-commons/controller/lifecycle/subroutine"
 	"github.com/platform-mesh/golang-commons/errors"
@@ -37,8 +37,9 @@ type WorkspaceReadySubroutine struct {
 
 // New returns a new WorkspaceReadySubroutine.
 func New(mgr mcmanager.Manager) *WorkspaceReadySubroutine {
-	exp := workqueue.NewTypedItemExponentialFailureRateLimiter[*v1alpha1.Account](1*time.Second, 120*time.Second)
-	return &WorkspaceReadySubroutine{mgr: mgr, limiter: exp}
+	limiter, _ := ratelimiter.NewStaticThenExponentialRateLimiter[*v1alpha1.Account](ratelimiter.NewConfig()) //nolint:errcheck
+
+	return &WorkspaceReadySubroutine{mgr: mgr, limiter: limiter}
 }
 
 func (r *WorkspaceReadySubroutine) GetName() string {
