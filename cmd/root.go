@@ -4,7 +4,6 @@ import (
 	kcpapisv1alpha1 "github.com/kcp-dev/sdk/apis/apis/v1alpha1"
 	kcpcorev1alpha1 "github.com/kcp-dev/sdk/apis/core/v1alpha1"
 	kcptenancyv1alphav1 "github.com/kcp-dev/sdk/apis/tenancy/v1alpha1"
-	securityv1alpha1 "github.com/platform-mesh/security-operator/api/v1alpha1"
 
 	platformmeshcontext "github.com/platform-mesh/golang-commons/config"
 	"github.com/platform-mesh/golang-commons/logger"
@@ -36,7 +35,6 @@ func init() {
 	utilruntime.Must(kcpapisv1alpha1.AddToScheme(scheme))
 	utilruntime.Must(kcpcorev1alpha1.AddToScheme(scheme))
 	utilruntime.Must(kcptenancyv1alphav1.AddToScheme(scheme))
-	utilruntime.Must(securityv1alpha1.AddToScheme(scheme))
 	//+kubebuilder:scaffold:scheme
 
 	rootCmd.AddCommand(operatorCmd)
