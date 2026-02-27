@@ -3,8 +3,8 @@ module github.com/platform-mesh/account-operator
 go 1.25.7
 
 replace (
-	k8s.io/api => k8s.io/api v0.35.1
-	k8s.io/apimachinery => k8s.io/apimachinery v0.35.1
+	k8s.io/api => k8s.io/api v0.35.2
+	k8s.io/apimachinery => k8s.io/apimachinery v0.35.2
 	k8s.io/client-go => k8s.io/client-go v0.35.1
 )
 
@@ -18,10 +18,10 @@ require (
 	github.com/spf13/viper v1.21.0
 	github.com/stretchr/testify v1.11.1
 	go.opentelemetry.io/contrib/instrumentation/net/http/otelhttp v0.65.0
-	k8s.io/api v0.35.1
-	k8s.io/apiextensions-apiserver v0.35.1
-	k8s.io/apimachinery v0.35.1
-	k8s.io/client-go v0.35.1
+	k8s.io/api v0.35.2
+	k8s.io/apiextensions-apiserver v0.35.2
+	k8s.io/apimachinery v0.35.2
+	k8s.io/client-go v0.35.2
 	k8s.io/utils v0.0.0-20260210185600-b8788abfbbc2
 	sigs.k8s.io/controller-runtime v0.23.1
 	sigs.k8s.io/multicluster-runtime v0.23.1
