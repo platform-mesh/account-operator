@@ -11,7 +11,7 @@ replace (
 require (
 	github.com/go-logr/logr v1.4.3
 	github.com/kcp-dev/logicalcluster/v3 v3.0.5
-	github.com/kcp-dev/multicluster-provider v0.5.0
+	github.com/kcp-dev/multicluster-provider v0.5.1
 	github.com/kcp-dev/sdk v0.30.0
 	github.com/platform-mesh/golang-commons v0.13.0
 	github.com/spf13/cobra v1.10.2
