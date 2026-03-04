@@ -15,7 +15,6 @@ import (
 	ctrl "sigs.k8s.io/controller-runtime"
 
 	kcptenancyv1alpha "github.com/kcp-dev/sdk/apis/tenancy/v1alpha1"
-	platformmeshconfig "github.com/platform-mesh/golang-commons/config"
 	platformmeshcontext "github.com/platform-mesh/golang-commons/context"
 	"github.com/platform-mesh/golang-commons/logger"
 	"github.com/stretchr/testify/suite"
@@ -98,9 +97,8 @@ func (s *AccountTestSuite) SetupSuite() {
 	cfg.Subroutines.AccountInfo.Enabled = true
 	cfg.Subroutines.WorkspaceType.Enabled = true
 	cfg.Kcp.ProviderWorkspace = core.RootCluster.Path().String()
-	dCfg := &platformmeshconfig.CommonServiceConfig{}
-	accountReconciler := controller.NewAccountReconciler(logger, s.mgr, cfg, s.rootOrgsClient)
-	s.Require().NoError(accountReconciler.SetupWithManager(s.mgr, dCfg, logger))
+	accountReconciler := controller.NewAccountReconciler(s.mgr, cfg, s.rootOrgsClient)
+	s.Require().NoError(accountReconciler.SetupWithManager(s.mgr))
 	s.startManager()
 
 	s.setupDefaultOrg()

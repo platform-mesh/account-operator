@@ -3,8 +3,6 @@ package controller
 import (
 	"context"
 
-	platformmeshconfig "github.com/platform-mesh/golang-commons/config"
-	"github.com/platform-mesh/golang-commons/logger"
 	"github.com/platform-mesh/subroutines"
 	"github.com/platform-mesh/subroutines/conditions"
 	"github.com/platform-mesh/subroutines/lifecycle"
@@ -34,7 +32,7 @@ type AccountReconciler struct {
 	lifecycle *lifecycle.Lifecycle
 }
 
-func NewAccountReconciler(_ *logger.Logger, mgr mcmanager.Manager, cfg config.OperatorConfig, orgsClient client.Client) *AccountReconciler { // coverage-ignore
+func NewAccountReconciler(mgr mcmanager.Manager, cfg config.OperatorConfig, orgsClient client.Client) *AccountReconciler { // coverage-ignore
 	localMgr := mgr.GetLocalManager()
 	localCfg := rest.CopyConfig(localMgr.GetConfig())
 	serverCA := string(localCfg.CAData)
@@ -66,7 +64,7 @@ func NewAccountReconciler(_ *logger.Logger, mgr mcmanager.Manager, cfg config.Op
 	}
 }
 
-func (r *AccountReconciler) SetupWithManager(mgr mcmanager.Manager, _ *platformmeshconfig.CommonServiceConfig, _ *logger.Logger, eventPredicates ...predicate.Predicate) error { // coverage-ignore
+func (r *AccountReconciler) SetupWithManager(mgr mcmanager.Manager, eventPredicates ...predicate.Predicate) error { // coverage-ignore
 	builder := mcbuilder.ControllerManagedBy(mgr).
 		Named(accountReconcilerName).
 		For(&v1alpha1.Account{})

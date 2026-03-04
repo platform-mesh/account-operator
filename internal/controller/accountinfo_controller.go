@@ -3,8 +3,6 @@ package controller
 import (
 	"context"
 
-	platformmeshconfig "github.com/platform-mesh/golang-commons/config"
-	"github.com/platform-mesh/golang-commons/logger"
 	"github.com/platform-mesh/subroutines"
 	"github.com/platform-mesh/subroutines/lifecycle"
 	"sigs.k8s.io/controller-runtime/pkg/client"
@@ -29,7 +27,7 @@ type AccountInfoReconciler struct {
 	lifecycle *lifecycle.Lifecycle
 }
 
-func NewAccountInfoReconciler(_ *logger.Logger, mgr mcmanager.Manager, cfg config.OperatorConfig) *AccountInfoReconciler { // coverage-ignore
+func NewAccountInfoReconciler(mgr mcmanager.Manager, cfg config.OperatorConfig) *AccountInfoReconciler { // coverage-ignore
 	subs := []subroutines.Subroutine{}
 
 	if cfg.Controllers.AccountInfo.Enabled {
@@ -44,7 +42,7 @@ func NewAccountInfoReconciler(_ *logger.Logger, mgr mcmanager.Manager, cfg confi
 	}
 }
 
-func (r *AccountInfoReconciler) SetupWithManager(mgr mcmanager.Manager, _ *platformmeshconfig.CommonServiceConfig, _ *logger.Logger, eventPredicates ...predicate.Predicate) error { // coverage-ignore
+func (r *AccountInfoReconciler) SetupWithManager(mgr mcmanager.Manager, eventPredicates ...predicate.Predicate) error { // coverage-ignore
 	builder := mcbuilder.ControllerManagedBy(mgr).
 		Named(accountInfoReconcilerName).
 		For(&v1alpha1.AccountInfo{})

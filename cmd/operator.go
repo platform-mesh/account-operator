@@ -128,14 +128,14 @@ func RunController(_ *cobra.Command, _ []string) { // coverage-ignore
 		log.Fatal().Err(err).Msg("unable to create orgs client")
 	}
 
-	accountReconciler := controller.NewAccountReconciler(log, mgr, operatorCfg, orgsClient)
-	if err := accountReconciler.SetupWithManager(mgr, defaultCfg, log); err != nil {
+	accountReconciler := controller.NewAccountReconciler(mgr, operatorCfg, orgsClient)
+	if err := accountReconciler.SetupWithManager(mgr); err != nil {
 		log.Fatal().Err(err).Str("controller", "Account").Msg("unable to create controller")
 	}
 
 	if operatorCfg.Controllers.AccountInfo.Enabled {
-		accountInfoReconciler := controller.NewAccountInfoReconciler(log, mgr, operatorCfg)
-		if err := accountInfoReconciler.SetupWithManager(mgr, defaultCfg, log); err != nil {
+		accountInfoReconciler := controller.NewAccountInfoReconciler(mgr, operatorCfg)
+		if err := accountInfoReconciler.SetupWithManager(mgr); err != nil {
 			log.Fatal().Err(err).Str("controller", "AccountInfo").Msg("unable to create controller")
 		}
 	}
