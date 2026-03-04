@@ -5,6 +5,7 @@ import (
 	"fmt"
 	"testing"
 
+	"github.com/go-logr/logr/testr"
 	kcpcorev1alpha "github.com/kcp-dev/sdk/apis/core/v1alpha1"
 	kcptenancyv1alpha "github.com/kcp-dev/sdk/apis/tenancy/v1alpha1"
 	"github.com/stretchr/testify/assert"
@@ -15,6 +16,7 @@ import (
 	"k8s.io/client-go/rest"
 	"sigs.k8s.io/controller-runtime/pkg/client"
 	"sigs.k8s.io/controller-runtime/pkg/cluster"
+	crlog "sigs.k8s.io/controller-runtime/pkg/log"
 	mccontext "sigs.k8s.io/multicluster-runtime/pkg/context"
 	mcmanager "sigs.k8s.io/multicluster-runtime/pkg/manager"
 	"sigs.k8s.io/multicluster-runtime/pkg/multicluster"
@@ -22,9 +24,6 @@ import (
 	"github.com/platform-mesh/account-operator/api/v1alpha1"
 	"github.com/platform-mesh/account-operator/pkg/subroutines/manageaccountinfo"
 	"github.com/platform-mesh/account-operator/pkg/subroutines/mocks"
-	"github.com/platform-mesh/golang-commons/controller/lifecycle/runtimeobject"
-	"github.com/platform-mesh/golang-commons/logger"
-	"github.com/platform-mesh/golang-commons/logger/testlogger"
 )
 
 var _ multicluster.Provider = &Provider{}
@@ -52,17 +51,6 @@ func TestManageAccountInfoGetName(t *testing.T) {
 	assert.Equal(t, manageaccountinfo.ManageAccountInfoSubroutineName, (&manageaccountinfo.ManageAccountInfoSubroutine{}).GetName())
 }
 
-func TestManageAccountInfoFinalizers(t *testing.T) {
-	assert.Equal(t, []string{}, (&manageaccountinfo.ManageAccountInfoSubroutine{}).Finalizers(nil))
-}
-
-func TestManageAccountInfoFinalize(t *testing.T) {
-	s := manageaccountinfo.New(nil, "")
-	result, err := s.Finalize(t.Context(), nil)
-	assert.Nil(t, err)
-	assert.Zero(t, result.RequeueAfter)
-}
-
 func TestManageAccountInfoProcess(t *testing.T) {
 	accountObj := func(tp v1alpha1.AccountType) *v1alpha1.Account {
 		return &v1alpha1.Account{
@@ -73,7 +61,7 @@ func TestManageAccountInfoProcess(t *testing.T) {
 
 	testCases := []struct {
 		name          string
-		obj           runtimeobject.RuntimeObject
+		obj           client.Object
 		clusters      map[string]cluster.Cluster
 		expectError   bool
 		expectRequeue bool
@@ -377,8 +365,7 @@ func TestManageAccountInfoProcess(t *testing.T) {
 			s := manageaccountinfo.New(mgr, "")
 			ctx := t.Context()
 
-			log := testlogger.New()
-			ctx = logger.SetLoggerInContext(ctx, log.Logger)
+			ctx = crlog.IntoContext(ctx, testr.New(t))
 
 			if test.clusters != nil {
 				ctx = mccontext.WithCluster(ctx, "test-cluster")
@@ -386,9 +373,9 @@ func TestManageAccountInfoProcess(t *testing.T) {
 
 			_, processErr := s.Process(ctx, test.obj)
 			if test.expectError {
-				assert.Error(t, processErr.Err())
+				assert.Error(t, processErr)
 			} else {
-				assert.Nil(t, processErr)
+				assert.NoError(t, processErr)
 			}
 		})
 	}

@@ -5,7 +5,6 @@ import (
 	"testing"
 
 	kcptenancyv1alpha "github.com/kcp-dev/sdk/apis/tenancy/v1alpha1"
-	"github.com/platform-mesh/golang-commons/controller/lifecycle/runtimeobject"
 	"github.com/stretchr/testify/assert"
 	"github.com/stretchr/testify/mock"
 	"github.com/stretchr/testify/require"
@@ -34,7 +33,7 @@ func TestFinalizer(t *testing.T) {
 func TestFinalize(t *testing.T) {
 	testCases := []struct {
 		name        string
-		obj         runtimeobject.RuntimeObject
+		obj         client.Object
 		k8sMocks    func(client *mocks.Client)
 		expectError bool
 	}{
@@ -104,9 +103,9 @@ func TestFinalize(t *testing.T) {
 
 			_, err := s.Finalize(ctx, test.obj)
 			if test.expectError {
-				assert.Error(t, err.Err())
+				assert.Error(t, err)
 			} else {
-				assert.Nil(t, err)
+				assert.NoError(t, err)
 			}
 
 		})
@@ -116,7 +115,7 @@ func TestFinalize(t *testing.T) {
 func TestProcess(t *testing.T) {
 	testCases := []struct {
 		name        string
-		obj         runtimeobject.RuntimeObject
+		obj         client.Object
 		k8sMocks    func(client *mocks.Client)
 		expectError bool
 	}{
@@ -154,9 +153,9 @@ func TestProcess(t *testing.T) {
 
 			_, err := s.Process(t.Context(), test.obj)
 			if test.expectError {
-				assert.Error(t, err.Err())
+				assert.Error(t, err)
 			} else {
-				assert.Nil(t, err)
+				assert.NoError(t, err)
 			}
 		})
 	}
@@ -196,7 +195,7 @@ func TestProcess_PreservesAuthenticationConfigurations(t *testing.T) {
 	}
 
 	_, err := s.Process(t.Context(), account)
-	require.Nil(t, err)
+	require.NoError(t, err)
 
 	updatedOrgWst := &kcptenancyv1alpha.WorkspaceType{}
 	require.NoError(t, fakeClient.Get(t.Context(), client.ObjectKey{Name: "test-org"}, updatedOrgWst))

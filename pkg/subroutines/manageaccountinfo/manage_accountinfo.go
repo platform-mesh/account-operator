@@ -8,24 +8,22 @@ import (
 
 	kcpcorev1alpha "github.com/kcp-dev/sdk/apis/core/v1alpha1"
 	kcptenancyv1alpha "github.com/kcp-dev/sdk/apis/tenancy/v1alpha1"
-	"github.com/platform-mesh/golang-commons/controller/lifecycle/runtimeobject"
-	"github.com/platform-mesh/golang-commons/controller/lifecycle/subroutine"
-	"github.com/platform-mesh/golang-commons/errors"
+	"github.com/platform-mesh/subroutines"
 	kerrors "k8s.io/apimachinery/pkg/api/errors"
-
-	"github.com/platform-mesh/golang-commons/logger"
 	v1 "k8s.io/apimachinery/pkg/apis/meta/v1"
 	"k8s.io/client-go/util/workqueue"
-	ctrl "sigs.k8s.io/controller-runtime"
 	"sigs.k8s.io/controller-runtime/pkg/client"
 	"sigs.k8s.io/controller-runtime/pkg/controller/controllerutil"
+	"sigs.k8s.io/controller-runtime/pkg/log"
 	mcmanager "sigs.k8s.io/multicluster-runtime/pkg/manager"
 
 	"github.com/platform-mesh/account-operator/api/v1alpha1"
 	"github.com/platform-mesh/account-operator/pkg/clusteredname"
+
+	ctrl "sigs.k8s.io/controller-runtime"
 )
 
-var _ subroutine.Subroutine = (*ManageAccountInfoSubroutine)(nil)
+var _ subroutines.Processor = (*ManageAccountInfoSubroutine)(nil)
 
 const (
 	ManageAccountInfoSubroutineName = "ManageAccountInfoSubroutine"
@@ -47,40 +45,32 @@ func (r *ManageAccountInfoSubroutine) GetName() string {
 	return ManageAccountInfoSubroutineName
 }
 
-func (r *ManageAccountInfoSubroutine) Finalizers(_ runtimeobject.RuntimeObject) []string { // coverage-ignore
-	return []string{}
-}
+func (r *ManageAccountInfoSubroutine) Process(ctx context.Context, obj client.Object) (subroutines.Result, error) {
+	instance := obj.(*v1alpha1.Account)
 
-func (r *ManageAccountInfoSubroutine) Finalize(_ context.Context, _ runtimeobject.RuntimeObject) (ctrl.Result, errors.OperatorError) {
-	return ctrl.Result{}, nil
-}
-
-func (r *ManageAccountInfoSubroutine) Process(ctx context.Context, ro runtimeobject.RuntimeObject) (ctrl.Result, errors.OperatorError) {
-	instance := ro.(*v1alpha1.Account)
-
-	log := logger.LoadLoggerFromContext(ctx)
-	cn := clusteredname.MustGetClusteredName(ctx, ro)
+	logger := log.FromContext(ctx)
+	cn := clusteredname.MustGetClusteredName(ctx, obj)
 
 	clusterRef, err := r.mgr.GetCluster(ctx, string(cn.ClusterID))
 	if err != nil {
-		return ctrl.Result{}, errors.NewOperatorError(fmt.Errorf("getting cluster: %w", err), true, true)
+		return subroutines.OK(), fmt.Errorf("getting cluster: %w", err)
 	}
 	clusterClient := clusterRef.GetClient()
 
 	accountWorkspace := &kcptenancyv1alpha.Workspace{}
 	if err := clusterClient.Get(ctx, client.ObjectKey{Name: instance.Name}, accountWorkspace); err != nil {
-		return ctrl.Result{}, errors.NewOperatorError(fmt.Errorf("getting Account's Workspace: %w", err), true, true)
+		return subroutines.OK(), fmt.Errorf("getting Account's Workspace: %w", err)
 	}
 
 	if accountWorkspace.Status.Phase != kcpcorev1alpha.LogicalClusterPhaseInitializing && accountWorkspace.Status.Phase != kcpcorev1alpha.LogicalClusterPhaseReady {
-		log.Info().Msg("workspace is not ready yet, retry")
-		return ctrl.Result{RequeueAfter: r.limiter.When(instance)}, nil
+		logger.Info("workspace is not ready yet, retry")
+		return subroutines.OKWithRequeue(r.limiter.When(instance)), nil
 	}
 
 	// Retrieve logical cluster
 	currentWorkspacePath, currentWorkspaceUrl, err := r.retrieveCurrentWorkspacePath(accountWorkspace)
 	if err != nil {
-		return ctrl.Result{}, errors.NewOperatorError(err, true, true)
+		return subroutines.OK(), err
 	}
 
 	selfAccountLocation := v1alpha1.AccountLocation{
@@ -94,7 +84,7 @@ func (r *ManageAccountInfoSubroutine) Process(ctx context.Context, ro runtimeobj
 
 	accountCluster, err := r.mgr.GetCluster(ctx, accountWorkspace.Spec.Cluster)
 	if err != nil {
-		return ctrl.Result{}, errors.NewOperatorError(err, true, true)
+		return subroutines.OK(), err
 	}
 	accountClusterClient := accountCluster.GetClient()
 
@@ -109,20 +99,20 @@ func (r *ManageAccountInfoSubroutine) Process(ctx context.Context, ro runtimeobj
 			accountInfo.Spec.ClusterInfo.CA = r.serverCA
 			return nil
 		}); err != nil {
-			return ctrl.Result{}, errors.NewOperatorError(err, true, true)
+			return subroutines.OK(), err
 		}
 
 		r.limiter.Forget(instance)
-		return ctrl.Result{}, nil
+		return subroutines.OK(), nil
 	}
 
 	// Create AccountInfo for a non-organization Account based on its parent's
 	// AccountInfo
 	var parentAccountInfo v1alpha1.AccountInfo
 	if err := clusterClient.Get(ctx, client.ObjectKey{Name: DefaultAccountInfoName}, &parentAccountInfo); kerrors.IsNotFound(err) {
-		return ctrl.Result{}, errors.NewOperatorError(fmt.Errorf("AccountInfo does not yet exist"), true, false)
+		return subroutines.OK(), fmt.Errorf("AccountInfo does not yet exist")
 	} else if err != nil {
-		return ctrl.Result{}, errors.NewOperatorError(fmt.Errorf("getting parent AccountInfo: %w", err), true, true)
+		return subroutines.OK(), fmt.Errorf("getting parent AccountInfo: %w", err)
 	}
 
 	accountInfo := &v1alpha1.AccountInfo{ObjectMeta: v1.ObjectMeta{Name: DefaultAccountInfoName}}
@@ -135,11 +125,11 @@ func (r *ManageAccountInfoSubroutine) Process(ctx context.Context, ro runtimeobj
 		accountInfo.Spec.ClusterInfo.CA = r.serverCA
 		return nil
 	}); err != nil {
-		return ctrl.Result{}, errors.NewOperatorError(fmt.Errorf("creating or updating AccountInfo %w", err), true, true)
+		return subroutines.OK(), fmt.Errorf("creating or updating AccountInfo %w", err)
 	}
 
 	r.limiter.Forget(instance)
-	return ctrl.Result{}, nil
+	return subroutines.OK(), nil
 }
 
 func (r *ManageAccountInfoSubroutine) retrieveCurrentWorkspacePath(ws *kcptenancyv1alpha.Workspace) (string, string, error) {
