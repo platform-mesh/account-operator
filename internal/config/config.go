@@ -2,52 +2,87 @@ package config
 
 import "github.com/spf13/pflag"
 
-// OperatorConfig struct to hold the app config
+type WebhooksConfig struct {
+	Enabled                bool     `mapstructure:"webhooks-enabled" default:"false"`
+	CertDir                string   `mapstructure:"webhooks-cert-dir" default:"certs"`
+	Port                   int      `mapstructure:"webhooks-port" default:"9443"`
+	DenyList               string   `mapstructure:"webhooks-deny-list"`
+	AdditionalAccountTypes []string `mapstructure:"webhooks-additional-account-types"`
+}
+
+type WorkspaceTypeSubroutineConfig struct {
+	Enabled bool `mapstructure:"subroutines-workspace-type-enabled" default:"true"`
+}
+
+type WorkspaceSubroutineConfig struct {
+	Enabled bool `mapstructure:"subroutines-workspace-enabled" default:"true"`
+}
+
+type WorkspaceReadySubroutineConfig struct {
+	Enabled bool `mapstructure:"subroutines-workspace-ready-enabled" default:"true"`
+}
+
+type AccountInfoSubroutineConfig struct {
+	Enabled bool `mapstructure:"subroutines-account-info-enabled" default:"true"`
+}
+
+type SubroutinesConfig struct {
+	WorkspaceType  WorkspaceTypeSubroutineConfig  `mapstructure:",squash"`
+	Workspace      WorkspaceSubroutineConfig      `mapstructure:",squash"`
+	WorkspaceReady WorkspaceReadySubroutineConfig `mapstructure:",squash"`
+	AccountInfo    AccountInfoSubroutineConfig    `mapstructure:",squash"`
+}
+
+type AccountInfoControllerConfig struct {
+	Enabled bool `mapstructure:"controllers-account-info-enabled" default:"true"`
+}
+
+type ControllersConfig struct {
+	AccountInfo AccountInfoControllerConfig `mapstructure:",squash"`
+}
+
+type KcpConfig struct {
+	ApiExportEndpointSliceName string `mapstructure:"kcp-api-export-endpoint-slice-name" default:"core.platform-mesh.io"`
+	ProviderWorkspace          string `mapstructure:"kcp-provider-workspace" default:"root"`
+}
+
 type OperatorConfig struct {
-	Webhooks struct {
-		Enabled                bool     `mapstructure:"webhooks-enabled" default:"false"`
-		CertDir                string   `mapstructure:"webhooks-cert-dir" default:"certs"`
-		Port                   int      `mapstructure:"webhooks-port" default:"9443"`
-		DenyList               string   `mapstructure:"webhooks-deny-list"`
-		AdditionalAccountTypes []string `mapstructure:"webhooks-additional-account-types"`
-	} `mapstructure:",squash"`
-	Subroutines struct {
-		WorkspaceType struct {
-			Enabled bool `mapstructure:"subroutines-workspace-type-enabled" default:"true"`
-		} `mapstructure:",squash"`
-		Workspace struct {
-			Enabled bool `mapstructure:"subroutines-workspace-enabled" default:"true"`
-		} `mapstructure:",squash"`
-		WorkspaceReady struct {
-			Enabled bool `mapstructure:"subroutines-workspace-ready-enabled" default:"true"`
-		} `mapstructure:",squash"`
-		AccountInfo struct {
-			Enabled bool `mapstructure:"subroutines-account-info-enabled" default:"true"`
-		} `mapstructure:",squash"`
-	} `mapstructure:",squash"`
-	Controllers struct {
-		AccountInfo struct {
-			Enabled bool `mapstructure:"controllers-account-info-enabled" default:"true"`
-		} `mapstructure:",squash"`
-	} `mapstructure:",squash"`
-	Kcp struct {
-		ApiExportEndpointSliceName string `mapstructure:"kcp-api-export-endpoint-slice-name" default:"core.platform-mesh.io"`
-		ProviderWorkspace          string `mapstructure:"kcp-provider-workspace" default:"root"`
-	} `mapstructure:",squash"`
+	Webhooks    WebhooksConfig    `mapstructure:",squash"`
+	Subroutines SubroutinesConfig `mapstructure:",squash"`
+	Controllers ControllersConfig `mapstructure:",squash"`
+	Kcp         KcpConfig         `mapstructure:",squash"`
 }
 
 func NewOperatorConfig() OperatorConfig {
-	cfg := OperatorConfig{}
-	cfg.Webhooks.CertDir = "certs"
-	cfg.Webhooks.Port = 9443
-	cfg.Subroutines.WorkspaceType.Enabled = true
-	cfg.Subroutines.Workspace.Enabled = true
-	cfg.Subroutines.WorkspaceReady.Enabled = true
-	cfg.Subroutines.AccountInfo.Enabled = true
-	cfg.Controllers.AccountInfo.Enabled = true
-	cfg.Kcp.ApiExportEndpointSliceName = "core.platform-mesh.io"
-	cfg.Kcp.ProviderWorkspace = "root"
-	return cfg
+	return OperatorConfig{
+		Webhooks: WebhooksConfig{
+			CertDir: "certs",
+			Port:    9443,
+		},
+		Subroutines: SubroutinesConfig{
+			WorkspaceType: WorkspaceTypeSubroutineConfig{
+				Enabled: true,
+			},
+			Workspace: WorkspaceSubroutineConfig{
+				Enabled: true,
+			},
+			WorkspaceReady: WorkspaceReadySubroutineConfig{
+				Enabled: true,
+			},
+			AccountInfo: AccountInfoSubroutineConfig{
+				Enabled: true,
+			},
+		},
+		Controllers: ControllersConfig{
+			AccountInfo: AccountInfoControllerConfig{
+				Enabled: true,
+			},
+		},
+		Kcp: KcpConfig{
+			ApiExportEndpointSliceName: "core.platform-mesh.io",
+			ProviderWorkspace:          "root",
+		},
+	}
 }
 
 func (c *OperatorConfig) AddFlags(fs *pflag.FlagSet) {
