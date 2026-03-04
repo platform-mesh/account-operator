@@ -8,13 +8,12 @@ import (
 	"github.com/platform-mesh/subroutines/lifecycle"
 	"sigs.k8s.io/controller-runtime/pkg/client"
 	"sigs.k8s.io/controller-runtime/pkg/predicate"
+	"sigs.k8s.io/controller-runtime/pkg/reconcile"
 	mcbuilder "sigs.k8s.io/multicluster-runtime/pkg/builder"
-	mccontext "sigs.k8s.io/multicluster-runtime/pkg/context"
 	mcmanager "sigs.k8s.io/multicluster-runtime/pkg/manager"
 	mcreconcile "sigs.k8s.io/multicluster-runtime/pkg/reconcile"
 
 	"k8s.io/client-go/rest"
-	ctrl "sigs.k8s.io/controller-runtime"
 
 	"github.com/platform-mesh/account-operator/api/v1alpha1"
 	"github.com/platform-mesh/account-operator/internal/config"
@@ -76,6 +75,6 @@ func (r *AccountReconciler) SetupWithManager(mgr mcmanager.Manager, eventPredica
 	return builder.Complete(r)
 }
 
-func (r *AccountReconciler) Reconcile(ctx context.Context, req mcreconcile.Request) (ctrl.Result, error) { // coverage-ignore
-	return r.lifecycle.Reconcile(mccontext.WithCluster(ctx, req.ClusterName), ctrl.Request{NamespacedName: req.NamespacedName})
+func (r *AccountReconciler) Reconcile(ctx context.Context, req mcreconcile.Request) (reconcile.Result, error) { // coverage-ignore
+	return r.lifecycle.Reconcile(ctx, req)
 }
