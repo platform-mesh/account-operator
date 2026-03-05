@@ -10,7 +10,6 @@ import (
 	corev1alpha1 "github.com/platform-mesh/account-operator/api/v1alpha1"
 	"github.com/platform-mesh/account-operator/pkg/subroutines/mocks"
 	"github.com/platform-mesh/account-operator/pkg/subroutines/workspace"
-	"github.com/platform-mesh/golang-commons/controller/lifecycle/runtimeobject"
 	"github.com/stretchr/testify/assert"
 	"github.com/stretchr/testify/mock"
 	v1 "k8s.io/api/core/v1"
@@ -36,7 +35,7 @@ func TestFinalizers(t *testing.T) {
 func TestFinalize(t *testing.T) {
 	testCases := []struct {
 		name          string
-		obj           runtimeobject.RuntimeObject
+		obj           client.Object
 		k8sMocks      func(m *mocks.Client)
 		expectRequeue bool
 	}{
@@ -114,9 +113,9 @@ func TestFinalize(t *testing.T) {
 			ctx = mccontext.WithCluster(ctx, "test")
 
 			result, err := s.Finalize(ctx, test.obj)
-			assert.Nil(t, err)
+			assert.NoError(t, err)
 			if test.expectRequeue {
-				assert.Greater(t, result.RequeueAfter.Microseconds(), int64(0))
+				assert.Greater(t, result.Requeue().Microseconds(), int64(0))
 			}
 		})
 	}
@@ -130,7 +129,7 @@ func TestProcess(t *testing.T) {
 
 	testCases := []struct {
 		name          string
-		obj           runtimeobject.RuntimeObject
+		obj           client.Object
 		k8sMocks      func(m *mocks.Client)
 		orgsK8sMocks  func(m *mocks.Client)
 		expectRequeue bool
@@ -290,12 +289,12 @@ func TestProcess(t *testing.T) {
 
 			result, err := s.Process(ctx, test.obj)
 			if test.expectError {
-				assert.Error(t, err.Err())
+				assert.Error(t, err)
 			} else {
-				assert.Nil(t, err)
+				assert.NoError(t, err)
 			}
 			if test.expectRequeue {
-				assert.Greater(t, result.RequeueAfter.Microseconds(), int64(0))
+				assert.Greater(t, result.Requeue().Microseconds(), int64(0))
 			}
 		})
 	}

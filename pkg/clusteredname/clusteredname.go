@@ -4,7 +4,8 @@ import (
 	"context"
 
 	"github.com/kcp-dev/logicalcluster/v3"
-	"github.com/platform-mesh/golang-commons/controller/lifecycle/runtimeobject"
+	"sigs.k8s.io/controller-runtime/pkg/client"
+
 	"k8s.io/apimachinery/pkg/types"
 	mccontext "sigs.k8s.io/multicluster-runtime/pkg/context"
 )
@@ -14,7 +15,7 @@ type ClusteredName struct {
 	ClusterID logicalcluster.Name
 }
 
-func GetClusteredName(ctx context.Context, instance runtimeobject.RuntimeObject) (ClusteredName, bool) {
+func GetClusteredName(ctx context.Context, instance client.Object) (ClusteredName, bool) {
 	clusterName, ok := mccontext.ClusterFrom(ctx)
 	cn := ClusteredName{
 		NamespacedName: types.NamespacedName{
@@ -28,7 +29,7 @@ func GetClusteredName(ctx context.Context, instance runtimeobject.RuntimeObject)
 	return cn, ok
 }
 
-func MustGetClusteredName(ctx context.Context, instance runtimeobject.RuntimeObject) ClusteredName {
+func MustGetClusteredName(ctx context.Context, instance client.Object) ClusteredName {
 	if cn, ok := GetClusteredName(ctx, instance); ok {
 		return cn
 	}

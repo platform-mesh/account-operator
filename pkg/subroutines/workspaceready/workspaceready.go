@@ -3,15 +3,12 @@ package workspaceready
 import (
 	"context"
 	"fmt"
+	"time"
 
 	kcpcorev1alpha "github.com/kcp-dev/sdk/apis/core/v1alpha1"
 	kcptenancyv1alpha "github.com/kcp-dev/sdk/apis/tenancy/v1alpha1"
-	"github.com/platform-mesh/golang-commons/controller/lifecycle/ratelimiter"
-	"github.com/platform-mesh/golang-commons/controller/lifecycle/runtimeobject"
-	"github.com/platform-mesh/golang-commons/controller/lifecycle/subroutine"
-	"github.com/platform-mesh/golang-commons/errors"
+	"github.com/platform-mesh/subroutines"
 	"k8s.io/client-go/util/workqueue"
-	ctrl "sigs.k8s.io/controller-runtime"
 	"sigs.k8s.io/controller-runtime/pkg/client"
 	mcmanager "sigs.k8s.io/multicluster-runtime/pkg/manager"
 
@@ -19,7 +16,7 @@ import (
 	"github.com/platform-mesh/account-operator/pkg/clusteredname"
 )
 
-var _ subroutine.Subroutine = (*WorkspaceReadySubroutine)(nil)
+var _ subroutines.Processor = (*WorkspaceReadySubroutine)(nil)
 
 const (
 	WorkspaceReadySubroutineName = "WorkspaceReadySubroutine"
@@ -37,42 +34,35 @@ type WorkspaceReadySubroutine struct {
 
 // New returns a new WorkspaceReadySubroutine.
 func New(mgr mcmanager.Manager) *WorkspaceReadySubroutine {
-	limiter, _ := ratelimiter.NewStaticThenExponentialRateLimiter[*v1alpha1.Account](ratelimiter.NewConfig()) //nolint:errcheck
-
-	return &WorkspaceReadySubroutine{mgr: mgr, limiter: limiter}
+	return &WorkspaceReadySubroutine{
+		mgr:     mgr,
+		limiter: workqueue.NewTypedItemExponentialFailureRateLimiter[*v1alpha1.Account](1*time.Second, 120*time.Second),
+	}
 }
 
 func (r *WorkspaceReadySubroutine) GetName() string {
 	return WorkspaceReadySubroutineName
 }
 
-func (r *WorkspaceReadySubroutine) Finalizers(_ runtimeobject.RuntimeObject) []string {
-	return []string{}
-}
-
-func (r *WorkspaceReadySubroutine) Finalize(_ context.Context, _ runtimeobject.RuntimeObject) (ctrl.Result, errors.OperatorError) {
-	return ctrl.Result{}, nil
-}
-
-func (r *WorkspaceReadySubroutine) Process(ctx context.Context, ro runtimeobject.RuntimeObject) (ctrl.Result, errors.OperatorError) {
-	instance := ro.(*v1alpha1.Account)
-	cn := clusteredname.MustGetClusteredName(ctx, ro)
+func (r *WorkspaceReadySubroutine) Process(ctx context.Context, obj client.Object) (subroutines.Result, error) {
+	instance := obj.(*v1alpha1.Account)
+	cn := clusteredname.MustGetClusteredName(ctx, obj)
 
 	clusterRef, err := r.mgr.GetCluster(ctx, cn.ClusterID.String())
 	if err != nil {
-		return ctrl.Result{}, errors.NewOperatorError(fmt.Errorf("getting cluster: %w", err), true, true)
+		return subroutines.OK(), fmt.Errorf("getting cluster: %w", err)
 	}
 	clusterClient := clusterRef.GetClient()
 
 	ws := &kcptenancyv1alpha.Workspace{}
 	if err := clusterClient.Get(ctx, client.ObjectKey{Name: instance.Name}, ws); err != nil {
-		return ctrl.Result{}, errors.NewOperatorError(fmt.Errorf("getting Account's Workspace: %w", err), true, true)
+		return subroutines.OK(), fmt.Errorf("getting Account's Workspace: %w", err)
 	}
 
 	if ws.Status.Phase != kcpcorev1alpha.LogicalClusterPhaseReady {
-		return ctrl.Result{RequeueAfter: r.limiter.When(instance)}, nil
+		return subroutines.OKWithRequeue(r.limiter.When(instance)), nil
 	}
 
 	r.limiter.Forget(instance)
-	return ctrl.Result{}, nil
+	return subroutines.OK(), nil
 }
