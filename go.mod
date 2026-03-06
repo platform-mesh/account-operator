@@ -2,12 +2,6 @@ module github.com/platform-mesh/account-operator
 
 go 1.25.7
 
-replace (
-	k8s.io/api => k8s.io/api v0.35.2
-	k8s.io/apimachinery => k8s.io/apimachinery v0.35.2
-	k8s.io/client-go => k8s.io/client-go v0.35.2
-)
-
 require (
 	github.com/go-logr/logr v1.4.3
 	github.com/kcp-dev/logicalcluster/v3 v3.0.5
