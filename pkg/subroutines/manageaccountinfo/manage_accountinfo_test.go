@@ -4,6 +4,7 @@ import (
 	"context"
 	"fmt"
 	"testing"
+	"time"
 
 	"github.com/go-logr/logr/testr"
 	kcpcorev1alpha "github.com/kcp-dev/sdk/apis/core/v1alpha1"
@@ -310,8 +311,8 @@ func TestManageAccountInfoProcess(t *testing.T) {
 					return c
 				}(),
 			},
-			obj:         accountObj(v1alpha1.AccountTypeAccount),
-			expectError: true,
+			obj:           accountObj(v1alpha1.AccountTypeAccount),
+			expectRequeue: true,
 		},
 		{
 			name: "org account success",
@@ -371,11 +372,14 @@ func TestManageAccountInfoProcess(t *testing.T) {
 				ctx = mccontext.WithCluster(ctx, "test-cluster")
 			}
 
-			_, processErr := s.Process(ctx, test.obj)
+			result, processErr := s.Process(ctx, test.obj)
 			if test.expectError {
 				assert.Error(t, processErr)
 			} else {
 				assert.NoError(t, processErr)
+			}
+			if test.expectRequeue {
+				assert.Greater(t, result.Requeue(), time.Duration(0))
 			}
 		})
 	}

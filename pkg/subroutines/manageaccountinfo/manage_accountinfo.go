@@ -3,7 +3,8 @@ package manageaccountinfo
 import (
 	"context"
 	"fmt"
-	"strings"
+	"net/url"
+	"path"
 	"time"
 
 	kcpcorev1alpha "github.com/kcp-dev/sdk/apis/core/v1alpha1"
@@ -110,7 +111,8 @@ func (r *ManageAccountInfoSubroutine) Process(ctx context.Context, obj client.Ob
 	// AccountInfo
 	var parentAccountInfo v1alpha1.AccountInfo
 	if err := clusterClient.Get(ctx, client.ObjectKey{Name: DefaultAccountInfoName}, &parentAccountInfo); kerrors.IsNotFound(err) {
-		return subroutines.OK(), fmt.Errorf("AccountInfo does not yet exist")
+		logger.Info("parent AccountInfo does not yet exist, retry")
+		return subroutines.OKWithRequeue(r.limiter.When(instance)), nil
 	} else if err != nil {
 		return subroutines.OK(), fmt.Errorf("getting parent AccountInfo: %w", err)
 	}
@@ -137,15 +139,14 @@ func (r *ManageAccountInfoSubroutine) retrieveCurrentWorkspacePath(ws *kcptenanc
 		return "", "", fmt.Errorf("workspace URL is empty")
 	}
 
-	// Parse path from URL
-	split := strings.Split(ws.Spec.URL, "/")
-	if len(split) < 3 {
-		return "", "", fmt.Errorf("workspace URL is invalid")
+	parsed, err := url.Parse(ws.Spec.URL)
+	if err != nil {
+		return "", "", fmt.Errorf("parsing workspace URL: %w", err)
 	}
 
-	lastSegment := split[len(split)-1]
-	if lastSegment == "" || strings.TrimSpace(lastSegment) == "" {
-		return "", "", fmt.Errorf("workspace URL is empty")
+	lastSegment := path.Base(parsed.Path)
+	if lastSegment == "" || lastSegment == "." || lastSegment == "/" {
+		return "", "", fmt.Errorf("workspace URL has no path segment")
 	}
 	return lastSegment, ws.Spec.URL, nil
 }

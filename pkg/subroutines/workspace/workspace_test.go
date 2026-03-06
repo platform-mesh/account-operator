@@ -136,7 +136,7 @@ func TestProcess(t *testing.T) {
 		expectError   bool
 	}{
 		{
-			name: "shuold create workspace if not exists",
+			name: "should create workspace if not exists",
 			obj: &corev1alpha1.Account{
 				ObjectMeta: metav1.ObjectMeta{
 					Name: "test",

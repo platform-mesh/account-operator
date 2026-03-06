@@ -120,7 +120,7 @@ func TestProcess(t *testing.T) {
 		expectError bool
 	}{
 		{
-			name: "",
+			name: "should create both workspace types for org account",
 			obj: &v1alpha1.Account{
 				ObjectMeta: metav1.ObjectMeta{
 					Name: "test",
