@@ -159,11 +159,11 @@ func (s *AccountTestSuite) TestWorkspaceCreation() {
 		if err := s.rootOrgsDefaultClient.Get(testContext, types.NamespacedName{Name: accountName}, updatedAccount); err != nil {
 			return false
 		}
-		return meta.IsStatusConditionTrue(updatedAccount.Status.Conditions, "WorkspaceSubroutine_Ready")
+		return meta.IsStatusConditionTrue(updatedAccount.Status.Conditions, "WorkspaceSubroutine")
 	}, defaultTestTimeout, defaultTickInterval)
 
 	s.verifyWorkspace(testContext, "default", accountName)
-	s.verifyCondition(updatedAccount.Status.Conditions, "WorkspaceSubroutine_Ready", metav1.ConditionTrue, "Complete")
+	s.verifyCondition(updatedAccount.Status.Conditions, "WorkspaceSubroutine", metav1.ConditionTrue, "Complete")
 }
 
 func (s *AccountTestSuite) TestAccountInfoCreationForOrganization() {
@@ -178,7 +178,7 @@ func (s *AccountTestSuite) TestAccountInfoCreationForOrganization() {
 		if err := s.rootOrgsClient.Get(testContext, types.NamespacedName{Name: accountName}, createdAccount); err != nil {
 			return false
 		}
-		return meta.IsStatusConditionTrue(createdAccount.Status.Conditions, "ManageAccountInfoSubroutine_Ready")
+		return meta.IsStatusConditionTrue(createdAccount.Status.Conditions, "ManageAccountInfoSubroutine")
 	}, defaultTestTimeout, defaultTickInterval)
 
 	accountInfo := &v1alpha1.AccountInfo{}
