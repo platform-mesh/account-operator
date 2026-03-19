@@ -5,8 +5,8 @@ import (
 
 	"github.com/kcp-dev/logicalcluster/v3"
 	"k8s.io/apimachinery/pkg/types"
-	mccontext "sigs.k8s.io/multicluster-runtime/pkg/context"
 	"sigs.k8s.io/controller-runtime/pkg/client"
+	mccontext "sigs.k8s.io/multicluster-runtime/pkg/context"
 )
 
 type ClusteredName struct {
