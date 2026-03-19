@@ -10,7 +10,6 @@ import (
 	corev1alpha1 "github.com/platform-mesh/account-operator/api/v1alpha1"
 	"github.com/platform-mesh/account-operator/pkg/subroutines/mocks"
 	"github.com/platform-mesh/account-operator/pkg/subroutines/workspaceready"
-	"github.com/platform-mesh/golang-commons/controller/lifecycle/runtimeobject"
 	"github.com/stretchr/testify/assert"
 	"github.com/stretchr/testify/mock"
 	kerrors "k8s.io/apimachinery/pkg/api/errors"
@@ -23,7 +22,7 @@ import (
 func TestProcess(t *testing.T) {
 	testCases := []struct {
 		name          string
-		obj           runtimeobject.RuntimeObject
+		obj           *corev1alpha1.Account
 		k8sMocks      func(m *mocks.Client)
 		expectRequeue bool
 		expectError   bool
@@ -97,18 +96,19 @@ func TestProcess(t *testing.T) {
 				test.k8sMocks(client)
 			}
 
-			s := workspaceready.New(mgr)
+			s, err := workspaceready.New(mgr)
+			assert.NoError(t, err)
 
 			ctx := mccontext.WithCluster(t.Context(), "test")
-			result, err := s.Process(ctx, test.obj)
+			result, processErr := s.Process(ctx, test.obj)
 
 			if test.expectError {
-				assert.Error(t, err.Err())
+				assert.Error(t, processErr)
 			} else {
-				assert.Nil(t, err)
+				assert.NoError(t, processErr)
 			}
 			if test.expectRequeue {
-				assert.Greater(t, result.RequeueAfter.Microseconds(), int64(0))
+				assert.Greater(t, result.Requeue().Microseconds(), int64(0))
 			}
 		})
 	}
