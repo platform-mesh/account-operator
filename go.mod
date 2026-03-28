@@ -7,7 +7,7 @@ require (
 	github.com/kcp-dev/logicalcluster/v3 v3.0.5
 	github.com/kcp-dev/multicluster-provider v0.5.1
 	github.com/kcp-dev/sdk v0.30.1
-	github.com/platform-mesh/golang-commons v0.13.21
+	github.com/platform-mesh/golang-commons v0.13.22
 	github.com/spf13/cobra v1.10.2
 	github.com/spf13/pflag v1.0.10
 	github.com/stretchr/testify v1.11.1
@@ -23,7 +23,7 @@ require (
 )
 
 require (
-	github.com/99designs/gqlgen v0.17.88 // indirect
+	github.com/99designs/gqlgen v0.17.89 // indirect
 	github.com/beorn7/perks v1.0.1 // indirect
 	github.com/cenkalti/backoff/v5 v5.0.3 // indirect
 	github.com/cespare/xxhash/v2 v2.3.0 // indirect
