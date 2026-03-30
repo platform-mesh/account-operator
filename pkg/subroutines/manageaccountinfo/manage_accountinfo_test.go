@@ -362,7 +362,8 @@ func TestManageAccountInfoProcess(t *testing.T) {
 			mgr, err := mcmanager.New(emptyConfig, testProvider, mcmanager.Options{})
 			assert.NoError(t, err)
 
-			s := manageaccountinfo.New(mgr, "")
+			s, newErr := manageaccountinfo.New(mgr, "")
+			assert.NoError(t, newErr)
 			ctx := t.Context()
 
 			log := testlogger.New()
@@ -380,6 +381,8 @@ func TestManageAccountInfoProcess(t *testing.T) {
 			}
 			if test.expectRequeue {
 				assert.NotZero(t, res.Requeue())
+			} else {
+				assert.Zero(t, res.Requeue())
 			}
 		})
 	}

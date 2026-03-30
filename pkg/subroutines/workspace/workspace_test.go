@@ -12,6 +12,7 @@ import (
 	"github.com/platform-mesh/account-operator/pkg/subroutines/workspace"
 	"github.com/stretchr/testify/assert"
 	"github.com/stretchr/testify/mock"
+	"github.com/stretchr/testify/require"
 	v1 "k8s.io/api/core/v1"
 	kerrors "k8s.io/apimachinery/pkg/api/errors"
 	metav1 "k8s.io/apimachinery/pkg/apis/meta/v1"
@@ -24,13 +25,13 @@ import (
 
 func TestGetName(t *testing.T) {
 	s, err := workspace.New(nil, nil)
-	assert.NoError(t, err)
+	require.NoError(t, err)
 	assert.Equal(t, workspace.WorkspaceSubroutineName, s.GetName())
 }
 
 func TestFinalizers(t *testing.T) {
 	s, err := workspace.New(nil, nil)
-	assert.NoError(t, err)
+	require.NoError(t, err)
 	assert.Equal(t, []string{workspace.WorkspaceSubroutineFinalizer}, s.Finalizers(nil))
 }
 
@@ -109,7 +110,7 @@ func TestFinalize(t *testing.T) {
 			}
 
 			s, err := workspace.New(mgr, nil)
-			assert.NoError(t, err)
+			require.NoError(t, err)
 
 			ctx := t.Context()
 			ctx = mccontext.WithCluster(ctx, "test")
@@ -285,7 +286,7 @@ func TestProcess(t *testing.T) {
 			}
 
 			s, err := workspace.New(mgr, orgsClient)
-			assert.NoError(t, err)
+			require.NoError(t, err)
 
 			ctx := t.Context()
 			ctx = mccontext.WithCluster(ctx, "test")
