@@ -372,11 +372,14 @@ func TestManageAccountInfoProcess(t *testing.T) {
 				ctx = mccontext.WithCluster(ctx, "test-cluster")
 			}
 
-			_, processErr := s.Process(ctx, test.obj)
+			res, processErr := s.Process(ctx, test.obj)
 			if test.expectError {
 				assert.Error(t, processErr)
 			} else {
 				assert.NoError(t, processErr)
+			}
+			if test.expectRequeue {
+				assert.NotZero(t, res.Requeue())
 			}
 		})
 	}
