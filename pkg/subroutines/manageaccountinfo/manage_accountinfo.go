@@ -125,7 +125,7 @@ func (r *ManageAccountInfoSubroutine) Process(ctx context.Context, obj client.Ob
 		accountInfo.Spec.ClusterInfo.CA = r.serverCA
 		return nil
 	}); err != nil {
-		return subroutines.OK(), fmt.Errorf("creating or updating AccountInfo %w", err)
+		return subroutines.OK(), fmt.Errorf("creating or updating AccountInfo: %w", err)
 	}
 
 	r.limiter.Forget(instance)
