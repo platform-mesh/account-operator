@@ -8,6 +8,7 @@ import (
 
 	kcpcorev1alpha "github.com/kcp-dev/sdk/apis/core/v1alpha1"
 	kcptenancyv1alpha "github.com/kcp-dev/sdk/apis/tenancy/v1alpha1"
+	"github.com/platform-mesh/golang-commons/controller/lifecycle/ratelimiter"
 	"github.com/platform-mesh/golang-commons/logger"
 	"github.com/platform-mesh/subroutines"
 	kerrors "k8s.io/apimachinery/pkg/api/errors"
@@ -34,9 +35,18 @@ type ManageAccountInfoSubroutine struct {
 	limiter  workqueue.TypedRateLimiter[*v1alpha1.Account]
 }
 
-func New(mgr mcmanager.Manager, serverCA string) *ManageAccountInfoSubroutine {
-	exp := workqueue.NewTypedItemExponentialFailureRateLimiter[*v1alpha1.Account](1*time.Second, 120*time.Second)
-	return &ManageAccountInfoSubroutine{mgr: mgr, serverCA: serverCA, limiter: exp}
+func New(mgr mcmanager.Manager, serverCA string) (*ManageAccountInfoSubroutine, error) {
+	rl, err := ratelimiter.NewStaticThenExponentialRateLimiter[*v1alpha1.Account](
+		ratelimiter.NewConfig(
+			ratelimiter.WithRequeueDelay(1*time.Second),
+			ratelimiter.WithStaticWindow(1*time.Second),
+			ratelimiter.WithExponentialInitialBackoff(1*time.Second),
+			ratelimiter.WithExponentialMaxBackoff(120*time.Second),
+		))
+	if err != nil {
+		return nil, fmt.Errorf("creating RateLimiter: %w", err)
+	}
+	return &ManageAccountInfoSubroutine{mgr: mgr, serverCA: serverCA, limiter: rl}, nil
 }
 
 func (r *ManageAccountInfoSubroutine) GetName() string {

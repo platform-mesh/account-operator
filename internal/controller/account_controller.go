@@ -62,7 +62,11 @@ func NewAccountReconciler(log *logger.Logger, mgr mcmanager.Manager, cfg config.
 	}
 
 	if cfg.Subroutines.AccountInfo.Enabled {
-		subs = append(subs, manageaccountinfo.New(mgr, serverCA))
+		maiSub, err := manageaccountinfo.New(mgr, serverCA)
+		if err != nil {
+			return nil, fmt.Errorf("creating ManageAccountInfo subroutine: %w", err)
+		}
+		subs = append(subs, maiSub)
 	}
 
 	if cfg.Subroutines.WorkspaceReady.Enabled {
