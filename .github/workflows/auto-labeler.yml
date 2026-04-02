@@ -6,6 +6,11 @@ on:
       - opened
       - synchronize
 
+permissions:
+  contents: read
+  pull-requests: write
+  issues: write
+
 jobs:
   auto-labeler:
     if: github.event.pull_request.head.repo.full_name == github.repository
