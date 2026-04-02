@@ -1,0 +1,13 @@
+name: auto-labeler
+
+on:
+  pull_request:
+    types:
+      - opened
+      - synchronize
+
+jobs:
+  auto-labeler:
+    if: github.event.pull_request.head.repo.full_name == github.repository
+    uses: platform-mesh/.github/.github/workflows/job-auto-labeler.yml@main
+    secrets: inherit

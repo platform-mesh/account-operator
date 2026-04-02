@@ -22,16 +22,6 @@ concurrency:
 
 jobs:
   # ──────────────────────────────────────────────
-  # PR-only jobs
-  # ──────────────────────────────────────────────
-  auto-labeler:
-    if: >-
-      github.event_name == 'pull_request' &&
-      github.event.pull_request.head.repo.full_name == github.repository
-    uses: platform-mesh/.github/.github/workflows/job-auto-labeler.yml@main
-    secrets: inherit
-
-  # ──────────────────────────────────────────────
   # Always-run jobs (PR + main)
   # ──────────────────────────────────────────────
   lint:
