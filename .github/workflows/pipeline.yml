@@ -48,6 +48,7 @@ jobs:
   # ──────────────────────────────────────────────
   quality-gate:
     if: always()
+    permissions: {}
     needs: [lint, test, docker-build]
     runs-on: ubuntu-latest
     timeout-minutes: 1
