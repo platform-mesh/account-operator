@@ -12,5 +12,5 @@ exclude:
     - ^pkg/subroutines/fga\.go$
 
 override:
-  - path: ^internal/controller/(+*)_controller.go$
+  - path: ^internal/controller/(.+)_controller.go$
     threshold: 60
