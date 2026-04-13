@@ -123,12 +123,7 @@ func RunController(_ *cobra.Command, _ []string) { // coverage-ignore
 		log.Fatal().Err(err).Msg("unable to start manager")
 	}
 
-	orgsClient, err := buildOrgsClient(mgr.GetLocalManager())
-	if err != nil {
-		log.Fatal().Err(err).Msg("unable to create orgs client")
-	}
-
-	accountReconciler, err := controller.NewAccountReconciler(log, mgr, operatorCfg, orgsClient)
+	accountReconciler, err := controller.NewAccountReconciler(log, mgr, operatorCfg)
 	if err != nil {
 		log.Fatal().Err(err).Msg("unable to create account reconciler")
 	}
