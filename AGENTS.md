@@ -46,7 +46,6 @@
 ## Hard Boundaries
 - Do not invent new build or test workflows when a `task` target already exists.
 - Do not move code across packages unless the change actually requires it.
-- Do not duplicate guidance already covered in `README.md` or `CONTRIBUTING.md`.
 - Ask before making changes that affect release flow, CI wiring, container publishing, or Helm chart integration outside this repository.
 
 ## Human-Facing Guidance
