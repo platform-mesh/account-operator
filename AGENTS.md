@@ -1,6 +1,7 @@
 ## Repository Description
 - `account-operator` manages `Account` and `AccountInfo` resources for Platform Mesh.
 - This is a Go operator repo built around controller-runtime, multicluster-runtime, and generated Kubernetes APIs.
+- Follow the shared Platform Mesh agent guidance in `https://github.com/platform-mesh/.github/blob/main/AGENTS.md` for cross-repository rules.
 
 ## Core Principles
 - Keep changes small and local. Prefer the narrowest fix that solves the real problem.
@@ -41,11 +42,6 @@
 - If CRD schemas or API types change, run `task generate`.
 - Review generated changes in `config/crd`, `config/resources`, and `test/setup`.
 - Do not mix unrelated manual edits into generated files.
-
-## Git And Safety
-- Do not run `git commit`, `git push`, `git reset`, or branch-destructive commands unless explicitly asked.
-- Do not delete or overwrite user changes you did not make.
-- Never add AI attribution, `Co-Authored-By`, or tool-generated signatures to commits, PRs, or files.
 
 ## Hard Boundaries
 - Do not invent new build or test workflows when a `task` target already exists.
