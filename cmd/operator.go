@@ -20,7 +20,6 @@ import (
 	"context"
 	"crypto/tls"
 	"net/http"
-	"net/url"
 	"strings"
 
 	"github.com/kcp-dev/multicluster-provider/apiexport"
@@ -31,7 +30,6 @@ import (
 	_ "k8s.io/client-go/plugin/pkg/client/auth"
 	"k8s.io/client-go/rest"
 	ctrl "sigs.k8s.io/controller-runtime"
-	"sigs.k8s.io/controller-runtime/pkg/client"
 	"sigs.k8s.io/controller-runtime/pkg/healthz"
 	metricsserver "sigs.k8s.io/controller-runtime/pkg/metrics/server"
 	"sigs.k8s.io/controller-runtime/pkg/webhook"
@@ -173,22 +171,4 @@ func RunController(_ *cobra.Command, _ []string) { // coverage-ignore
 	if err := mgr.Start(ctrl.SetupSignalHandler()); err != nil {
 		log.Fatal().Err(err).Msg("problem running manager")
 	}
-}
-
-func buildOrgsClient(mgr ctrl.Manager) (client.Client, error) {
-	cfg := rest.CopyConfig(mgr.GetConfig())
-
-	parsed, err := url.Parse(cfg.Host)
-	if err != nil {
-		log.Error().Err(err).Msg("unable to parse host")
-		return nil, err
-	}
-
-	parsed.Path = "/clusters/root:orgs"
-
-	cfg.Host = parsed.String()
-
-	return client.New(cfg, client.Options{
-		Scheme: scheme,
-	})
 }
