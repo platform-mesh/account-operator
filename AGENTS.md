@@ -55,4 +55,5 @@
 - Ask before making changes that affect release flow, CI wiring, container publishing, or Helm chart integration outside this repository.
 
 ## Human-Facing Guidance
+- Use `README.md` for local setup and high-level context.
 - Use `CONTRIBUTING.md` for contribution process, DCO, and broader developer workflow expectations.
