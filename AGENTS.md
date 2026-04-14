@@ -1,7 +1,8 @@
 ## Repository Description
 - `account-operator` manages `Account` and `AccountInfo` resources for Platform Mesh.
-- This is a Go operator repo built around controller-runtime, multicluster-runtime, and generated Kubernetes APIs.
-- Follow the shared Platform Mesh agent guidance in `https://github.com/platform-mesh/.github/blob/main/AGENTS.md` for cross-repository rules.
+- `Account` is the primary tenant/account resource. `AccountInfo` stores derived and related account metadata used across workspaces.
+- This is a Go operator repo built around [controller-runtime](https://github.com/kubernetes-sigs/controller-runtime), [multicluster-runtime](https://github.com/kubernetes-sigs/multicluster-runtime), and generated Kubernetes APIs.
+- Read the org-wide [AGENTS.md](https://github.com/platform-mesh/.github/blob/main/AGENTS.md) for general conventions.
 
 ## Core Principles
 - Keep changes small and local. Prefer the narrowest fix that solves the real problem.
@@ -19,16 +20,16 @@
 - `cmd` and `main.go`: CLI and process entrypoints.
 - `hack`: tooling helpers and boilerplate for generation.
 
-## Preferred Commands
-- `task fmt`: format Go code.
-- `task lint`: run formatting plus golangci-lint.
-- `task envtest`: run Go tests without bootstrapping extra tools.
-- `task test`: run the normal local test path with required test tooling.
-- `go test ./...`: fast fallback when `task` is unnecessary.
-- `task manifests`: regenerate CRDs.
-- `task generate`: regenerate deepcopy code and API resource output after API changes.
-- `docker build .`: build the container image.
-- `task docker:kind`: load the current image into a local kind cluster and restart the deployment.
+## Commands
+- `task fmt` — format Go code.
+- `task lint` — run formatting plus golangci-lint.
+- `task envtest` — run Go tests without bootstrapping extra tools.
+- `task test` — run the standard local test path with required tooling.
+- `go test ./...` — fast fallback for targeted verification.
+- `task manifests` — regenerate CRDs.
+- `task generate` — regenerate deepcopy code and API resource output after API changes.
+- `docker build .` — build the container image.
+- `task docker:kind` — build, load, and restart the deployment in kind.
 
 ## Code Conventions
 - Follow existing Go patterns in the touched package before introducing new abstractions.
@@ -42,6 +43,11 @@
 - If CRD schemas or API types change, run `task generate`.
 - Review generated changes in `config/crd`, `config/resources`, and `test/setup`.
 - Do not mix unrelated manual edits into generated files.
+
+## Do Not
+- Edit `api/v1alpha1/zz_generated.deepcopy.go` directly.
+- Edit generated files in `config/crd` or `config/resources` without running `task generate`.
+- Skip regeneration after changing API types or CRD schema.
 
 ## Hard Boundaries
 - Do not invent new build or test workflows when a `task` target already exists.
