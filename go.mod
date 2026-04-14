@@ -8,7 +8,7 @@ require (
 	github.com/kcp-dev/multicluster-provider v0.5.1
 	github.com/kcp-dev/sdk v0.30.1
 	github.com/platform-mesh/golang-commons v0.14.0
-	github.com/platform-mesh/subroutines v0.2.6
+	github.com/platform-mesh/subroutines v0.3.0
 	github.com/spf13/cobra v1.10.2
 	github.com/spf13/pflag v1.0.10
 	github.com/stretchr/testify v1.11.1
