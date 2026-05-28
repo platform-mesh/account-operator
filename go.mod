@@ -1,6 +1,6 @@
 module github.com/platform-mesh/account-operator
 
-go 1.26.0
+go 1.26
 
 require (
 	github.com/go-logr/logr v1.4.3
@@ -8,7 +8,7 @@ require (
 	github.com/kcp-dev/multicluster-provider v0.7.1
 	github.com/kcp-dev/multicluster-provider/client v0.7.1
 	github.com/kcp-dev/sdk v0.31.1
-	github.com/platform-mesh/golang-commons v0.16.18
+	github.com/platform-mesh/golang-commons v0.17.1
 	github.com/platform-mesh/subroutines v0.4.3
 	github.com/prometheus/client_golang v1.23.2
 	github.com/spf13/cobra v1.10.2
