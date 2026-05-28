@@ -17,6 +17,7 @@ import (
 	"sigs.k8s.io/controller-runtime/pkg/client"
 	"sigs.k8s.io/controller-runtime/pkg/controller/controllerutil"
 	mcmanager "sigs.k8s.io/multicluster-runtime/pkg/manager"
+	"sigs.k8s.io/multicluster-runtime/pkg/multicluster"
 
 	"github.com/platform-mesh/account-operator/api/v1alpha1"
 	"github.com/platform-mesh/account-operator/pkg/clusteredname"
@@ -62,7 +63,7 @@ func (r *WorkspaceSubroutine) Finalize(ctx context.Context, obj client.Object) (
 	instance := obj.(*v1alpha1.Account)
 	cn := clusteredname.MustGetClusteredName(ctx, obj)
 
-	clusterName := cn.ClusterID.String()
+	clusterName := multicluster.ClusterName(cn.ClusterID)
 
 	cluster, err := r.mgr.GetCluster(ctx, clusterName)
 	if err != nil {
@@ -95,7 +96,7 @@ func (r *WorkspaceSubroutine) Process(ctx context.Context, obj client.Object) (s
 	instance := obj.(*v1alpha1.Account)
 	cn := clusteredname.MustGetClusteredName(ctx, obj)
 
-	clusterName := cn.ClusterID.String()
+	clusterName := multicluster.ClusterName(cn.ClusterID)
 
 	clusterRef, err := r.mgr.GetCluster(ctx, clusterName)
 	if err != nil {
@@ -148,7 +149,7 @@ func (r *WorkspaceSubroutine) Process(ctx context.Context, obj client.Object) (s
 // TODO: could potentially work without the orgsClient when we look up the
 // orgs workspaceid on startup
 func (r *WorkspaceSubroutine) checkWorkspaceTypeReady(ctx context.Context, workspaceTypeName string) (bool, error) {
-	cluster, err := r.mgr.GetCluster(ctx, orgsWorkspacePath)
+	cluster, err := r.mgr.GetCluster(ctx, multicluster.ClusterName(orgsWorkspacePath))
 	if err != nil {
 		return false, err
 	}
