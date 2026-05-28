@@ -36,6 +36,8 @@ type ClusterInfo struct {
 
 type AccountLocation struct {
 	Name string `json:"name"`
+	// Creator is the initial creator of the account resource that led to this workspace.
+	Creator *string `json:"creator,omitempty"`
 	// The GeneratedClusterId represents the cluster id of the workspace that was generated for a given account
 	GeneratedClusterId string `json:"generatedClusterId"`
 	// The OriginClusterId represents the cluster id of the workspace that holds the account resource that

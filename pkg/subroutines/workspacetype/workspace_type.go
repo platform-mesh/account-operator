@@ -12,6 +12,7 @@ import (
 	"sigs.k8s.io/controller-runtime/pkg/client"
 	"sigs.k8s.io/controller-runtime/pkg/controller/controllerutil"
 	mcmanager "sigs.k8s.io/multicluster-runtime/pkg/manager"
+	"sigs.k8s.io/multicluster-runtime/pkg/multicluster"
 
 	"github.com/platform-mesh/account-operator/api/v1alpha1"
 	"github.com/platform-mesh/account-operator/internal/metrics"
@@ -70,7 +71,7 @@ func (w *WorkspaceTypeSubroutine) Process(ctx context.Context, obj client.Object
 }
 
 func (w *WorkspaceTypeSubroutine) createOrPatchWorkspaceType(ctx context.Context, desiredWst kcptenancyv1alpha.WorkspaceType, wstKind string) error {
-	orgsCluster, err := w.mgr.GetCluster(ctx, orgsWorkspacePath)
+	orgsCluster, err := w.mgr.GetCluster(ctx, multicluster.ClusterName(orgsWorkspacePath))
 	if err != nil {
 		return err
 	}
@@ -103,7 +104,7 @@ func (w *WorkspaceTypeSubroutine) Finalize(ctx context.Context, obj client.Objec
 		return subroutines.OK(), nil
 	}
 
-	orgsCluster, err := w.mgr.GetCluster(ctx, "root:orgs")
+	orgsCluster, err := w.mgr.GetCluster(ctx, multicluster.ClusterName(orgsWorkspacePath))
 	if err != nil {
 		return subroutines.OK(), err
 	}
