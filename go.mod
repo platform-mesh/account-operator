@@ -5,7 +5,7 @@ go 1.26
 require (
 	github.com/go-logr/logr v1.4.3
 	github.com/kcp-dev/logicalcluster/v3 v3.0.5
-	github.com/kcp-dev/multicluster-provider v0.5.1
+	github.com/kcp-dev/multicluster-provider v0.7.1
 	github.com/kcp-dev/sdk v0.31.2
 	github.com/platform-mesh/golang-commons v0.17.8
 	github.com/platform-mesh/subroutines v0.3.3
